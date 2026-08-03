@@ -1,0 +1,52 @@
+# Prevent directory browsing
+Options -Indexes
+
+# Deny access to sensitive files
+<FilesMatch "\.(sql|log|ini|conf|bak|backup|swp|old|~)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Protect config files
+<Files "config.php">
+    Order allow,deny
+    Deny from all
+</Files>
+
+# Protect .htaccess file itself
+<Files ".htaccess">
+    Order allow,deny
+    Deny from all
+</Files>
+
+# Security headers (jika modul headers aktif)
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "DENY"
+    Header set X-XSS-Protection "1; mode=block"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# PHP Settings (jika diizinkan oleh hosting)
+<IfModule mod_php7.c>
+    php_flag display_errors Off
+    php_flag log_errors On
+    php_value error_log logs/php_errors.log
+</IfModule>
+
+# Redirect to HTTPS (aktifkan saat production)
+# <IfModule mod_rewrite.c>
+#     RewriteEngine On
+#     RewriteCond %{HTTPS} !=on
+#     RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
+# </IfModule>
+
+# Allow JavaScript files
+<FilesMatch "\.(js|json)$">
+    Order allow,deny
+    Allow from all
+</FilesMatch>
+
+# Set proper MIME type
+AddType application/javascript .js
+AddType application/json .json

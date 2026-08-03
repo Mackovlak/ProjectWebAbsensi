@@ -1,0 +1,557 @@
+/* Import Font */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+/* --- VARIABEL WARNA (DARK & LIGHT MODE) --- */
+:root {
+    /* Dark Mode (Default) */
+    --primary-color: #6a11cb;
+    --secondary-color: #2575fc;
+    --background-color: #12121c;
+    --surface-color: #1e1e2f;
+    --text-color: #e0e0e0;
+    --text-muted-color: #a0a0a0;
+    --accent-color: #00e5ff;
+    --success-color: #00ff7f;
+    --error-color: #ff4d4d;
+    --sidebar-color: #1a1a2a;
+    --border-color: #2a2a3e;
+    --box-shadow: rgba(0, 0, 0, 0.5);
+}
+
+body.light-mode {
+    /* Light Mode */
+    --background-color: #f0f2f5;
+    --surface-color: #ffffff;
+    --text-color: #1c1e21;
+    --text-muted-color: #606770;
+    --sidebar-color: #ffffff;
+    --border-color: #e0e0e0;
+    --box-shadow: rgba(0, 0, 0, 0.1);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Poppins', sans-serif; }
+
+/* PERBAIKAN 1: Background Image untuk Login */
+.body-login { 
+    position: relative; 
+    display: flex; 
+    justify-content: center; 
+    align-items: center; 
+    min-height: 100vh; 
+    overflow: hidden; 
+    background-color: var(--background-color); 
+}
+.body-login::before { 
+    content: ''; 
+    position: absolute; 
+    top: 0; 
+    left: 0; 
+    right: 0; 
+    bottom: 0; 
+    background-image: url('Dinia2.jpg'); /* Menggunakan file Dinia2.jpg */
+    background-size: cover; 
+    background-position: center; 
+    background-repeat: no-repeat;
+    filter: brightness(0.4) blur(2px); 
+    z-index: -1; 
+}
+
+.login-container { 
+    background-color: rgba(30, 30, 47, 0.85); 
+    padding: 40px; 
+    border-radius: 20px; 
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); 
+    width: 100%; 
+    max-width: 480px; 
+    text-align: center; 
+    border: 1px solid var(--accent-color); 
+    backdrop-filter: blur(5px); 
+    -webkit-backdrop-filter: blur(5px); 
+}
+.login-container h1 { margin-bottom: 10px; color: var(--accent-color); letter-spacing: 2px; }
+.login-container h1:nth-child(0) { margin-bottom: 5px; }
+.login-container p { margin-bottom: 30px; color: #a0a0a0; }
+.input-group { position: relative; margin-bottom: 25px; }
+.input-group input { width: 100%; padding: 15px; background: transparent; border: 1px solid var(--secondary-color); border-radius: 10px; color: #e0e0e0; font-size: 16px; outline: none; }
+.input-group input:focus { border-color: var(--accent-color); }
+.btn { width: 100%; padding: 15px; border: none; border-radius: 10px; background: linear-gradient(45deg, var(--primary-color), var(--secondary-color)); color: #fff; font-size: 18px; font-weight: 600; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
+.btn:hover { transform: translateY(-3px); box-shadow: 0 5px 15px rgba(37, 117, 252, 0.4); }
+.btn-secondary { background: transparent; border: 1px solid var(--accent-color); margin-top: 15px; }
+.btn-secondary:hover { background: var(--accent-color); color: #12121c; box-shadow: 0 5px 15px rgba(0, 229, 255, 0.4); }
+.error-message { background-color: rgba(255, 77, 77, 0.2); color: var(--error-color); padding: 10px; border-radius: 5px; margin-bottom: 15px; border: 1px solid var(--error-color); }
+
+/* --- LAYOUT ADMIN DASHBOARD --- */
+body { background: var(--background-color); color: var(--text-color); transition: background-color 0.3s, color 0.3s; }
+.sidebar { position: fixed; top: 0; left: 0; height: 100%; width: 260px; background: var(--sidebar-color); box-shadow: 2px 0 5px var(--box-shadow); z-index: 100; transition: all 0.5s ease; }
+.sidebar.active { width: 78px; }
+.sidebar .logo { height: 80px; display: flex; align-items: center; justify-content: center; font-size: 24px; color: var(--accent-color); }
+.sidebar .logo i { margin-right: 10px; }
+.sidebar.active .logo span { display: none; }
+.sidebar .nav-links { height: calc(100% - 140px); padding-top: 20px; overflow: auto; }
+.sidebar .nav-links li { position: relative; list-style: none; transition: all 0.4s ease; }
+.sidebar .nav-links li:hover { background: var(--background-color); }
+.sidebar .nav-links li a { display: flex; align-items: center; text-decoration: none; width: 100%; padding: 0 24px; height: 50px; color: var(--text-color); }
+.sidebar .nav-links li.active a { color: var(--accent-color); background: var(--background-color); }
+.sidebar .nav-links li i { min-width: 30px; text-align: center; font-size: 18px; color: var(--text-color); }
+.sidebar .nav-links li.active i { color: var(--accent-color); }
+
+/* PERBAIKAN 3: Arrow position fix */
+.sidebar .nav-links li.submenu-item { position: relative; }
+.sidebar .nav-links .link-container { position: relative; display: flex; align-items: center; width: 100%; }
+.sidebar .nav-links .arrow { 
+    position: absolute; 
+    right: 24px; 
+    font-size: 16px; 
+    cursor: pointer; 
+    transition: transform 0.3s ease; 
+}
+.sidebar.active .nav-links .arrow { display: none; }
+.sidebar .nav-links li.show-submenu .arrow { transform: rotate(-180deg); }
+
+.sidebar .nav-links .submenu { padding-left: 30px; display: none; background: var(--background-color); }
+body.light-mode .sidebar .nav-links .submenu { background: #f5f5f5; }
+.sidebar .nav-links li.show-submenu .submenu { display: block; }
+.sidebar .nav-links .submenu a { padding-left: 28px; }
+.sidebar .nav-links a .link-name { transition: 0s; opacity: 1; }
+.sidebar.active .nav-links a .link-name { opacity: 0; pointer-events: none; }
+.sidebar .nav-links li.logout-link { position: absolute; bottom: 20px; width: 100%; }
+
+.home-section { position: relative; background: var(--background-color); left: 260px; width: calc(100% - 260px); transition: all 0.5s ease; min-height: 100vh; }
+/* Update bagian .home-section nav */
+.home-section nav { 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center; 
+    height: 80px; 
+    background: var(--surface-color); 
+    padding: 0 30px;
+    /* TAMBAHAN UNTUK STICKY NAVBAR */
+    position: fixed;
+    top: 0;
+    left: 260px;
+    right: 0;
+    z-index: 999;
+    box-shadow: 0 2px 10px var(--box-shadow);
+}
+
+/* Update bagian .home-section .home-content */
+.home-section .home-content { 
+    /* UBAH padding-top untuk memberi ruang navbar */
+    padding: 110px 30px 30px 30px; /* Sebelumnya: padding: 30px; */
+}
+
+/* TAMBAHAN: Saat sidebar collapsed */
+.sidebar.active ~ .home-section nav {
+    left: 78px;
+    width: calc(100% - 78px);
+}
+
+.home-section nav .profile-details, .home-section nav .theme-toggle { display: flex; align-items: center; color: var(--text-color); }
+.home-section nav .profile-details i, .home-section nav .theme-toggle i { font-size: 28px; cursor: pointer; color: var(--text-color); }
+.home-section nav .nav-tools { display: flex; align-items: center; gap: 20px; }
+.home-section nav .profile-details span { font-size: 18px; margin-left: 10px; }
+.home-section .home-content { padding: 30px; }
+.overview-boxes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; margin-bottom: 30px; }
+.overview-boxes .box { display: flex; align-items: center; justify-content: space-between; padding: 25px; border-radius: 12px; transition: transform 0.3s ease; color: #fff; }
+.overview-boxes .box:hover { transform: translateY(-5px); }
+.overview-boxes .box .box_topic { font-size: 18px; font-weight: 500; opacity: 0.9; }
+.overview-boxes .box .number { font-size: 35px; font-weight: 600; }
+.overview-boxes .box .cart { font-size: 40px; }
+
+/* Warna Kotak - Dark Mode (Default) */
+.overview-boxes .box.one { background: linear-gradient(45deg, #29E7CD, #01DFA4); }
+.overview-boxes .box.two { background: linear-gradient(45deg, #FFC837, #FF8008); }
+.overview-boxes .box.three { background: linear-gradient(45deg, #E94057, #F27121); }
+.overview-boxes .box.four { background: linear-gradient(45deg, #6A11CB, #2575FC); }
+
+/* Warna Kotak - Light Mode */
+body.light-mode .overview-boxes .box.one { background: #00c0ef; }
+body.light-mode .overview-boxes .box.two { background: #00a65a; }
+body.light-mode .overview-boxes .box.three { background: #f39c12; }
+body.light-mode .overview-boxes .box.four { background: #dd4b39; }
+
+.charts-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+.chart-box { background: var(--surface-color); padding: 20px; border-radius: 12px; }
+.chart-box h3 { color: var(--text-color); margin-bottom: 15px; }
+.placeholder-chart { height: 250px; display: flex; justify-content: center; align-items: center; color: #555; border: 2px dashed #444; border-radius: 8px; }
+.table-container { background: var(--surface-color); padding: 20px; border-radius: 12px; }
+.table-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.btn-tambah { padding: 10px 20px; background: var(--accent-color); border: none; border-radius: 8px; color: var(--background-color); font-weight: 600; cursor: pointer; transition: 0.3s; }
+.btn-tambah:hover { opacity: 0.8; }
+.search-bar { position: relative; }
+.search-bar input { padding: 10px 15px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--background-color); color: var(--text-color); width: 250px; }
+.search-bar i { position: absolute; right: 15px; top: 50%; transform: translateY(-50%); color: #777; }
+table { width: 100%; border-collapse: collapse; }
+table thead { background: var(--background-color); }
+table th, table td { padding: 15px; text-align: left; }
+table th { font-weight: 600; }
+table tbody tr { border-bottom: 1px solid var(--border-color); }
+table tbody tr:last-child { border-bottom: none; }
+body:not(.light-mode) table tbody tr:hover { background: #252538; }
+body.light-mode table tbody tr:hover { background: #f5f5f5; }
+
+/* Mencegah Flash of Unstyled Content (FOUC) dan tabel loncat (jumping) sebelum DataTables siap */
+table:not(.dataTable) tbody tr:nth-child(n+6) {
+    display: none;
+}
+/* ... (kode CSS Anda yang sudah ada) ... */
+.action-buttons button, .action-buttons a.btn-hapus { 
+    padding: 6px 12px; 
+    border: none; 
+    border-radius: 5px; 
+    color: #fff; 
+    cursor: pointer; 
+    margin-right: 5px; 
+    font-size: 12px; 
+    text-decoration: none; /* Tambahan untuk link */
+    display: inline-flex; /* Tambahan untuk link */
+    align-items: center; /* Tambahan untuk link */
+    gap: 5px; /* Jarak antara ikon dan teks */
+}
+/* ... (kode CSS Anda yang sudah ada) ... */
+.action-buttons .btn-lihat { background: var(--secondary-color); }
+.action-buttons .btn-edit { background: #ffc107; }
+/* Ganti dari .btn-hapus menjadi a.btn-hapus agar lebih spesifik */
+.action-buttons a.btn-hapus { background: var(--error-color); } 
+/* ... (kode CSS Anda yang sudah ada) ... */
+.action-buttons .btn-lihat { background: var(--secondary-color); }
+.action-buttons .btn-edit { background: #ffc107; }
+.action-buttons a.btn-hapus { background: var(--error-color); }
+/* ... (kode CSS Anda yang sudah ada) ... */
+
+/* --- CSS UNTUK MODAL POP-UP --- */
+.modal {
+    display: none; 
+    position: fixed; 
+    z-index: 1000; 
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto; 
+    background-color: rgba(0,0,0,0.6); 
+    padding-top: 60px;
+}
+
+.modal-content {
+    background-color: var(--surface-color);
+    margin: 5% auto;
+    padding: 30px;
+    border: 1px solid var(--border-color);
+    width: 80%;
+    max-width: 500px;
+    border-radius: 12px;
+    position: relative;
+    animation-name: animatetop;
+    animation-duration: 0.4s
+}
+
+@keyframes animatetop {
+    from {top: -300px; opacity: 0}
+    to {top: 0; opacity: 1}
+}
+
+.modal .close {
+    color: var(--text-muted-color);
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+}
+
+.modal .close:hover,
+.modal .close:focus {
+    color: var(--error-color);
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.modal h3 {
+    margin-bottom: 25px;
+    color: var(--text-color);
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    color: var(--text-muted-color);
+}
+
+.form-group input {
+    width: 100%;
+    padding: 12px 15px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--background-color);
+    color: var(--text-color);
+    font-size: 16px;
+}
+
+.form-actions {
+    text-align: right;
+    margin-top: 30px;
+}
+
+.btn-simpan {
+    padding: 12px 25px;
+    background: var(--accent-color);
+    border: none;
+    border-radius: 8px;
+    color: var(--background-color);
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.3s;
+}
+.btn-simpan:hover {
+    opacity: 0.8;
+}
+
+/* CSS untuk Notifikasi */
+.alert {
+    padding: 15px;
+    margin-bottom: 20px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+}
+.alert-success {
+    color: #0c5460;
+    background-color: #d1ecf1;
+    border-color: #bee5eb;
+}
+.alert-error {
+    color: #721c24;
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
+}
+/* --- Gaya untuk Notifikasi Pesan (Alerts) --- */
+.alert {
+    padding: 15px;
+    margin-bottom: 20px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    font-weight: 500;
+}
+
+.alert-success {
+    color: #0f5132;
+    background-color: #d1e7dd;
+    border-color: #badbcc;
+}
+
+.alert-danger {
+    color: #842029;
+    background-color: #f8d7da;
+    border-color: #f5c2c7;
+}
+/* --- Gaya Halaman Generate QR Code --- */
+.qr-container {
+    display: flex;
+    gap: 30px;
+    align-items: flex-start;
+}
+.qr-generator-box {
+    flex: 1;
+    background: var(--surface-color);
+    padding: 25px;
+    border-radius: 12px;
+}
+.qr-generator-box h3 {
+    margin-bottom: 10px;
+    color: var(--text-color);
+}
+.qr-generator-box p {
+    margin-bottom: 20px;
+    font-size: 14px;
+    color: var(--text-muted-color);
+}
+.qr-generator-box select {
+    width: 100%;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--background-color);
+    color: var(--text-color);
+    margin-top: 5px;
+    margin-bottom: 20px;
+}
+.qr-result-box {
+    flex: 1;
+    background: var(--surface-color);
+    padding: 25px;
+    border-radius: 12px;
+    text-align: center;
+}
+#qr-card {
+    background: #fff;
+    padding: 20px;
+    border-radius: 15px;
+    display: inline-block;
+    border: 1px solid #eee;
+}
+#qr-card h4 {
+    color: #333;
+    margin-bottom: 15px;
+    font-size: 16px;
+}
+.qrcode-canvas {
+    padding: 10px;
+    background: #fff;
+    border-radius: 8px;
+}
+.qrcode-canvas canvas {
+    border: 1px solid #f0f0f0;
+}
+.qr-info {
+    margin-top: 15px;
+    color: #555;
+}
+.qr-info strong {
+    display: block;
+    font-size: 18px;
+}
+.qr-info span {
+    font-size: 14px;
+    color: #777;
+}
+.qr-actions {
+    margin-top: 20px;
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+.qr-actions button {
+    padding: 10px 15px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    background: var(--accent-color);
+    color: var(--background-color);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.qr-actions button:hover {
+    opacity: 0.8;
+}
+
+/* Print Specific Styles */
+@media print {
+    body * {
+        visibility: hidden;
+    }
+    #qr-card, #qr-card * {
+        visibility: visible;
+    }
+    #qr-card {
+        position: absolute;
+        left: 0;
+        top: 0;
+        margin: 50px;
+    }
+}
+
+/* --- Gaya untuk Form Filter Tanggal --- */
+.filter-form {
+    display: flex;
+    gap: 15px;
+    /* MENGUBAH: align-items: center agar semua elemen lurus di tengah */
+    align-items: center; 
+    margin-bottom: 20px;
+    background-color: var(--background-color);
+    padding: 15px;
+    border-radius: 8px;
+}
+.filter-form .form-group {
+    display: flex;
+    flex-direction: column;
+}
+.filter-form label {
+    margin-bottom: 5px;
+    font-size: 14px;
+    color: var(--text-muted-color);
+}
+.filter-form input[type="date"] {
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: var(--surface-color);
+    color: var(--text-color);
+    height: 40px; /* Menambahkan tinggi agar sama dengan tombol */
+}
+.filter-form .btn-tambah {
+    height: 40px; /* Menyamakan tinggi dengan input date */
+    /* MENAMBAHKAN: margin-top untuk menurunkan tombol agar sejajar dengan input date */
+    margin-top: 8px; /* Sekitar tinggi label + margin-bottom label (14px font-size + 5px margin + sedikit adjustment) */
+}
+.map-link {
+    color: var(--accent-color);
+    text-decoration: none;
+    font-weight: 500;
+}
+.map-link:hover {
+    text-decoration: underline;
+}
+/* --- PERBAIKAN TOMBOL "Clear" --- */
+.btn-tambah, 
+.btn-reset {
+    display: inline-flex;        /* biar isi rata tengah */
+    align-items: center;         /* vertikal sejajar */
+    justify-content: center;
+    height: 40px;                /* samain tinggi */
+    padding: 0 16px;             /* samain padding horizontal */
+    margin-left: 5px;            /* kasih jarak antara tombol */
+    vertical-align: middle;      /* biar sejajar */
+}
+.filter-form .btn-tambah,
+.filter-form .btn-reset {
+    display: inline-flex;
+    align-items: center;
+    height: 40px;
+    padding: 0 16px;
+    vertical-align: middle;
+}
+/* Quick Fix Sticky Navbar */
+.home-section nav {
+    position: fixed !important;
+    top: 0;
+    left: 260px;
+    right: 0;
+    z-index: 999;
+}
+.sidebar.active ~ .home-section nav { left: 78px; }
+.home-section .home-content { padding-top: 110px !important; }
+
+
+/* --- PERBAIKAN TOMBOL "Lihat Histori" --- */
+/* Mengganti selector agar berlaku untuk button dan link (<a>) */
+.action-buttons button, .action-buttons a { 
+    padding: 6px 12px; 
+    border: none; 
+    border-radius: 5px; 
+    color: #fff; 
+    cursor: pointer; 
+    margin-right: 5px; 
+    font-size: 12px; 
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+/* --- Perbaikan agar teks TOTAL di baris bawah tabel rata tengah --- */
+.table-container tfoot td {
+    text-align: center !important;
+}
+
+
+/* Menargetkan link Lihat secara spesifik */
+.action-buttons a.btn-lihat { 
+    background: var(--secondary-color); 
+}
+.action-buttons .btn-edit { background: #ffc107; }
+.action-buttons a.btn-hapus { background: var(--error-color); }
+
