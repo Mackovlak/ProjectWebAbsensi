@@ -44,10 +44,13 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 // Database configuration
-$host = "localhost";
-$username = "root";
-$password = "";
-$database = "db_absensi.kry";
+// Falls back to the original hardcoded XAMPP/Laragon-style defaults when no
+// env vars are set, so non-Docker local setups are unaffected. Docker Compose
+// injects DB_HOST/DB_USER/DB_PASS/DB_NAME to point at the `db` service.
+$host = getenv('DB_HOST') ?: "localhost";
+$username = getenv('DB_USER') ?: "root";
+$password = getenv('DB_PASS') ?: "";
+$database = getenv('DB_NAME') ?: "db_absensi.kry";
 
 // Create connection with error handling
 try {
