@@ -221,6 +221,12 @@ $avatar_bg = ($staff_jk == 'P') ? 'bg-pink-100' : 'bg-fuchsia-100';
                 <span class="font-medium text-sm">Informasi Gaji</span>
             </a>
 
+            <!-- Pengajuan Izin / Cuti -->
+            <a href="staff_pengajuan_izin.php" class="flex items-center gap-3 px-4 py-3 mx-4 <?php echo basename($_SERVER['PHP_SELF']) == 'staff_pengajuan_izin.php' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
+                <i class="ph-duotone ph-calendar-plus text-xl w-6 flex items-center justify-center <?php echo basename($_SERVER['PHP_SELF']) == 'staff_pengajuan_izin.php' ? '' : 'opacity-70 group-hover:opacity-100 transition-opacity'; ?>"></i>
+                <span class="font-medium text-sm">Pengajuan Izin</span>
+            </a>
+
             <!-- Face Registration -->
             <a href="register_face.php" class="flex items-center justify-between px-4 py-3 mx-4 <?php echo basename($_SERVER['PHP_SELF']) == 'register_face.php' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
                 <div class="flex items-center gap-3">

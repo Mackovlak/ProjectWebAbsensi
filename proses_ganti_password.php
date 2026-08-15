@@ -3,7 +3,8 @@ require 'config.php';
 
 header('Content-Type: application/json');
 
-if (!isLoggedIn() || $_SESSION['role'] != 'staff') {
+// Endpoint self-service: hanya mengubah akun milik user yang sedang login
+if (!isLoggedIn() || !in_array($_SESSION['role'], ['staff', 'supervisor'], true)) {
     echo json_encode(['success' => false, 'message' => 'Anda tidak memiliki akses.']);
     exit();
 }

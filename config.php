@@ -105,6 +105,16 @@ function isStaff() {
     return isset($_SESSION['role']) && $_SESSION['role'] == 'staff';
 }
 
+// Function to check if user is supervisor
+function isSupervisor() {
+    return isset($_SESSION['role']) && $_SESSION['role'] == 'supervisor';
+}
+
+// Role yang boleh mereview pengajuan izin/cuti/dinas luar
+function isApprover() {
+    return isAdmin() || isOwner() || isSupervisor();
+}
+
 // Function to redirect
 function redirect($url) {
     header("Location: $url");
@@ -145,6 +155,34 @@ function requireAdminOrOwner() {
     }
 }
 
+// Function to check supervisor access
+function requireSupervisor() {
+    requireLogin();
+    if (!isSupervisor()) {
+        $_SESSION['error_message'] = "Akses ditolak. Halaman ini khusus untuk Supervisor.";
+        redirect("login.php");
+    }
+}
+
+// Function to check approver access (supervisor, admin, atau owner)
+function requireApprover() {
+    requireLogin();
+    if (!isApprover()) {
+        $_SESSION['error_message'] = "Akses ditolak. Anda tidak memiliki izin untuk mereview pengajuan.";
+        redirect("staff_dashboard.php");
+    }
+}
+
+// Halaman default sesuai role, dipakai saat login & saat redirect akses ditolak
+function dashboardUntukRole($role) {
+    switch ($role) {
+        case 'admin':      return 'admin_dashboard.php';
+        case 'owner':      return 'owner_dashboard.php';
+        case 'supervisor': return 'supervisor_dashboard.php';
+        default:           return 'staff_dashboard.php';
+    }
+}
+
 // Function to check staff access
 function requireStaff() {
     requireLogin();
@@ -156,6 +194,9 @@ function requireStaff() {
 
 // Include security functions
 require_once 'security_functions.php';
+
+// Include helper pengajuan izin/cuti/dinas luar
+require_once 'izin_functions.php';
 
 // Function untuk generate CSRF token
 function generateCSRFToken() {

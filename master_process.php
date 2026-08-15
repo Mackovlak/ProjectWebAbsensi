@@ -595,6 +595,82 @@ if (isset($_POST['tambah_owner'])) {
     exit();
 }
 
+// Handler Tambah Supervisor
+// Supervisor hanya mereview pengajuan izin pada satu cabang, sehingga
+// id_cabang wajib diisi saat pembuatan akun.
+if (isset($_POST['tambah_supervisor'])) {
+    $nama          = sanitizeInput($_POST['nama_supervisor'] ?? '');
+    $username      = sanitizeInput($_POST['username_supervisor'] ?? '');
+    $password      = $_POST['password_supervisor'] ?? '';
+    $jenis_kelamin = sanitizeInput($_POST['jenis_kelamin_supervisor'] ?? 'L');
+    $id_cabang     = intval($_POST['id_cabang_supervisor'] ?? 0);
+
+    $error_msg = null;
+
+    if (empty($nama) || strlen($username) < 4 || strlen($password) < 8) {
+        $error_msg = "Nama wajib diisi, username min 4 karakter, password min 8 karakter.";
+    } elseif (!in_array($jenis_kelamin, ['L', 'P'], true)) {
+        $error_msg = "Jenis kelamin tidak valid.";
+    } elseif ($id_cabang <= 0) {
+        $error_msg = "Cabang yang disupervisi wajib dipilih.";
+    } else {
+        // Pastikan cabang benar-benar ada
+        $stmt_cabang = $conn->prepare("SELECT id FROM cabang WHERE id = ?");
+        $stmt_cabang->bind_param("i", $id_cabang);
+        $stmt_cabang->execute();
+        if ($stmt_cabang->get_result()->num_rows === 0) {
+            $error_msg = "Cabang tidak ditemukan.";
+        }
+        $stmt_cabang->close();
+
+        if (!$error_msg) {
+            $stmt_check = $conn->prepare("SELECT id FROM users WHERE username = ?");
+            $stmt_check->bind_param("s", $username);
+            $stmt_check->execute();
+            if ($stmt_check->get_result()->num_rows > 0) {
+                $error_msg = "Username sudah digunakan.";
+            }
+            $stmt_check->close();
+        }
+    }
+
+    if ($error_msg) {
+        $_SESSION['error_message'] = $error_msg;
+    } else {
+        $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+        $role = 'supervisor';
+
+        $stmt = $conn->prepare("INSERT INTO users (nama, username, password, role, jenis_kelamin, id_cabang)
+                                VALUES (?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("sssssi", $nama, $username, $hashed_password, $role, $jenis_kelamin, $id_cabang);
+
+        if ($stmt->execute()) {
+            $_SESSION['success_message'] = "Akun Supervisor berhasil dibuat.";
+            logActivity($conn, 'create_user', "Buat akun supervisor: $username (cabang #$id_cabang)", null);
+        } else {
+            $_SESSION['error_message'] = "Gagal membuat akun supervisor.";
+        }
+        $stmt->close();
+    }
+
+    if (isset($_POST['is_ajax'])) {
+        if (isset($_SESSION['error_message'])) {
+            $msg = $_SESSION['error_message'];
+            unset($_SESSION['error_message']);
+            echo json_encode(['status' => 'error', 'message' => $msg]);
+            exit();
+        } else if (isset($_SESSION['success_message'])) {
+            $msg = $_SESSION['success_message'];
+            unset($_SESSION['success_message']);
+            echo json_encode(['status' => 'success', 'message' => $msg]);
+            exit();
+        }
+    }
+
+    header("Location: setting_users.php");
+    exit();
+}
+
 // Edit Password User
 if (isset($_POST['edit_user'])) {
     $id_user = intval($_POST['id_user']);
