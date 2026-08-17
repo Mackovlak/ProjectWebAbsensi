@@ -42,7 +42,7 @@ while($row = $result_cabang_chart->fetch_assoc()) {
 }
 if ($max_karyawan == 0) $max_karyawan = 1; // Mencegah division by zero
 
-// Warna bar chart (dirotasi) - Dinia Colors
+// Warna bar chart (dirotasi) - Javag Colors
 $bar_colors = [
     'bg-purple-500 dark:bg-purple-600',
     'bg-yellow-400 dark:bg-yellow-500',
@@ -149,7 +149,6 @@ if ($result_best) {
                 <p class="text-2xl font-bold text-slate-800 dark:text-white mt-1"><?php echo $terlambat_hari_ini; ?></p>
             </div>
         </div>
-
     </div>
 
     <!-- CHARTS/CONTENT AREA -->
@@ -319,9 +318,7 @@ if ($result_best) {
             </div>
         </div>
     </div>
-
 </div>
-
 <?php
 include 'admin_footer.php';
 ?>

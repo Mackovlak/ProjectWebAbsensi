@@ -260,7 +260,7 @@ $ttd = $ttd_data['ttd_path'] ? 'assets/uploads/' . $ttd_data['ttd_path'] : null;
                 <!-- Header Card -->
                 <div class="bg-purple-700 text-white text-center py-3 border-b-4 border-purple-900">
                     <i class="fa-solid fa-user-shield text-2xl mb-1 text-white"></i>
-                    <h4 class="text-sm font-bold tracking-widest text-white">ABSENSI DINIA</h4>
+                    <h4 class="text-sm font-bold tracking-widest text-white">ABSENSI JAVAG</h4>
                 </div>
                 
                 <!-- Content Card -->

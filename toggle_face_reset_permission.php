@@ -2,7 +2,7 @@
 /**
  * ==========================================
  * TOGGLE FACE RESET PERMISSION - Admin Only
- * Dinia Team - Security Enhancement
+ * Javag Team - Security Enhancement
  * ==========================================
  */
 

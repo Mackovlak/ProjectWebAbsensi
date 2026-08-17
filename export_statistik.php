@@ -240,7 +240,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <div class="container">
                 <div class="header">
                     <h1>Statistik Absensi Karyawan</h1>
-                    <h2>DINIA TEAM</h2>
+                    <h2>JAVAG TEAM</h2>
                     <p><?php echo htmlspecialchars($cabang); ?></p>
                 </div>
                 
@@ -325,8 +325,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 </table>
                 
                 <div class="footer">
-                    <p><strong>© <?php echo date('Y'); ?> DINIA TEAM</strong></p>
-                    <p>Dokumen ini dicetak secara otomatis dan resmi dari Sistem Absensi Dinia Team</p>
+                    <p><strong>© <?php echo date('Y'); ?> JAVAG TEAM</strong></p>
+                    <p>Dokumen ini dicetak secara otomatis dan resmi dari Sistem Absensi Javag Team</p>
                     <p>Dicetak oleh: <?php echo htmlspecialchars($_SESSION['username']); ?></p>
                 </div>
             </div>

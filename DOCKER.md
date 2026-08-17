@@ -1,4 +1,4 @@
-# Running AbsenSlip Dinia in Docker
+# Running AbsenKita Javag in Docker
 
 This is a local **testing/dev** setup, not a production deployment (see the
 "not for production" notes at the bottom).
