@@ -15,6 +15,13 @@ if (session_status() === PHP_SESSION_NONE) {
     $isHTTPS = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || 
         $_SERVER['SERVER_PORT'] == 443;
     
+    // PHP's default session.gc_maxlifetime (1440s/24min) is shorter than the
+    // 3600s (1hr) cookie lifetime below. Without this, the server silently
+    // garbage-collects session data (and any CSRF token embedded in an open
+    // form) well before the browser's cookie says it should expire, causing
+    // "CSRF token validation failed" on forms left open more than ~24 minutes.
+    ini_set('session.gc_maxlifetime', 3600);
+
     // Set session parameters berdasarkan environment
     if (!$isLocalhost && $isHTTPS) {
         // Production dengan HTTPS
@@ -51,6 +58,18 @@ $host = getenv('DB_HOST') ?: "localhost";
 $username = getenv('DB_USER') ?: "root";
 $password = getenv('DB_PASS') ?: "";
 $database = getenv('DB_NAME') ?: "db_absensi.kry";
+
+// Restore legacy mysqli behavior (return false on error) instead of PHP 8.1's
+// default of throwing mysqli_sql_exception on every DB error. This codebase's
+// error handling is written throughout as `if ($stmt->execute()) { ... } else
+// { $_SESSION['error_message'] = ... }` (see login.php, proses_biodata.php,
+// tambah_absensi_manual.php, and 15+ other files) — under PHP 8.1's default,
+// any transient DB error (lock wait, deadlock, brief connection blip) throws
+// an uncaught exception instead of hitting that else-branch, turning a
+// recoverable hiccup into a raw fatal error. master_process.php intentionally
+// re-enables MYSQLI_REPORT_ERROR|STRICT for its own two try/catch blocks, so
+// this only affects everything else.
+mysqli_report(MYSQLI_REPORT_OFF);
 
 // Create connection with error handling
 try {
@@ -105,6 +124,16 @@ function isStaff() {
     return isset($_SESSION['role']) && $_SESSION['role'] == 'staff';
 }
 
+// Function to check if user is supervisor
+function isSupervisor() {
+    return isset($_SESSION['role']) && $_SESSION['role'] == 'supervisor';
+}
+
+// Role yang boleh mereview pengajuan izin/cuti/dinas luar
+function isApprover() {
+    return isAdmin() || isOwner() || isSupervisor();
+}
+
 // Function to redirect
 function redirect($url) {
     header("Location: $url");
@@ -145,6 +174,34 @@ function requireAdminOrOwner() {
     }
 }
 
+// Function to check supervisor access
+function requireSupervisor() {
+    requireLogin();
+    if (!isSupervisor()) {
+        $_SESSION['error_message'] = "Akses ditolak. Halaman ini khusus untuk Supervisor.";
+        redirect("login.php");
+    }
+}
+
+// Function to check approver access (supervisor, admin, atau owner)
+function requireApprover() {
+    requireLogin();
+    if (!isApprover()) {
+        $_SESSION['error_message'] = "Akses ditolak. Anda tidak memiliki izin untuk mereview pengajuan.";
+        redirect("staff_dashboard.php");
+    }
+}
+
+// Halaman default sesuai role, dipakai saat login & saat redirect akses ditolak
+function dashboardUntukRole($role) {
+    switch ($role) {
+        case 'admin':      return 'admin_dashboard.php';
+        case 'owner':      return 'owner_dashboard.php';
+        case 'supervisor': return 'supervisor_dashboard.php';
+        default:           return 'staff_dashboard.php';
+    }
+}
+
 // Function to check staff access
 function requireStaff() {
     requireLogin();
@@ -156,6 +213,9 @@ function requireStaff() {
 
 // Include security functions
 require_once 'security_functions.php';
+
+// Include helper pengajuan izin/cuti/dinas luar
+require_once 'izin_functions.php';
 
 // Function untuk generate CSRF token
 function generateCSRFToken() {

@@ -4,7 +4,7 @@ This is a step-by-step guide to deploy this app on a bare Linux VPS with
 **Nginx + PHP-FPM + MySQL**, systemd-managed, with HTTPS. The Docker setup
 (`DOCKER.md`) is for local dev only — this document is the production path.
 
-Target stack: **Ubuntu 22.04/24.04 LTS**, **Nginx**, **PHP 8.2-FPM**,
+Target stack: **Ubuntu 22.04/24.04 LTS**, **Nginx**, **PHP 8.1-FPM**,
 **MySQL 8.0**, **Let's Encrypt/Certbot**. Commands assume `apt`; adapt for
 other distros.
 
@@ -76,15 +76,15 @@ setup (see §5).
 
 ```bash
 sudo apt install -y nginx mysql-server \
-  php8.2-fpm php8.2-mysqli php8.2-mbstring php8.2-xml php8.2-curl \
-  php8.2-gd php8.2-zip php8.2-opcache
+  php8.1-fpm php8.1-mysqli php8.1-mbstring php8.1-xml php8.1-curl \
+  php8.1-gd php8.1-zip php8.1-opcache
 
-php -v            # sanity check: should report PHP 8.2.x
-systemctl status nginx php8.2-fpm mysql
+php -v            # sanity check: should report PHP 8.1.x
+systemctl status nginx php8.1-fpm mysql
 ```
 
 Notes:
-- `php8.2-mysqli` is the only *required* extension the app calls directly
+- `php8.1-mysqli` is the only *required* extension the app calls directly
   (`config.php` opens the DB via `mysqli`). The others above are common
   PHP hygiene/perf extras, safe defaults.
 - Use **MySQL**, not MariaDB. The real schema (`db_absensi_qr_schema.sql`)
@@ -126,11 +126,25 @@ or another account with DDL rights) for you to run migrations with.
 ## 5. Import the real schema
 
 Upload `db_absensi_qr_schema.sql` to the VPS (or use it straight from the
-repo checkout) and import it:
+repo checkout) and import it **as `root`, not as `absensi_app`**:
 
 ```bash
-mysql -u absensi_app -p 'db_absensi.kry' < db_absensi_qr_schema.sql
+mysql -u root -p 'db_absensi.kry' < db_absensi_qr_schema.sql
+# or, if root auth is via the unix socket (common on a fresh Ubuntu
+# mysql-server install, no password set for root@localhost):
+sudo mysql -u root 'db_absensi.kry' < db_absensi_qr_schema.sql
 ```
+
+> **Why root and not `absensi_app`**: the dump is schema DDL, not data —
+> every table starts with `DROP TABLE IF EXISTS`, then `CREATE TABLE`, and
+> it ends with a `CREATE VIEW ... DEFINER=`root`@`localhost``. The
+> `absensi_app` user from §4 only has `SELECT/INSERT/UPDATE/DELETE`
+> (deliberately — the app never runs DDL at runtime), so it can't `DROP`,
+> `CREATE`, or set a `DEFINER` — importing with it fails partway through
+> with something like `ERROR 1142 (42000): DROP command denied to user
+> 'absensi_app'@'localhost' for table 'absensi'`. Load the schema with a
+> privileged account once; `absensi_app` only needs to exist for the app's
+> normal runtime queries afterward, which is what §4 already set up.
 
 **Before you do**, check one known gap: `toggle_face_reset_permission.php`
 writes to a table called `face_admin_logs` on every face-reset admin
@@ -222,7 +236,7 @@ On a bare VPS (no Docker Compose to inject these), set them in the
 pool config:
 
 ```bash
-sudo nano /etc/php/8.2/fpm/pool.d/www.conf
+sudo nano /etc/php/8.1/fpm/pool.d/www.conf
 ```
 
 Add (or create a dedicated pool file — either works):
@@ -239,7 +253,7 @@ file are the fix; just exporting shell env vars before starting the
 service will *not* work. Restart to apply:
 
 ```bash
-sudo systemctl restart php8.2-fpm
+sudo systemctl restart php8.1-fpm
 ```
 
 (Alternative, if you'd rather not touch pool config: hardcode the four
@@ -326,7 +340,7 @@ server {
 
     location ~ \.php$ {
         include snippets/fastcgi-php.conf;
-        fastcgi_pass unix:/run/php/php8.2-fpm.sock;
+        fastcgi_pass unix:/run/php/php8.1-fpm.sock;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
         # Matches docker/php/uploads.ini so overtime/manual-entry photo
         # uploads (up to ~6MB per proses_absen.php) actually go through.
@@ -390,13 +404,13 @@ welcome page.
 
 ## 10. PHP hardening
 
-Edit `/etc/php/8.2/fpm/php.ini`:
+Edit `/etc/php/8.1/fpm/php.ini`:
 
 ```ini
 expose_php = Off
 display_errors = Off
 log_errors = On
-error_log = /var/log/php8.2-fpm-absenslip-error.log
+error_log = /var/log/php8.1-fpm-absenslip-error.log
 
 ; Matches docker/php/uploads.ini -- proses_absen.php accepts up to ~6MB
 ; photo uploads (overtime/manual-entry proof); leave headroom.
@@ -416,7 +430,7 @@ the `php.ini` changes above are the server-level backstop for the same
 intent, not a replacement for it.
 
 ```bash
-sudo systemctl restart php8.2-fpm
+sudo systemctl restart php8.1-fpm
 ```
 
 ---
@@ -500,7 +514,7 @@ that matter more once the app is on the public internet:
        allow 203.0.113.10;   # your office/home IP
        deny all;
        include snippets/fastcgi-php.conf;
-       fastcgi_pass unix:/run/php/php8.2-fpm.sock;
+       fastcgi_pass unix:/run/php/php8.1-fpm.sock;
        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
    }
    ```
@@ -515,7 +529,7 @@ that matter more once the app is on the public internet:
    location = /absen.php {
        limit_req zone=absen burst=5 nodelay;
        include snippets/fastcgi-php.conf;
-       fastcgi_pass unix:/run/php/php8.2-fpm.sock;
+       fastcgi_pass unix:/run/php/php8.1-fpm.sock;
        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
    }
    ```
@@ -556,7 +570,7 @@ Run through this once, on the real domain, over HTTPS:
 7. Confirm uploaded photos actually land in `assets/uploads/absensi/` on
    the server with `www-data` ownership.
 8. Trigger `cron_reminder_absensi.php` manually once
-   (`sudo -u www-data php8.2 cron_reminder_absensi.php`) to confirm the
+   (`sudo -u www-data php8.1 cron_reminder_absensi.php`) to confirm the
    Fonnte WhatsApp token works before trusting the cron schedule.
 9. Run the full payroll path once: build a slip gaji (Admin), ACC as
    Admin (requires TTD upload first), ACC as Owner (requires TTD + stempel
@@ -575,14 +589,14 @@ git pull
 # if the change includes a schema update, apply it by hand (or via a new
 # one-off script like update_db.php) against the production DB -- there
 # is no migration runner in this project.
-sudo systemctl reload php8.2-fpm   # only needed if opcache is enabled and
+sudo systemctl reload php8.1-fpm   # only needed if opcache is enabled and
                                     # you want to force a cache bust
 ```
 
 If you enabled `opcache` (recommended for perf — install
-`php8.2-opcache`, it's in the §3 install list), either set a short
+`php8.1-opcache`, it's in the §3 install list), either set a short
 `opcache.revalidate_freq` in dev-adjacent environments or reload
-`php8.2-fpm` after every deploy so changed files are picked up
+`php8.1-fpm` after every deploy so changed files are picked up
 immediately.
 
 ---
@@ -591,6 +605,7 @@ immediately.
 
 | Symptom | Likely cause |
 |---|---|
+| `ERROR 1142 ... DROP/CREATE command denied to user 'absensi_app'@...` while importing the schema | You imported with the restricted app user instead of `root` — see §5. Re-run the import as `root`, then let `absensi_app` handle runtime queries only. |
 | Blank page / 500 | Check `/var/log/nginx/absenslip.error.log` and `error_log` from php.ini — `display_errors` is off in production by design. |
 | "Connection failed" on every page | PHP-FPM pool `env[DB_*]` not set/not reloaded, or MySQL user/password/privileges wrong (§4/§7). |
 | Camera or GPS prompt never appears | Not actually on HTTPS, or on an `www.`/bare-domain mismatch vs. the cert's SANs. |

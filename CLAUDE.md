@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 "AbsenKita Javag" — an employee attendance (absensi) and payroll-slip (slip gaji) management system for "Java Abadi Gemilang", built as plain procedural PHP + MySQLi with no framework, no build step, and no dependency manager (no composer.json, no vendor/, no package.json). Every page is a standalone `.php` file served directly by Apache. UI language and most identifiers/strings are Indonesian.
 
-There are three roles: `admin`, `owner`, `staff`. Pages are prefixed by role (`admin_*.php`, `owner_*.php`, `staff_*.php`); files without a role prefix (e.g. `absen.php`, `jam_kerja.php`, `data_karyawan.php`) are shared/admin-oriented pages.
+There are four roles: `admin`, `owner`, `supervisor`, `staff`. Pages are prefixed by role (`admin_*.php`, `owner_*.php`, `supervisor_*.php`, `staff_*.php`); files without a role prefix (e.g. `absen.php`, `jam_kerja.php`, `data_karyawan.php`, `kelola_pengajuan_izin.php`) are shared/admin-oriented pages. `supervisor` is a narrow approval-only role scoped to one branch via `users.id_cabang`.
 
 ## Running the app
 
@@ -15,18 +15,19 @@ This is a classic LAMP-style app with no CLI build/test/lint tooling in the repo
 Useful one-off DB scripts (run directly via browser or `php <file>.php`, not part of any tooling pipeline):
 - `check_db.php` — dumps `SHOW TABLES` for the connected database.
 - `update_db.php` — example of the pattern used for ad-hoc idempotent schema migrations (check column exists via `SHOW COLUMNS`, `ALTER TABLE` if missing). There is no formal migration system; new schema changes are typically added as similar one-off scripts or applied directly to the DB.
+- `update_db_izin.php` — migration for the leave-request feature (creates `pengajuan_izin`, extends the `users.role` and `absensi.keterangan` enums, adds `users.id_cabang`, `karyawan.jatah_cuti`, `absensi.id_pengajuan`). Must be run once on any existing database before the feature works.
 
 ## Architecture
 
 **Bootstrap (`config.php`)**: every page starts with `require 'config.php'` (or `require_once`). It starts output buffering, configures session cookies (stricter flags — `Secure`, `SameSite=Strict` — when detected as non-localhost HTTPS, looser `SameSite=Lax` on localhost/LAN), opens the mysqli `$conn`, sets `Asia/Jakarta` timezone, and defines the core auth/utility helpers used everywhere:
-- `isLoggedIn()`, `isAdmin()`, `isOwner()`, `isStaff()` — session role checks.
-- `requireLogin()`, `requireAdmin()`, `requireAdminOrOwner()`, `requireStaff()` — guards that redirect on failure (though most `*_header.php` files re-check role directly against `$_SESSION['role']` rather than calling these).
+- `isLoggedIn()`, `isAdmin()`, `isOwner()`, `isStaff()`, `isSupervisor()`, `isApprover()` — session role checks (`isApprover()` = admin, owner, or supervisor).
+- `requireLogin()`, `requireAdmin()`, `requireAdminOrOwner()`, `requireStaff()`, `requireSupervisor()`, `requireApprover()`, `dashboardUntukRole($role)` — guards that redirect on failure, plus the single source of truth for each role's landing page (though most `*_header.php` files re-check role directly against `$_SESSION['role']` rather than calling these).
 - `sanitizeInput()` — trim/stripslashes/htmlspecialchars for POST/GET input.
 - `generateCSRFToken()` / `verifyCSRFToken($token)` — session-based CSRF, `verifyCSRFToken` dies on mismatch.
 - `regenerateSession()` — called on successful login.
 - `redirect($url)`.
 
-It also pulls in `security_functions.php`, which adds:
+It also pulls in `izin_functions.php` (leave-request domain logic, see below) and `security_functions.php`, which adds:
 - `validatePassword()`, `checkRateLimit($action, $limit_seconds)` (session-based throttling, used e.g. for the attendance endpoint), `safe_output()`, `validateIDKaryawan()` (11-digit numeric employee ID format `YYYYMMDDXXX`), `logActivity($conn, $action, $description, $user_id)` (writes to `activity_logs`).
 - `calculateDistance()` / `validateLokasiAbsen()` — Haversine-based geofencing: validates a staff member's submitted GPS coords against their branch (`cabang`) coordinates + `radius_meter`, used to gate "Hadir" (present) check-ins to on-site locations. Backward-compatible: if a branch has no lat/long configured, location validation is bypassed.
 
@@ -43,6 +44,14 @@ It also pulls in `security_functions.php`, which adds:
 - Checking out later than the matched shift's `jam_pulang` is treated as overtime and requires an uploaded photo + reason (`alasan_pulang`/`foto_pulang`) before the checkout is accepted.
 - All responses go through `outputJSON()` which clears the output buffer first (defensive against stray warnings corrupting the JSON) and always `exit`s.
 
+**Leave / permission requests (`pengajuan_izin`)**: a request is one row covering a **date range**, never one row per day. `staff_pengajuan_izin.php` submits, `kelola_pengajuan_izin.php` reviews (role-aware chrome; supervisors are scoped to their branch, Owner is read-only), and `proses_pengajuan_izin.php` is the single handler (dispatch-by-POST-key: `ajukan_izin` / `batal_izin` / `review_izin`). Rules encoded in `izin_functions.php`:
+- `Cuti`, `Sakit`, and `Izin` consume the annual quota (`karyawan.jatah_cuti`, default 12); `Dinas Luar` does not (`izinPotongKuota()`).
+- Effective days (`hitungHariIzin()`) exclude Sundays and any date that already has an `absensi` row — those days neither consume quota nor get a generated row. Always recomputed at approval time, not trusted from submission.
+- Pending requests hold quota, so `tersedia = jatah - terpakai - tertahan` is what a new request is checked against.
+- **On approval**, `materialisasiIzin()` inserts one `absensi` row per effective day with `id_pengajuan` set and `is_manual_entry = 0` (so `hapus_libur_bersama.php`, which deletes manual-entry OFF/Cuti rows, can't destroy approved leave). This is why no existing report/export/payroll query needed changing — they all still just read `absensi`.
+- `Dinas Luar` is the exception: it is **not** materialised. Instead `proses_absen.php` calls `getIzinDinasDisetujui()` at check-in, and when an approved request covers today it bypasses geofencing and records `Dinas Luar` directly instead of the same-day `Pending Dinas` approval flow. Face verification is still required.
+- Cancelling only removes materialised rows that have no `jam_masuk`, so real attendance is never deleted.
+
 **Face recognition**: client-side only, via `assets/js/face-recognition.js` using `face-api.js` loaded from a CDN (`@vladmandic/face-api`) — no server-side ML. The browser computes a face descriptor/confidence and posts it to `proses_absen.php` (check-in) or `process_face_register.php`/`register_face.php` (registration) for the server to store/compare.
 
 **Exports/reporting**: no PDF library is vendored. "Excel" exports (`export_*.php`) are actually CSV with a UTF-8 BOM and `;`-delimited `fputcsv`. "PDF" reports (`laporan_*_print.php`, `slip_gaji_form.php`, etc.) are plain HTML pages styled for browser print-to-PDF rather than server-generated PDFs.
@@ -56,4 +65,4 @@ It also pulls in `security_functions.php`, which adds:
 
 ## Key tables referenced in code (no schema file exists — inferred from queries)
 
-`users` (login accounts; `id_karyawan` FK, `role` enum admin/owner/staff, `face_descriptor`, `face_registered_at`, `face_reset_allowed`, `foto_profil`, `ttd_path`), `karyawan` (employee master data; `id_karyawan` is the public-facing 11-digit ID, `id_jabatan`, `id_cabang`, `status` aktif/nonaktif, `tanggal_resign`), `cabang` (branches; `latitude`/`longitude`/`radius_meter` for geofencing), `jabatan` (positions; `tunjangan_jabatan` allowance), `jam_kerja` (per-branch shift rules; `jam_masuk_akhir`, `jam_pulang`), `absensi` (one row per employee per date; `jam_masuk`/`jam_pulang`, `lokasi_masuk`/`lokasi_pulang`, `keterangan`, `status_masuk`, `face_verified`/`face_confidence`, overtime fields), `activity_logs`, `login_logs`, `face_recognition_logs`.
+`users` (login accounts; `id_karyawan` FK, `id_cabang` for supervisors, `role` enum admin/owner/supervisor/staff, `face_descriptor`, `face_registered_at`, `face_reset_allowed`, `foto_profil`, `ttd_path`), `karyawan` (employee master data; `id_karyawan` is the public-facing 11-digit ID, `id_jabatan`, `id_cabang`, `status` aktif/nonaktif, `tanggal_resign`, `jatah_cuti`), `cabang` (branches; `latitude`/`longitude`/`radius_meter` for geofencing), `jabatan` (positions; `tunjangan_jabatan` allowance), `jam_kerja` (per-branch shift rules; `jam_masuk_akhir`, `jam_pulang`), `absensi` (one row per employee per date; `jam_masuk`/`jam_pulang`, `lokasi_masuk`/`lokasi_pulang`, `keterangan`, `status_masuk`, `face_verified`/`face_confidence`, `id_pengajuan`, overtime fields), `pengajuan_izin` (leave/permission requests; `jenis`, `tanggal_mulai`/`tanggal_selesai`, `jumlah_hari` vs `jumlah_hari_kerja`, `status`, `potong_kuota`, `reviewed_by`), `activity_logs`, `login_logs`, `face_recognition_logs`.

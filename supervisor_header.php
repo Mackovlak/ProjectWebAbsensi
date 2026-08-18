@@ -1,43 +1,50 @@
 <?php
-// Memulai session dan memastikan hanya role 'staff' yang bisa akses
 require_once 'config.php';
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'staff') {
+
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'supervisor') {
     header("Location: login.php");
     exit();
 }
-
-$user_id = $_SESSION['user_id'];
-$nama_karyawan_display = $_SESSION['username']; // Default
-$has_face_registered = false; // Default
-
-// Query untuk mendapatkan id_karyawan, nama, status face registration, dan foto
-$sql_get_data = "SELECT u.id_karyawan, k.nama_karyawan, k.jenis_kelamin, k.foto, u.face_descriptor, u.face_registered_at
-                 FROM users u
-                 LEFT JOIN karyawan k ON u.id_karyawan = k.id_karyawan 
-                 WHERE u.id = ?";
-$stmt = $conn->prepare($sql_get_data);
-$stmt->bind_param("i", $user_id);
-$stmt->execute();
-$result = $stmt->get_result();
-
-if ($result->num_rows > 0) {
-    $data = $result->fetch_assoc();
-    $_SESSION['id_karyawan'] = $data['id_karyawan'];
-    $nama_karyawan_display = $data['nama_karyawan'] ? $data['nama_karyawan'] : $_SESSION['username'];
-    $has_face_registered = !empty($data['face_descriptor']);
-    $staff_jk = $data['jenis_kelamin'] ?? 'L';
-    $staff_foto = $data['foto'] ?? '';
+$admin_jk = $_SESSION['jenis_kelamin'] ?? 'L';
+if (isset($_SESSION['foto_profil']) && !empty($_SESSION['foto_profil'])) {
+    $avatar_src = 'assets/uploads/' . $_SESSION['foto_profil'];
 } else {
-    echo "<script>alert('Error: Akun staff Anda tidak terhubung dengan data karyawan. Hubungi Admin.');</script>";
-    session_destroy();
-    header("Location: login.php");
-    exit();
+    $avatar_src = ($admin_jk == 'P') ? 'assets/images/avatar_p.png?v=2' : 'assets/images/avatar_l.png?v=2';
 }
-$stmt->close();
+$avatar_bg = ($admin_jk == 'P') ? 'bg-pink-100' : 'bg-fuchsia-100';
 
-$current_page = basename($_SERVER['PHP_SELF']);
-$avatar_src = !empty($staff_foto) ? 'assets/images/foto_karyawan/' . $staff_foto : (($staff_jk == 'P') ? 'assets/images/avatar_p.png?v=2' : 'assets/images/avatar_l.png?v=2');
-$avatar_bg = ($staff_jk == 'P') ? 'bg-pink-100' : 'bg-fuchsia-100';
+// --- Cakupan cabang supervisor ---
+$cabang_supervisor = getCabangReviewer($conn, $_SESSION['user_id'], 'supervisor');
+$nama_cabang_supervisor = null;
+if ($cabang_supervisor > 0) {
+    $stmt_cbg = $conn->prepare("SELECT nama_cabang FROM cabang WHERE id = ?");
+    $stmt_cbg->bind_param("i", $cabang_supervisor);
+    $stmt_cbg->execute();
+    $row_cbg = $stmt_cbg->get_result()->fetch_assoc();
+    $stmt_cbg->close();
+    $nama_cabang_supervisor = $row_cbg['nama_cabang'] ?? null;
+}
+
+// --- Notifikasi Supervisor: pengajuan izin menunggu review di cabangnya ---
+$notif_pengajuan = [];
+$stmt_notif = $conn->prepare("SELECT p.id, p.jenis, p.tanggal_mulai, p.tanggal_selesai, p.keperluan,
+                                     p.jumlah_hari_kerja, k.nama_karyawan
+                              FROM pengajuan_izin p
+                              JOIN karyawan k ON p.id_karyawan = k.id_karyawan
+                              WHERE p.status = 'Pending' AND k.id_cabang = ?
+                              ORDER BY p.created_at ASC
+                              LIMIT 20");
+$stmt_notif->bind_param("i", $cabang_supervisor);
+$stmt_notif->execute();
+$res_notif = $stmt_notif->get_result();
+while ($row = $res_notif->fetch_assoc()) {
+    $notif_pengajuan[] = $row;
+}
+$stmt_notif->close();
+
+$actionable_notif_count = count($notif_pengajuan);
+$total_notif = $actionable_notif_count;
+// ------------------------------
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -45,7 +52,7 @@ $avatar_bg = ($staff_jk == 'P') ? 'bg-pink-100' : 'bg-fuchsia-100';
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="view-transition" content="same-origin">
-    <title>Dashboard Karyawan - Absensi Javag</title>
+    <title>Dashboard Supervisor - Absensi Dinia</title>
     
     <!-- Tailwind CSS via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -89,17 +96,6 @@ $avatar_bg = ($staff_jk == 'P') ? 'bg-pink-100' : 'bg-fuchsia-100';
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         .dark ::-webkit-scrollbar-thumb { background: #475569; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        
-        /* Animasi Face Registration Pulse */
-        @keyframes pulse-ring {
-            0% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
-            100% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-        }
-        .pulse-badge {
-            animation: pulse-ring 2s infinite;
-        }
-
         /* Prevent FOUC transitions */
         .preload * { transition: none !important; }
         
@@ -187,14 +183,14 @@ $avatar_bg = ($staff_jk == 'P') ? 'bg-pink-100' : 'bg-fuchsia-100';
         <!-- Top Left Logo -->
         <div class="h-20 flex items-center gap-3 px-5 border-b border-[#1e293b] shrink-0 bg-slate-950">
             <div class="bg-white/10 p-1.5 rounded-xl shadow-lg border border-white/10">
-                <img src="Javag-Logo.png" alt="Javag Logo" class="h-8 w-auto" onerror="this.style.display='none'">
+                <img src="Dinia-Logo.png" alt="Dinia Logo" class="h-8 w-auto" onerror="this.style.display='none'">
             </div>
             <div class="flex flex-col justify-center space-y-0.5 logo-text-container">
                 <h2 class="text-2xl font-bold tracking-tight text-white leading-none">
-                    Absen<span class="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-200">Kita</span>
+                    Absen<span class="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-200">Slip</span>
                 </h2>
                 <span class="text-xs text-slate-300 font-medium tracking-wide leading-none ml-0.5 pt-0.5">
-                    Java Abadi Gemilang
+                    Dinia House Of Hijab
                 </span>
             </div>
 
@@ -202,53 +198,33 @@ $avatar_bg = ($staff_jk == 'P') ? 'bg-pink-100' : 'bg-fuchsia-100';
 
         <!-- Navigation -->
         <nav class="flex-1 overflow-y-auto py-6 space-y-2 no-scrollbar">
-            <p class="px-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 mt-2">Menu Karyawan</p>
-            
-            <a href="staff_dashboard.php" class="flex items-center gap-3 px-4 py-3 mx-4 <?php echo basename($_SERVER['PHP_SELF']) == 'staff_dashboard.php' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
-                <i class="ph-duotone ph-clock-counter-clockwise text-xl w-6 flex items-center justify-center <?php echo basename($_SERVER['PHP_SELF']) == 'staff_dashboard.php' ? '' : 'opacity-70 group-hover:opacity-100 transition-opacity'; ?>"></i>
-                <span class="font-medium text-sm">Histori Absensi</span>
+            <p class="px-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 mt-2">Utama</p>
+
+            <a href="supervisor_dashboard.php" class="flex items-center gap-3 px-4 py-3 mx-4 <?php echo basename($_SERVER['PHP_SELF']) == 'supervisor_dashboard.php' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
+                <i class="ph-duotone ph-squares-four text-xl w-6 flex items-center justify-center <?php echo basename($_SERVER['PHP_SELF']) == 'supervisor_dashboard.php' ? '' : 'opacity-70 group-hover:opacity-100 transition-opacity'; ?>"></i>
+                <span class="font-medium text-sm">Dashboard</span>
             </a>
 
-            <!-- Riwayat Ranking Pribadi -->
-            <a href="staff_ranking_history.php" class="flex items-center gap-3 px-4 py-3 mx-4 <?php echo basename($_SERVER['PHP_SELF']) == 'staff_ranking_history.php' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
-                <i class="ph-duotone ph-medal text-xl w-6 flex items-center justify-center <?php echo basename($_SERVER['PHP_SELF']) == 'staff_ranking_history.php' ? '' : 'opacity-70 group-hover:opacity-100 transition-opacity'; ?>"></i>
-                <span class="font-medium text-sm">Riwayat Ranking</span>
-            </a>
+            <p class="px-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 mt-8">Persetujuan</p>
 
-            <!-- Laporan Gaji Pribadi -->
-            <a href="staff_laporan_gaji.php" class="flex items-center gap-3 px-4 py-3 mx-4 <?php echo basename($_SERVER['PHP_SELF']) == 'staff_laporan_gaji.php' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
-                <i class="ph-duotone ph-receipt text-xl w-6 flex items-center justify-center <?php echo basename($_SERVER['PHP_SELF']) == 'staff_laporan_gaji.php' ? '' : 'opacity-70 group-hover:opacity-100 transition-opacity'; ?>"></i>
-                <span class="font-medium text-sm">Informasi Gaji</span>
-            </a>
-
-            <!-- Pengajuan Izin / Cuti -->
-            <a href="staff_pengajuan_izin.php" class="flex items-center gap-3 px-4 py-3 mx-4 <?php echo basename($_SERVER['PHP_SELF']) == 'staff_pengajuan_izin.php' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
-                <i class="ph-duotone ph-calendar-plus text-xl w-6 flex items-center justify-center <?php echo basename($_SERVER['PHP_SELF']) == 'staff_pengajuan_izin.php' ? '' : 'opacity-70 group-hover:opacity-100 transition-opacity'; ?>"></i>
-                <span class="font-medium text-sm">Pengajuan Izin</span>
-            </a>
-
-            <!-- Face Registration -->
-            <a href="register_face.php" class="flex items-center justify-between px-4 py-3 mx-4 <?php echo basename($_SERVER['PHP_SELF']) == 'register_face.php' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
+            <a href="kelola_pengajuan_izin.php" class="flex items-center justify-between px-4 py-3 mx-4 <?php echo basename($_SERVER['PHP_SELF']) == 'kelola_pengajuan_izin.php' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
                 <div class="flex items-center gap-3">
-                    <i class="ph-duotone ph-shield-check text-xl w-6 flex items-center justify-center <?php echo basename($_SERVER['PHP_SELF']) == 'register_face.php' ? '' : 'opacity-70 group-hover:opacity-100 transition-opacity'; ?>"></i>
-                    <span class="font-medium text-sm">Registrasi Wajah</span>
+                    <i class="ph-duotone ph-clipboard-text text-xl w-6 flex items-center justify-center <?php echo basename($_SERVER['PHP_SELF']) == 'kelola_pengajuan_izin.php' ? '' : 'opacity-70 group-hover:opacity-100 transition-opacity'; ?>"></i>
+                    <span class="font-medium text-sm">Pengajuan Izin</span>
                 </div>
-                <?php if ($has_face_registered): ?>
-                    <span class="inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-500/20 text-emerald-400 px-2.5 py-0.5 rounded-full border border-emerald-500/30 uppercase">
-                        <i class="fa-solid fa-check"></i> Aktif
-                    </span>
-                <?php else: ?>
-                    <span class="pulse-badge inline-flex items-center gap-1 text-[10px] font-bold bg-rose-500/20 text-rose-400 px-2.5 py-0.5 rounded-full border border-rose-500/30 uppercase shadow-sm shadow-rose-500/20">
-                        <i class="fa-solid fa-exclamation"></i> Belum
+                <?php if ($actionable_notif_count > 0): ?>
+                    <span class="pulse-badge inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-bold bg-rose-500/20 text-rose-400 rounded-full border border-rose-500/30 shadow-sm shadow-rose-500/20">
+                        <?php echo $actionable_notif_count; ?>
                     </span>
                 <?php endif; ?>
             </a>
 
-            <a href="logout.php" onclick="confirmLogout(event, this.href);" class="flex items-center gap-3 px-4 py-3 mx-4 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 rounded-xl transition-all duration-300 group mt-4">
+            <p class="px-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 mt-8">Akun</p>
+
+            <a href="logout.php" onclick="confirmLogout(event, this.href);" class="flex items-center gap-3 px-4 py-3 mx-4 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 rounded-xl transition-all duration-300 group">
                 <i class="ph-duotone ph-sign-out text-xl w-6 flex items-center justify-center opacity-70 group-hover:opacity-100 transition-opacity"></i>
                 <span class="font-medium text-sm">Logout</span>
             </a>
-
         </nav>
         
     </aside>
@@ -296,15 +272,82 @@ $avatar_bg = ($staff_jk == 'P') ? 'bg-pink-100' : 'bg-fuchsia-100';
                     </div>
                 </button>
 
+                
+                <!-- Notification Bell -->
+                <div x-data="{ 
+                    openNotif: false, 
+                    actionableCount: <?php echo $actionable_notif_count; ?>,
+                    hasInfo: false,
+                    get showBadge() {
+                        if (this.actionableCount > 0) return true;
+                        return this.hasInfo && !sessionStorage.getItem('notif_opened');
+                    }
+                }" class="relative">
+                    <button @click="openNotif = !openNotif; if(openNotif) { sessionStorage.setItem('notif_opened', 'true'); }" @click.away="openNotif = false" class="relative w-10 h-10 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700/50 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-600">
+                        <i class="fa-regular fa-bell text-lg"></i>
+                        <span x-show="showBadge" style="display: none;" class="absolute top-1.5 right-1.5 flex h-3 w-3">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
+                        </span>
+                    </button>
+                    
+                    <!-- Notification Dropdown -->
+                    <div x-show="openNotif" 
+                         x-transition:enter="transition ease-out duration-200"
+                         x-transition:enter-start="opacity-0 translate-y-2"
+                         x-transition:enter-end="opacity-100 translate-y-0"
+                         x-transition:leave="transition ease-in duration-150"
+                         x-transition:leave-start="opacity-100 translate-y-0"
+                         x-transition:leave-end="opacity-0 translate-y-2"
+                         class="absolute right-0 mt-2 w-80 sm:w-96 bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 py-2 z-50 overflow-hidden" 
+                         style="display: none;">
+                        
+                        <div class="px-5 py-3 border-b border-slate-100 dark:border-slate-700/50 flex justify-between items-center bg-white dark:bg-slate-800 sticky top-0 z-10">
+                            <p class="text-sm font-bold text-slate-800 dark:text-white">Menunggu Persetujuan</p>
+                            <span class="text-xs font-semibold bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 px-2.5 py-0.5 rounded-full"><?php echo $total_notif; ?> Baru</span>
+                        </div>
+                        
+                        <div class="max-h-[60vh] overflow-y-auto no-scrollbar relative">
+                            <?php if ($total_notif == 0): ?>
+                            <div class="py-8 text-center px-4">
+                                <div class="w-12 h-12 rounded-full bg-slate-50 dark:bg-slate-800/50 flex items-center justify-center mx-auto mb-3 border border-slate-100 dark:border-slate-700">
+                                    <i class="fa-solid fa-check text-slate-300 dark:text-slate-500 text-xl"></i>
+                                </div>
+                                <p class="text-sm font-medium text-slate-600 dark:text-slate-300">Semua pengajuan sudah beres!</p>
+                                <p class="text-xs text-slate-400 mt-1">Tidak ada pengajuan yang menunggu review.</p>
+                            </div>
+                            <?php else: ?>
+                                <div class="px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border-y border-slate-100 dark:border-slate-700/50 sticky top-0 z-10 backdrop-blur-sm">
+                                    <p class="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Menunggu Review Anda</p>
+                                </div>
+                                <?php foreach ($notif_pengajuan as $np): ?>
+                                <a href="kelola_pengajuan_izin.php?status=Pending" class="block p-4 border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                                    <div class="flex items-center justify-between gap-2 mb-1">
+                                        <p class="text-sm font-bold text-slate-800 dark:text-white truncate"><?php echo htmlspecialchars($np['nama_karyawan']); ?></p>
+                                        <span class="text-[10px] px-2 py-0.5 rounded-full border font-bold shrink-0 <?php echo badgeJenisIzin($np['jenis']); ?>"><?php echo htmlspecialchars($np['jenis']); ?></span>
+                                    </div>
+                                    <p class="text-xs text-slate-600 dark:text-slate-300 line-clamp-2"><?php echo htmlspecialchars($np['keperluan']); ?></p>
+                                    <p class="text-[10px] font-medium text-slate-400 mt-2">
+                                        <i class="fa-regular fa-calendar mr-1"></i>
+                                        <?php echo formatRentangTanggal($np['tanggal_mulai'], $np['tanggal_selesai']); ?>
+                                        &middot; <?php echo (int)$np['jumlah_hari_kerja']; ?> hari kerja
+                                    </p>
+                                </a>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Divider -->
                 <div class="hidden sm:block w-px h-8 bg-slate-200 dark:bg-slate-700 mx-1"></div>
 
                 <!-- Profile Dropdown -->
                 <div x-data="{ openProfile: false }" class="relative">
                     <button @click="openProfile = !openProfile" @click.away="openProfile = false" class="flex items-center gap-3 p-1 pr-3 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-600">
-                        <img id="header_avatar_img" src="<?php echo $avatar_src; ?>" alt="Profile" class="w-9 h-9 rounded-full border border-slate-200 dark:border-slate-600 object-cover">
+                        <img src="<?php echo $avatar_src; ?>" alt="Profile" class="w-9 h-9 rounded-full border border-slate-200 dark:border-slate-600 object-cover">
                         <div class="hidden sm:flex items-center gap-2">
-                            <span class="text-sm font-semibold text-slate-800 dark:text-white"><?php echo htmlspecialchars($nama_karyawan_display); ?></span>
+                            <span class="text-sm font-semibold text-slate-800 dark:text-white"><?php echo htmlspecialchars($_SESSION['username']); ?></span>
                             <i class="fa-solid fa-chevron-down text-[10px] text-slate-400"></i>
                         </div>
                     </button>
@@ -321,14 +364,16 @@ $avatar_bg = ($staff_jk == 'P') ? 'bg-pink-100' : 'bg-fuchsia-100';
                          style="display: none;">
                         
                         <div class="px-5 py-3 border-b border-slate-100 dark:border-slate-700/50">
-                            <p class="text-sm font-bold text-slate-800 dark:text-white"><?php echo htmlspecialchars($nama_karyawan_display); ?></p>
-                            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Karyawan</p>
+                            <p class="text-sm font-bold text-slate-800 dark:text-white"><?php echo htmlspecialchars($_SESSION['nama_lengkap'] ?? $_SESSION['username']); ?></p>
+                            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                Supervisor<?php echo $nama_cabang_supervisor ? ' &middot; ' . htmlspecialchars($nama_cabang_supervisor) : ''; ?>
+                            </p>
                         </div>
-                        
+
                         <div class="py-1">
-                            <a href="staff_pengaturan.php" class="w-full text-left px-5 py-2.5 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 flex items-center gap-3 transition-colors">
-                                <i class="fa-solid fa-user-cog w-4 text-center text-slate-400"></i> Pengaturan Akun
-                            </a>
+                            <button onclick="openModalHeader('modal-ganti-password-header')" class="w-full text-left px-5 py-2.5 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 flex items-center gap-3 transition-colors">
+                                <i class="fa-solid fa-key w-4 text-center text-slate-400"></i> Ganti Password
+                            </button>
                         </div>
                         
                         <div class="border-t border-slate-100 dark:border-slate-700/50 py-1">
@@ -350,23 +395,36 @@ $avatar_bg = ($staff_jk == 'P') ? 'bg-pink-100' : 'bg-fuchsia-100';
             <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
                 <div class="relative bg-white dark:bg-slate-800 rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-md w-full border border-slate-200 dark:border-slate-700">
                     <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
-                        <h3 class="text-lg font-bold text-slate-800 dark:text-white">Ganti Password</h3>
+                        <h3 class="text-lg font-bold text-slate-800 dark:text-white">Ganti Password Supervisor</h3>
                         <button onclick="closeModalHeader('modal-ganti-password-header')" class="text-slate-400 hover:text-slate-500 dark:hover:text-slate-300">
                             <i class="fa-solid fa-xmark text-xl"></i>
                         </button>
                     </div>
-                    <form id="form-ganti-password-header" action="master_process.php" method="POST">
-                        <input type="hidden" name="edit_user" value="1">
-                        <input type="hidden" name="id_user" value="<?php echo $_SESSION['user_id']; ?>">
+                    <form id="form-ganti-password-header" action="proses_ganti_password.php" method="POST" onsubmit="return kirimGantiPassword(event)">
                         <div class="px-6 py-5 space-y-4">
                             <div>
                                 <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Username</label>
                                 <input type="text" value="<?php echo htmlspecialchars($_SESSION['username'] ?? ''); ?>" readonly class="w-full px-4 py-2.5 bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-500 dark:text-slate-400 text-sm focus:outline-none cursor-not-allowed">
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Password Baru <span class="text-red-500">*</span></label>
-                                <input type="password" name="password" required minlength="6" class="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors">
+                                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Password Baru <span class="text-rose-500">*</span></label>
+                                <div class="relative">
+                                    <input type="password" id="pwd_admin_baru" name="password_baru" required minlength="6" class="w-full px-4 py-2.5 pr-10 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors">
+                                    <button type="button" onclick="togglePasswordVisibility('pwd_admin_baru', 'icon_pwd_baru')" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
+                                        <i id="icon_pwd_baru" class="fa-regular fa-eye"></i>
+                                    </button>
+                                </div>
                                 <p class="text-xs text-slate-500 mt-1">Minimal 6 karakter.</p>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Konfirmasi Password <span class="text-rose-500">*</span></label>
+                                <div class="relative">
+                                    <input type="password" id="pwd_admin_confirm" name="konfirmasi_password" required minlength="6" class="w-full px-4 py-2.5 pr-10 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors">
+                                    <button type="button" onclick="togglePasswordVisibility('pwd_admin_confirm', 'icon_pwd_confirm')" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
+                                        <i id="icon_pwd_confirm" class="fa-regular fa-eye"></i>
+                                    </button>
+                                </div>
+                                <p id="pwd_admin_error" class="text-xs text-rose-500 mt-1 hidden">Konfirmasi password tidak cocok!</p>
                             </div>
                         </div>
                         <div class="px-6 py-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
@@ -379,6 +437,49 @@ $avatar_bg = ($staff_jk == 'P') ? 'bg-pink-100' : 'bg-fuchsia-100';
         </div>
 
         <script>
+        function togglePasswordVisibility(inputId, iconId) {
+            var input = document.getElementById(inputId);
+            var icon = document.getElementById(iconId);
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            } else {
+                input.type = 'password';
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
+        }
+        function kirimGantiPassword(event) {
+            event.preventDefault();
+            var p1 = document.getElementById('pwd_admin_baru').value;
+            var p2 = document.getElementById('pwd_admin_confirm').value;
+            if (p1 !== p2) {
+                document.getElementById('pwd_admin_error').classList.remove('hidden');
+                return false;
+            }
+            document.getElementById('pwd_admin_error').classList.add('hidden');
+
+            var form = document.getElementById('form-ganti-password-header');
+            fetch('proses_ganti_password.php', { method: 'POST', body: new FormData(form) })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    closeModalHeader('modal-ganti-password-header');
+                    if (typeof Swal === 'undefined') { alert(data.message); return; }
+                    Swal.fire({
+                        icon: data.success ? 'success' : 'error',
+                        title: data.success ? 'Berhasil' : 'Gagal',
+                        text: data.message,
+                        confirmButtonColor: '#c026d3'
+                    }).then(function () { if (data.success) window.location.reload(); });
+                })
+                .catch(function () {
+                    if (typeof Swal !== 'undefined') {
+                        Swal.fire({ icon: 'error', title: 'Gagal', text: 'Tidak dapat menghubungi server.', confirmButtonColor: '#c026d3' });
+                    }
+                });
+            return false;
+        }
         function openModalHeader(id) {
             document.getElementById(id).classList.remove('hidden');
         }

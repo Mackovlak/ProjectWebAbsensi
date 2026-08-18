@@ -90,6 +90,9 @@ if ($result_check->num_rows > 0) {
 }
 $stmt_check->close();
 
+// Pengajuan Dinas Luar yang sudah disetujui untuk hari ini (validasi lokasi dilewati)
+$izin_dinas_hari_ini = getIzinDinasDisetujui($conn, $id_karyawan, $today);
+
 $disable_pulang = false;
 $alasan_disable = '';
 if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir' && $absen_hari_ini['keterangan'] !== 'Dinas Luar') {
@@ -326,6 +329,24 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                 <span style="display: block; font-size: 14px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 6px;">Hallo,</span>
                 <h2 style="margin: 0; font-size: 24px; color: #1e293b; font-weight: 800; letter-spacing: -0.5px; line-height: 1.2;"><?php echo htmlspecialchars($nama_karyawan); ?></h2>
             </div>
+            <?php if ($izin_dinas_hari_ini): ?>
+            <div style="background: #e0f2fe; border: 2px solid #0ea5e9; padding: 15px; border-radius: 12px; margin-bottom: 20px;">
+                <div style="display: flex; align-items: start; gap: 12px;">
+                    <i class="fas fa-briefcase" style="color: #0284c7; font-size: 22px; margin-top: 2px;"></i>
+                    <div style="text-align: left;">
+                        <strong style="color: #075985; font-size: 15px; display: block; margin-bottom: 6px;">Dinas Luar Disetujui</strong>
+                        <small style="color: #075985; line-height: 1.6; display: block;">
+                            <?php echo htmlspecialchars($izin_dinas_hari_ini['keperluan']); ?><br>
+                            <span style="opacity: .85;"><?php echo formatRentangTanggal($izin_dinas_hari_ini['tanggal_mulai'], $izin_dinas_hari_ini['tanggal_selesai']); ?></span>
+                        </small>
+                        <small style="color: #075985; display: block; margin-top: 8px; font-weight: 600;">
+                            Absensi Anda hari ini tidak dibatasi radius lokasi. Verifikasi wajah tetap diperlukan.
+                        </small>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+
             <?php if (!$has_face_data): ?>
             <div style="background: #ffe5e5; border: 2px solid #dc3545; padding: 15px; border-radius: 12px; margin-bottom: 20px;">
                 <div style="display: flex; align-items: start; gap: 12px;">

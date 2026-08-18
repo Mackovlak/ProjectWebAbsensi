@@ -41,8 +41,24 @@ if ($result_izin) {
     }
 }
 
-$actionable_notif_count = count($notif_dinas);
-$total_notif = count($notif_dinas) + count($notif_izin);
+// Pengajuan izin/cuti/dinas luar yang menunggu review (semua cabang)
+$notif_pengajuan_izin = [];
+$res_pengajuan_izin = $conn->query("SELECT p.id, p.jenis, p.tanggal_mulai, p.tanggal_selesai, p.keperluan,
+                                           p.jumlah_hari_kerja, k.nama_karyawan
+                                    FROM pengajuan_izin p
+                                    JOIN karyawan k ON p.id_karyawan = k.id_karyawan
+                                    WHERE p.status = 'Pending'
+                                    ORDER BY p.created_at ASC
+                                    LIMIT 20");
+if ($res_pengajuan_izin) {
+    while ($row = $res_pengajuan_izin->fetch_assoc()) {
+        $notif_pengajuan_izin[] = $row;
+    }
+}
+$pending_izin_count = hitungPendingIzin($conn);
+
+$actionable_notif_count = count($notif_dinas) + $pending_izin_count;
+$total_notif = count($notif_dinas) + count($notif_izin) + $pending_izin_count;
 $is_admin_for_notif = true;
 // ------------------------------
 ?>
@@ -238,6 +254,18 @@ $is_admin_for_notif = true;
                 <span class="font-medium text-sm">Rekap Absensi</span>
             </a>
 
+            <a href="kelola_pengajuan_izin.php" class="flex items-center justify-between px-4 py-3 mx-4 <?php echo basename($_SERVER['PHP_SELF']) == 'kelola_pengajuan_izin.php' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
+                <div class="flex items-center gap-3">
+                    <i class="ph-duotone ph-clipboard-text text-xl w-6 flex items-center justify-center <?php echo basename($_SERVER['PHP_SELF']) == 'kelola_pengajuan_izin.php' ? '' : 'opacity-70 group-hover:opacity-100 transition-opacity'; ?>"></i>
+                    <span class="font-medium text-sm">Pengajuan Izin</span>
+                </div>
+                <?php if ($pending_izin_count > 0): ?>
+                    <span class="pulse-badge inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-bold bg-rose-500/20 text-rose-400 rounded-full border border-rose-500/30 shadow-sm shadow-rose-500/20">
+                        <?php echo $pending_izin_count; ?>
+                    </span>
+                <?php endif; ?>
+            </a>
+
             <a href="slip_gaji.php" class="flex items-center gap-3 px-4 py-3 mx-4 <?php echo basename($_SERVER['PHP_SELF']) == 'slip_gaji.php' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
                 <i class="ph-duotone ph-receipt text-xl w-6 flex items-center justify-center <?php echo basename($_SERVER['PHP_SELF']) == 'slip_gaji.php' ? '' : 'opacity-70 group-hover:opacity-100 transition-opacity'; ?>"></i>
                 <span class="font-medium text-sm">Slip Gaji</span>
@@ -352,6 +380,25 @@ $is_admin_for_notif = true;
                                 <p class="text-xs text-slate-400 mt-1">Tidak ada tugas ACC saat ini.</p>
                             </div>
                             <?php else: ?>
+                                <?php if ($pending_izin_count > 0): ?>
+                                <div class="px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border-y border-slate-100 dark:border-slate-700/50 sticky top-0 z-10 backdrop-blur-sm">
+                                    <p class="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Pengajuan Izin &amp; Cuti Menunggu Review</p>
+                                </div>
+                                <?php foreach ($notif_pengajuan_izin as $np): ?>
+                                <a href="kelola_pengajuan_izin.php?status=Pending" class="block p-4 border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                                    <div class="flex items-center justify-between gap-2 mb-1">
+                                        <p class="text-sm font-bold text-slate-800 dark:text-white truncate"><?php echo htmlspecialchars($np['nama_karyawan']); ?></p>
+                                        <span class="text-[10px] px-2 py-0.5 rounded-full border font-bold shrink-0 <?php echo badgeJenisIzin($np['jenis']); ?>"><?php echo htmlspecialchars($np['jenis']); ?></span>
+                                    </div>
+                                    <p class="text-xs text-slate-600 dark:text-slate-300 line-clamp-2"><?php echo htmlspecialchars($np['keperluan']); ?></p>
+                                    <p class="text-[10px] font-medium text-slate-400 mt-2">
+                                        <i class="fa-regular fa-calendar mr-1"></i>
+                                        <?php echo formatRentangTanggal($np['tanggal_mulai'], $np['tanggal_selesai']); ?>
+                                        &middot; <?php echo (int)$np['jumlah_hari_kerja']; ?> hari kerja
+                                    </p>
+                                </a>
+                                <?php endforeach; endif; ?>
+
                                 <!-- Loop Pending Dinas -->
                                 <?php if (count($notif_dinas) > 0): ?>
                                 <div class="px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border-y border-slate-100 dark:border-slate-700/50 sticky top-0 z-10 backdrop-blur-sm">

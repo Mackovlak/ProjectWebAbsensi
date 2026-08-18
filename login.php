@@ -29,13 +29,7 @@ $admin_count = $res_admin_count->fetch_assoc()['total_admin'];
 
 // Jika sudah login, redirect ke dashboard yang sesuai
 if (isset($_SESSION['user_id'])) {
-    if ($_SESSION['role'] == 'admin') {
-        header("Location: admin_dashboard.php");
-    } elseif ($_SESSION['role'] == 'owner') {
-        header("Location: owner_dashboard.php");
-    } else {
-        header("Location: staff_dashboard.php");
-    }
+    header("Location: " . dashboardUntukRole($_SESSION['role']));
     exit();
 }
 
@@ -118,13 +112,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && $_SESSION['login_attempts'] < $max_a
                 $log_stmt->execute();
                 
                 // Redirect berdasarkan role
-                if ($user['role'] == 'admin') {
-                    header("Location: admin_dashboard.php");
-                } elseif ($user['role'] == 'owner') {
-                    header("Location: owner_dashboard.php");
-                } else {
-                    header("Location: staff_dashboard.php");
-                }
+                header("Location: " . dashboardUntukRole($user['role']));
                 exit();
             } else {
                 // Password salah

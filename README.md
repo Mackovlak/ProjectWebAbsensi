@@ -18,17 +18,18 @@ This document explains **how the whole system fits together** and then gives a *
 
 ---
 
-## 2. The three roles
+## 2. The four roles
 
 | Role | Who | Can do |
 |---|---|---|
 | **Admin** | HR / operations staff | Everything day-to-day: manage branches, positions, shifts, employees, user accounts, edit/add attendance records, build and submit payroll slips for Owner approval. |
 | **Owner** | Business owner(s) | Read-mostly oversight (dashboards, statistics, employee/branch drill-downs) plus the final approval step for payroll slips (needs a digital signature *and* company stamp uploaded first). Can also create/delete Admin accounts and delete their own account. |
-| **Staff** | Regular employees | Clock in/out, view their own attendance history and stats, view/approve their own payroll slips, manage their own profile (biodata, photo, face registration, password). |
+| **Supervisor** | Branch leads | Scoped to a single branch (`users.id_cabang`): review, approve, and reject leave / permission requests (`pengajuan_izin`) from that branch's employees, and monitor their annual leave quota usage. No access to master data, payroll, or user management. |
+| **Staff** | Regular employees | Clock in/out, submit leave / permission requests, view their own attendance history and stats, view/approve their own payroll slips, manage their own profile (biodata, photo, face registration, password). |
 
-Every "area" of the app has role-prefixed files: `admin_*.php`, `owner_*.php`, `staff_*.php`. Files without a prefix (`data_karyawan.php`, `jam_kerja.php`, `histori_absensi.php`, `absen.php`, …) are either admin-only management pages or role-agnostic endpoints.
+Every "area" of the app has role-prefixed files: `admin_*.php`, `owner_*.php`, `supervisor_*.php`, `staff_*.php`. Files without a prefix (`data_karyawan.php`, `jam_kerja.php`, `histori_absensi.php`, `absen.php`, …) are either admin-only management pages or role-agnostic endpoints.
 
-Each role has its own header/footer shell (`admin_header.php`/`admin_footer.php`, `owner_header.php`/`owner_footer.php`, `staff_header.php`/`staff_footer.php`) that is `include`d at the top/bottom of every page in that area. Each header **independently** re-checks `$_SESSION['role']` and bounces to `login.php` if it doesn't match — there's no central router enforcing this, so it's a per-page contract.
+Each role has its own header/footer shell (`admin_header.php`/`admin_footer.php`, `owner_header.php`/`owner_footer.php`, `supervisor_header.php`/`supervisor_footer.php`, `staff_header.php`/`staff_footer.php`) that is `include`d at the top/bottom of every page in that area. Each header **independently** re-checks `$_SESSION['role']` and bounces to `login.php` if it doesn't match — there's no central router enforcing this, so it's a per-page contract.
 
 ---
 
@@ -67,6 +68,20 @@ Both submit to **`proses_absen.php`**, a JSON API that is the single source of t
 5. One `absensi` row per employee per calendar date: the first submission of the day is "masuk" (clock-in, decides `status_masuk` = Tepat Waktu/Terlambat by comparing against the branch's `jam_kerja` shift rules), the second is "pulang" (clock-out). A `FOR UPDATE` row lock + a 10-second duplicate-submission guard inside a DB transaction prevent double-clocking.
 6. **Overtime**: if clock-out happens after the matched shift's `jam_pulang`, the employee must supply a reason + photo proof before the checkout is accepted; the payroll calculator later turns this into paid overtime hours.
 7. Admins can retroactively fix a day's record (`update_absensi.php`), add manual OFF/Sakit/Cuti entries for a single employee (`tambah_absensi_manual.php`), or bulk-insert a shared holiday ("Libur Bersama") across a branch or the whole company for a date range (`tambah_libur_bersama.php`, reversible via `hapus_libur_bersama.php`). Employees can edit their own submitted reason/photo within a **2-hour window** (`update_alasan_karyawan.php`).
+
+### 4.2b Leave & off-site permission requests (`pengajuan_izin`)
+
+Staff submit a **request covering a date range** (e.g. 2–5 Aug) from `staff_pengajuan_izin.php`; everything is handled by `proses_pengajuan_izin.php` (dispatch-by-POST-key: `ajukan_izin` / `batal_izin` / `review_izin`).
+
+- **Types:** `Cuti`, `Sakit`, `Izin` consume the annual quota (`karyawan.jatah_cuti`, default 12/year); `Dinas Luar` does not.
+- **Effective days:** Sundays and dates that already have an `absensi` row (libur bersama, or an existing clock-in) are skipped — they neither consume quota nor generate rows. Recomputed at approval time, since the calendar can change between submission and review.
+- **Quota holds:** pending requests reserve quota (`tersedia = jatah - terpakai - tertahan`) so the same days can't be requested twice.
+- **Review:** Supervisor (own branch) or Admin (all branches) approves/rejects via `kelola_pengajuan_izin.php`; Owner sees the same page read-only. Rejection requires a reason.
+- **On approval**, `absensi` rows are materialised for each effective day with the matching `keterangan` and `id_pengajuan` set, so every existing report, export, and payroll query keeps working unchanged. These rows carry `is_manual_entry = 0` so `hapus_libur_bersama.php` can't wipe them.
+- **Approved `Dinas Luar`** is *not* materialised — instead `proses_absen.php` looks it up on clock-in (`getIzinDinasDisetujui()`), waives the GPS geofence for that day, and records `Dinas Luar` directly rather than the same-day `Pending Dinas` flow.
+- **Cancellation:** staff may cancel while `Pending`, or while `Disetujui` if the range hasn't started yet; materialised rows are removed only for days with no `jam_masuk`, so real attendance is never destroyed.
+
+Domain logic lives in `izin_functions.php` (auto-included by `config.php`).
 
 ### 4.3 Face registration
 Staff enroll their face once via **`register_face.php`** (camera UI) → **`process_face_register.php`** (saves the descriptor to `users.face_descriptor`, logs to `face_recognition_logs`). The client-side engine (`assets/js/face-recognition.js`) also implements **liveness checks** (blink detection via Eye Aspect Ratio, mouth-open detection via Mouth Aspect Ratio) to make simple photo-spoofing harder, and a face-quality check (size/centering) before capture. Matching at check-in time uses Euclidean distance between descriptors, converted to a 0–100% confidence score (63% threshold client-side / 62% server-side).
@@ -117,11 +132,12 @@ Rather than each management page having its own save/delete script, almost all A
 | Table | Purpose |
 |---|---|
 | `users` | Login accounts. `role` = admin/owner/staff, `id_karyawan` FK (nullable for admin/owner), `face_descriptor`/`face_registered_at`/`face_reset_allowed`, `foto_profil`, `ttd_path` (signature), `stempel_path` (owner's company stamp), `wa_token` (Fonnte API token, stored per-user), `no_whatsapp` on the employee side is actually on `karyawan`. |
-| `karyawan` | Employee master data. Public-facing `id_karyawan` is an 11-digit code (`YYYYMMDDXXX`). `id_jabatan`, `id_cabang` FKs, `status` (aktif/nonaktif), `tanggal_resign`, payroll default rates (`rate_transport`, `rate_overtime`, `rate_insentif_minggu`, `gaji_pokok`, `rate_keterlambatan`), `no_whatsapp`. |
+| `karyawan` | Employee master data. Public-facing `id_karyawan` is an 11-digit code (`YYYYMMDDXXX`). `id_jabatan`, `id_cabang` FKs, `status` (aktif/nonaktif), `tanggal_resign`, `jatah_cuti` (annual leave quota, default 12), payroll default rates (`rate_transport`, `rate_overtime`, `rate_insentif_minggu`, `gaji_pokok`, `rate_keterlambatan`), `no_whatsapp`. |
 | `cabang` | Branches. `latitude`/`longitude`/`radius_meter` power the check-in geofence. |
 | `jabatan` | Positions, each with a default `tunjangan_jabatan` allowance. |
 | `jam_kerja` | Per-branch shift rules: `nama_shift`, `jam_masuk_akhir` (latest on-time clock-in), `jam_pulang` (scheduled clock-out). A branch can have several. |
-| `absensi` | One row per employee per date. `jam_masuk`/`jam_pulang`, `lokasi_masuk`/`lokasi_pulang` (GPS), `keterangan` (Hadir/OFF/Sakit/Cuti/Alpha/Pending Dinas/Dinas Luar), `status_masuk` (Tepat Waktu/Terlambat), `face_verified`/`face_confidence`, `alasan`/`foto_bukti` (reason/proof photo), `alasan_pulang`/`foto_pulang` (overtime proof), `is_manual_entry`/`manual_entry_by`. |
+| `absensi` | One row per employee per date. `jam_masuk`/`jam_pulang`, `lokasi_masuk`/`lokasi_pulang` (GPS), `keterangan` (Hadir/OFF/Sakit/Cuti/Izin/Alpha/Pending Dinas/Dinas Luar), `id_pengajuan` (set when the row was generated by an approved leave request), `status_masuk` (Tepat Waktu/Terlambat), `face_verified`/`face_confidence`, `alasan`/`foto_bukti` (reason/proof photo), `alasan_pulang`/`foto_pulang` (overtime proof), `is_manual_entry`/`manual_entry_by`. |
+| `pengajuan_izin` | One row per leave / permission **request** (a date range, not a day). `jenis` (Cuti/Sakit/Izin/Dinas Luar), `tanggal_mulai`/`tanggal_selesai`, `jumlah_hari` (calendar days) vs `jumlah_hari_kerja` (effective days that consume quota), `keperluan`, `lampiran`, `status` (Pending/Disetujui/Ditolak/Dibatalkan), `potong_kuota`, `id_cabang` (snapshot for supervisor scoping), `reviewed_by`/`reviewed_at`/`catatan_reviewer`. |
 | `slip_gaji` | One row per employee per payroll period (`bulan`/`tahun`). All computed pay components, plus 3-stage approval flags: `status_admin_acc`/`admin_id`/`admin_acc_at`, `status_owner_acc`/`owner_id`/`owner_acc_at`, `status_karyawan_acc`/`karyawan_acc_at`. |
 | `slip_gaji_penghasilan` / `slip_gaji_potongan` | Free-form extra income / deduction line items attached to a slip. |
 | `activity_logs` | Audit trail written by `logActivity()`. |
@@ -164,6 +180,16 @@ Rather than each management page having its own save/delete script, almost all A
 | `proses_persetujuan_dinas.php` | Admin: approve/reject a "Pending Dinas" (off-site duty) request, finalizing it as `Dinas Luar` or rejecting it. |
 | `ajax_get_overtime_details.php` | JSON API: lists an employee's overtime dates for a given month (used by the payroll form). |
 | `cron_reminder_absensi.php` | Cron script: WhatsApp-reminds every employee who hasn't clocked in today (via Fonnte). |
+
+### Leave & permission requests
+| File | Purpose |
+|---|---|
+| `staff_pengajuan_izin.php` | Staff-facing: quota widget, submit form (type, date range, reason, optional attachment) with a live client-side day estimate, and their own request history with cancel action. |
+| `kelola_pengajuan_izin.php` | Review queue shared by Supervisor / Admin / Owner. Picks the matching header/footer by role, scopes rows to the supervisor's branch, shows each requester's quota context, and approve/reject controls (Owner is read-only). |
+| `proses_pengajuan_izin.php` | Single handler for submit / cancel / review. Validates dates, overlap, quota, and attachment; approval runs in a transaction with `FOR UPDATE` on the request row and materialises `absensi` rows. |
+| `izin_functions.php` | Domain helpers: effective-day counting, quota summary, overlap check, materialise/roll back attendance rows, approved-Dinas-Luar lookup, badge/format helpers. |
+| `supervisor_dashboard.php` | Supervisor home: pending-review count, who's out today, and per-employee quota usage for their branch. |
+| `supervisor_header.php` / `supervisor_footer.php` | Supervisor chrome; the header re-checks the role, resolves the supervised branch, and lists pending requests in the notification bell. |
 
 ### Statistics, ranking & reports
 | File | Purpose |
@@ -238,6 +264,7 @@ Rather than each management page having its own save/delete script, almost all A
 |---|---|
 | `check_db.php` | Dumps `SHOW TABLES` — quick DB sanity check, not part of any tooling pipeline. |
 | `update_db.php` | Example of the pattern used for ad-hoc idempotent schema migrations (checks a column exists, `ALTER TABLE` if not). There is no formal migration system. |
+| `update_db_izin.php` | **Run once after deploying the leave-request feature.** Creates `pengajuan_izin`, adds `supervisor` to the `users.role` enum, `users.id_cabang`, `karyawan.jatah_cuti`, `absensi.id_pengajuan`, and `Izin` to the `absensi.keterangan` enum. Idempotent — safe to re-run. |
 
 ---
 

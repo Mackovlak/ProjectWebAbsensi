@@ -59,6 +59,14 @@ try {
     $has_registered_face = !empty($karyawan_data['face_descriptor']);
     $stmt->close();
 
+    // Pengajuan Dinas Luar yang sudah disetujui supervisor/admin untuk hari ini.
+    // Bila ada, karyawan tidak perlu lagi mengajukan dinas dadakan: validasi
+    // lokasi dilewati dan absensi langsung tercatat sebagai 'Dinas Luar'.
+    $izin_dinas_hari_ini = getIzinDinasDisetujui($conn, $id_karyawan, $tanggal);
+    if ($izin_dinas_hari_ini) {
+        $is_dinas_luar = true;
+    }
+
     // ========== PERBAIKAN: VALIDASI HANYA UNTUK "HADIR" ==========
     // Validasi GPS dan Face HANYA untuk keterangan "Hadir"
     if ($keterangan_param === 'Hadir') {
@@ -275,7 +283,13 @@ try {
 
     } else {
         // ============== PROSES ABSEN MASUK ==============
-        $keterangan = $is_dinas_luar ? 'Pending Dinas' : $keterangan_param;
+        // Dinas luar yang sudah disetujui di muka langsung final; dinas dadakan
+        // tetap masuk antrean 'Pending Dinas' untuk di-ACC admin di hari-H.
+        if ($izin_dinas_hari_ini) {
+            $keterangan = 'Dinas Luar';
+        } else {
+            $keterangan = $is_dinas_luar ? 'Pending Dinas' : $keterangan_param;
+        }
         $status_masuk = 'Tepat Waktu';
 
         // Cek status keterlambatan HANYA untuk 'Hadir' (Pending Dinas kita anggap Tepat Waktu sementara, atau bisa juga terlambat jika mau)

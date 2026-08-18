@@ -4,10 +4,15 @@ include 'admin_header.php';
 
 // Ambil semua data pengguna dengan informasi tambahan
 $sql_users = "SELECT u.id, u.username, u.role, u.id_karyawan, 
-                 k.nama_karyawan, u.face_descriptor, u.face_registered_at, u.face_reset_allowed
+                 k.nama_karyawan, u.face_descriptor, u.face_registered_at, u.face_reset_allowed,
+                 c.nama_cabang AS cabang_supervisi
                  FROM users u 
                  LEFT JOIN karyawan k ON u.id_karyawan = k.id_karyawan 
-                 ORDER BY FIELD(u.role, 'admin', 'owner', 'staff'), u.username ASC";
+                 LEFT JOIN cabang c ON u.id_cabang = c.id
+                 ORDER BY FIELD(u.role, 'admin', 'owner', 'supervisor', 'staff'), u.username ASC";
+
+// Daftar cabang untuk form pembuatan akun supervisor
+$res_cabang_supervisor = $conn->query("SELECT id, nama_cabang FROM cabang ORDER BY nama_cabang ASC");
 $result_users = $conn->query($sql_users);
 
 // Ambil data karyawan yang BELUM memiliki akun
@@ -52,6 +57,10 @@ $admin_count = $res_admin_count->fetch_assoc()['total_admin'];
         
         <button onclick="openModal('modal-tambah-admin')" class="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors font-medium text-sm shadow-sm shadow-blue-500/30 w-full sm:w-auto whitespace-nowrap">
             <i class="fa-solid fa-user-shield"></i> Buat Akun Admin
+        </button>
+
+        <button onclick="openModal('modal-tambah-supervisor')" class="flex items-center justify-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl transition-colors font-medium text-sm shadow-sm shadow-teal-500/30 w-full sm:w-auto whitespace-nowrap">
+            <i class="fa-solid fa-user-check"></i> Buat Akun Supervisor
         </button>
 
         <button onclick="openModal('modal-tambah-owner')" class="flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl transition-colors font-medium text-sm shadow-sm shadow-purple-500/30 w-full sm:w-auto whitespace-nowrap">
@@ -121,10 +130,16 @@ $admin_count = $res_admin_count->fetch_assoc()['total_admin'];
                             if($row['role'] == 'admin') $roleClass = 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400 border-rose-200 dark:border-rose-800/50';
                             else if($row['role'] == 'staff') $roleClass = 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-400 border-fuchsia-200 dark:border-fuchsia-800/50';
                             else if($row['role'] == 'owner') $roleClass = 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 border-purple-200 dark:border-purple-800/50';
+                            else if($row['role'] == 'supervisor') $roleClass = 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400 border-teal-200 dark:border-teal-800/50';
                             ?>
                             <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold border <?php echo $roleClass; ?> search-target uppercase tracking-wide">
                                 <?php echo htmlspecialchars($row['role']); ?>
                             </span>
+                            <?php if ($row['role'] == 'supervisor'): ?>
+                                <span class="block text-[11px] text-slate-400 mt-1 search-target">
+                                    <?php echo $row['cabang_supervisi'] ? htmlspecialchars($row['cabang_supervisi']) : 'Cabang belum diset'; ?>
+                                </span>
+                            <?php endif; ?>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-center">
                             <?php 
@@ -282,6 +297,70 @@ $admin_count = $res_admin_count->fetch_assoc()['total_admin'];
                     </div>
                 </div>
             <?php endif; ?>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Tambah Supervisor -->
+<div id="modal-tambah-supervisor" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onclick="closeModal('modal-tambah-supervisor')"></div>
+    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+        <div class="relative bg-white dark:bg-slate-800 rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-md w-full border border-slate-200 dark:border-slate-700">
+            <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
+                <h3 class="text-lg font-bold text-slate-800 dark:text-white">Buat Akun Supervisor</h3>
+                <button onclick="closeModal('modal-tambah-supervisor')" class="text-slate-400 hover:text-slate-500 dark:hover:text-slate-300">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+
+            <form id="formTambahSupervisor" action="master_process.php" method="POST">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
+                <div class="px-6 py-5 space-y-4">
+                    <div class="bg-teal-50 dark:bg-teal-900/20 p-4 rounded-xl border border-teal-100 dark:border-teal-800/50 text-sm text-teal-700 dark:text-teal-300">
+                        Supervisor hanya dapat meninjau dan menyetujui pengajuan izin karyawan pada cabang yang dipilih.
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Nama Lengkap <span class="text-rose-500">*</span></label>
+                        <input type="text" name="nama_supervisor" required class="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 transition-colors">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Cabang yang Disupervisi <span class="text-rose-500">*</span></label>
+                        <select name="id_cabang_supervisor" required class="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 transition-colors">
+                            <option value="">-- Pilih Cabang --</option>
+                            <?php if ($res_cabang_supervisor) { $res_cabang_supervisor->data_seek(0); while ($cbg = $res_cabang_supervisor->fetch_assoc()): ?>
+                                <option value="<?php echo (int)$cbg['id']; ?>"><?php echo htmlspecialchars($cbg['nama_cabang']); ?></option>
+                            <?php endwhile; } ?>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Username <span class="text-rose-500">*</span></label>
+                        <input type="text" name="username_supervisor" required minlength="4" class="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 transition-colors">
+                        <p class="text-xs text-slate-500 mt-1">Minimal 4 karakter, tanpa spasi.</p>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Password <span class="text-rose-500">*</span></label>
+                        <input type="password" name="password_supervisor" required minlength="8" class="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 transition-colors">
+                        <p class="text-xs text-slate-500 mt-1">Minimal 8 karakter.</p>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Jenis Kelamin</label>
+                        <select name="jenis_kelamin_supervisor" class="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 transition-colors">
+                            <option value="L">Laki-laki</option>
+                            <option value="P">Perempuan</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="px-6 py-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
+                    <button type="button" onclick="closeModal('modal-tambah-supervisor')" class="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-sm font-medium">Batal</button>
+                    <button type="submit" name="tambah_supervisor" class="px-6 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl shadow-sm shadow-teal-500/30 transition-colors text-sm font-medium">Buat Akun</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -967,6 +1046,7 @@ function handleFormAjax(formId, processText, confirmText) {
                         // Ensure button name is appended since it is used in PHP isset
                         if (formId === 'formTambahStaff') formData.append('tambah_staff', '1');
                         if (formId === 'formTambahOwner') formData.append('tambah_owner', '1');
+                        if (formId === 'formTambahSupervisor') formData.append('tambah_supervisor', '1');
                         if (formId === 'form-edit-user') formData.append('edit_user', '1');
                         
                         fetch(this.action, {
@@ -1015,6 +1095,7 @@ function handleFormAjax(formId, processText, confirmText) {
 document.addEventListener('DOMContentLoaded', function() {
     handleFormAjax('formTambahStaff', 'Membuat akun staff...', 'Apakah Anda yakin ingin menyimpan akun staff ini?');
     handleFormAjax('formTambahOwner', 'Membuat akun owner...', 'Apakah Anda yakin ingin membuat akun owner ini?');
+    handleFormAjax('formTambahSupervisor', 'Membuat akun supervisor...', 'Apakah Anda yakin ingin membuat akun supervisor ini?');
     handleFormAjax('form-edit-user', 'Menyimpan password...', 'Apakah Anda yakin ingin mengganti password user ini?');
 });
 
