@@ -2,7 +2,7 @@
 /**
  * ==========================================
  * TAMBAH LIBUR BERSAMA - Admin Only
- * Dinia Team - Bulk Manual Attendance Entry System
+ * Javag Team - Bulk Manual Attendance Entry System
  * ==========================================
  */
 

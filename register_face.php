@@ -34,7 +34,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Registrasi Wajah - Absensi Dinia</title>
+    <title>Registrasi Wajah - Absensi Javag</title>
     
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -132,7 +132,7 @@ try {
                     <i class="fas fa-user-shield text-2xl text-white"></i>
                 </div>
                 <h1 class="text-2xl sm:text-3xl font-bold mb-1">Registrasi Wajah</h1>
-                <p class="text-brand-100 text-sm">Sistem Keamanan Absensi Dinia</p>
+                <p class="text-brand-100 text-sm">Sistem Keamanan Absensi Javag</p>
             </div>
         </div>
 

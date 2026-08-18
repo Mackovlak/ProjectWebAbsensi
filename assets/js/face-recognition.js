@@ -1,6 +1,6 @@
 /**
  * ==========================================
- * FACE RECOGNITION SYSTEM - Dinia Team
+ * FACE RECOGNITION SYSTEM - Javag Team
  * Menggunakan face-api.js library
  * ==========================================
  */

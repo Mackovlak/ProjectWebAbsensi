@@ -2,7 +2,7 @@
 /**
  * ==========================================
  * TAMBAH ABSENSI MANUAL - Admin Only
- * Dinia Team - Manual Attendance Entry System
+ * Javag Team - Manual Attendance Entry System
  * ==========================================
  * 
  * VERSION: FIXED - Notifikasi diperbaiki

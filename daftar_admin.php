@@ -101,7 +101,7 @@ $res_karyawan_list = $conn->query($sql_karyawan_list);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pendaftaran Admin - Absensi Dinia</title>
+    <title>Pendaftaran Admin - Absensi Javag</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script>

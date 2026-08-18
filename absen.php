@@ -105,7 +105,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Absensi Online - Dinia Team</title>
+    <title>Absensi Online - Javag Team</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -318,11 +318,11 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
         <div class="absen-container">
             <div class="logo-container">
                 <div class="logo-img-wrapper">
-                    <img src="Dinia-Logo.png" alt="Dinia Logo" onerror="this.style.display='none'">
+                    <img src="/assets/images/logo.png" alt="Javag Logo" onerror="this.style.display='none'">
                 </div>
                 <div class="logo-text-wrapper">
-                    <div class="logo-title">Absen<span>Slip</span></div>
-                    <div class="logo-subtitle">Dinia House Of Hijab</div>
+                    <div class="logo-title">Absen<span>Kita</span></div>
+                    <div class="logo-subtitle">Java Abadi Gemilang</div>
                 </div>
             </div>
             <div class="greeting-wrapper" style="margin-bottom: 24px;">
@@ -400,11 +400,11 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
         <div class="absen-container">
             <div class="logo-container">
                 <div class="logo-img-wrapper">
-                    <img src="Dinia-Logo.png" alt="Dinia Logo" onerror="this.style.display='none'">
+                    <img src="/assets/images/logo.png" alt="Javag Logo" onerror="this.style.display='none'">
                 </div>
                 <div class="logo-text-wrapper">
-                    <div class="logo-title">Absen<span>Slip</span></div>
-                    <div class="logo-subtitle">Dinia House Of Hijab</div>
+                    <div class="logo-title">Absen<span>Kita</span></div>
+                    <div class="logo-subtitle">Java Abadi Gemilang</div>
                 </div>
             </div>
             <?php
@@ -490,11 +490,11 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
         <div class="absen-container">
             <div class="logo-container">
                 <div class="logo-img-wrapper">
-                    <img src="Dinia-Logo.png" alt="Dinia Logo" onerror="this.style.display='none'">
+                    <img src="/assets/images/logo.png" alt="Javag Logo" onerror="this.style.display='none'">
                 </div>
                 <div class="logo-text-wrapper">
-                    <div class="logo-title">Absen<span>Slip</span></div>
-                    <div class="logo-subtitle">Dinia House Of Hijab</div>
+                    <div class="logo-title">Absen<span>Kita</span></div>
+                    <div class="logo-subtitle">Java Abadi Gemilang</div>
                 </div>
             </div>
             <div class="greeting-wrapper" style="margin-bottom: 20px;">

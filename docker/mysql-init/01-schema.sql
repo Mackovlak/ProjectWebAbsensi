@@ -1,4 +1,4 @@
--- AbsenSlip Dinia — schema for local Docker testing.
+-- AbsenKita Javag — schema for local Docker testing.
 --
 -- Sourced directly from a real `mysqldump --no-data` export of the
 -- production database (see `db_absensi_qr_schema.sql` at the repo root),

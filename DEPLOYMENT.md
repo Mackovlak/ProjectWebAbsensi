@@ -1,4 +1,4 @@
-# Deploying AbsenSlip Dinia to a production VPS (Nginx)
+# Deploying AbsenKita Javag to a production VPS (Nginx)
 
 This is a step-by-step guide to deploy this app on a bare Linux VPS with
 **Nginx + PHP-FPM + MySQL**, systemd-managed, with HTTPS. The Docker setup
@@ -449,8 +449,8 @@ sudo crontab -u www-data -e
 Add:
 
 ```cron
-# AbsenSlip Dinia - remind staff who haven't checked in yet, 18:15 WIB
-15 18 * * * /usr/bin/php8.1 /var/www/absenslip/cron_reminder_absensi.php >> /var/log/absenslip-cron.log 2>&1
+# AbsenKita Javag - remind staff who haven't checked in yet, 18:15 WIB
+15 18 * * * /usr/bin/php8.2 /var/www/absenslip/cron_reminder_absensi.php >> /var/log/absenslip-cron.log 2>&1
 ```
 
 Make sure the server's system timezone matches, or adjust the cron

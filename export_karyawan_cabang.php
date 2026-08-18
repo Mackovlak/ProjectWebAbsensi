@@ -300,12 +300,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             </script>
         </head>
         <body>
-            <div class="watermark">DINIA TEAM</div>
+            <div class="watermark">JAVAG TEAM</div>
             
             <div class="container">
                 <div class="header">
                     <h1>DAFTAR KARYAWAN</h1>
-                    <h2>DINIA TEAM</h2>
+                    <h2>JAVAG TEAM</h2>
                     <p>Dokumen Resmi Karyawan</p>
                 </div>
                 
@@ -388,7 +388,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 <?php endif; ?>
                 
                 <div class="footer">
-                    <p><strong>© <?php echo date('Y'); ?> DINIA TEAM</strong></p>
+                    <p><strong>© <?php echo date('Y'); ?> JAVAG TEAM</strong></p>
                     <p>Dokumen ini dicetak secara otomatis dari Sistem Absensi</p>
                     <p>Cabang: <?php echo htmlspecialchars($nama_cabang); ?></p>
                 </div>

@@ -1,6 +1,6 @@
-# AbsenSlip Dinia — Sistem Absensi & Slip Gaji
+# AbsenKita Javag — Sistem Absensi & Slip Gaji
 
-An employee attendance + payroll-slip system built for **Dinia House Of Hijab**. It is a plain PHP + MySQL web app (no framework, no build step) with three user roles — **Admin**, **Owner**, and **Staff** — that together cover clocking in/out with face recognition and GPS, attendance history, monthly statistics, a performance leaderboard, and a full payroll ("slip gaji") creation → approval → distribution workflow with WhatsApp notifications.
+An employee attendance + payroll-slip system built for **Java Abadi Gemilang**. It is a plain PHP + MySQL web app (no framework, no build step) with three user roles — **Admin**, **Owner**, and **Staff** — that together cover clocking in/out with face recognition and GPS, attendance history, monthly statistics, a performance leaderboard, and a full payroll ("slip gaji") creation → approval → distribution workflow with WhatsApp notifications.
 
 This document explains **how the whole system fits together** and then gives a **file-by-file reference** so you can find your way around the codebase quickly.
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-"AbsenSlip Dinia" — an employee attendance (absensi) and payroll-slip (slip gaji) management system for "Dinia House Of Hijab", built as plain procedural PHP + MySQLi with no framework, no build step, and no dependency manager (no composer.json, no vendor/, no package.json). Every page is a standalone `.php` file served directly by Apache. UI language and most identifiers/strings are Indonesian.
+"AbsenKita Javag" — an employee attendance (absensi) and payroll-slip (slip gaji) management system for "Java Abadi Gemilang", built as plain procedural PHP + MySQLi with no framework, no build step, and no dependency manager (no composer.json, no vendor/, no package.json). Every page is a standalone `.php` file served directly by Apache. UI language and most identifiers/strings are Indonesian.
 
 There are four roles: `admin`, `owner`, `supervisor`, `staff`. Pages are prefixed by role (`admin_*.php`, `owner_*.php`, `supervisor_*.php`, `staff_*.php`); files without a role prefix (e.g. `absen.php`, `jam_kerja.php`, `data_karyawan.php`, `kelola_pengajuan_izin.php`) are shared/admin-oriented pages. `supervisor` is a narrow approval-only role scoped to one branch via `users.id_cabang`.
 

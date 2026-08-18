@@ -116,7 +116,7 @@ $total_karyawan = count($karyawan_data);
     <div id="report-container" class="max-w-4xl mx-auto bg-white p-4 sm:p-8 rounded-lg shadow-sm border border-gray-200">
         <!-- Header Laporan -->
         <div class="text-center mb-8 border-b-2 border-gray-800 pb-4">
-            <img src="Dinia-Logo.png" alt="" class="h-16 mx-auto mb-2" onerror="this.style.display='none'">
+            <img src="/assets/images/logo.png" alt="" class="h-16 mx-auto mb-2" onerror="this.style.display='none'">
             <?php
             $title_laporan = "Laporan Data Karyawan";
             if ($status === 'nonaktif') {
@@ -211,8 +211,8 @@ $total_karyawan = count($karyawan_data);
 
         <!-- System Footer -->
         <div class="pt-12 pb-2 text-center text-xs text-gray-500">
-            <p>Dokumen ini dicetak secara otomatis dari Sistem Absensi Dinia Team</p>
-            <p>&copy; <?php echo date('Y'); ?> Dinia Team - All Rights Reserved</p>
+            <p>Dokumen ini dicetak secara otomatis dari Sistem Absensi Javag Team</p>
+            <p>&copy; <?php echo date('Y'); ?> Javag Team - All Rights Reserved</p>
         </div>
     </div>
 

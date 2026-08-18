@@ -68,7 +68,7 @@ $is_admin_for_notif = true;
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="view-transition" content="same-origin">
-    <title>Dashboard Admin - Absensi Dinia</title>
+    <title>Dashboard Admin - Absensi Javag</title>
     
     <!-- Tailwind CSS via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -198,15 +198,15 @@ $is_admin_for_notif = true;
         
         <!-- Top Left Logo -->
         <div class="h-20 flex items-center gap-3 px-5 border-b border-[#1e293b] shrink-0 bg-slate-950">
-            <div class="bg-white/10 p-1.5 rounded-xl shadow-lg border border-white/10">
-                <img src="Dinia-Logo.png" alt="Dinia Logo" class="h-8 w-auto" onerror="this.style.display='none'">
+            <div class="bg-white p-1.5 rounded-xl shadow-lg border border-white/10">
+                <img src="/assets/images/logo.png" alt="Javag Logo" class="h-8 w-auto" onerror="this.style.display='none'">
             </div>
             <div class="flex flex-col justify-center space-y-0.5 logo-text-container">
                 <h2 class="text-2xl font-bold tracking-tight text-white leading-none">
-                    Absen<span class="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-200">Slip</span>
+                    Absen<span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-400">Kita</span>
                 </h2>
                 <span class="text-xs text-slate-300 font-medium tracking-wide leading-none ml-0.5 pt-0.5">
-                    Dinia House Of Hijab
+                    Java Abadi Gemilang
                 </span>
             </div>
 

@@ -453,7 +453,7 @@ $admin_count = $res_admin_count->fetch_assoc()['total_admin'];
             </div>
             
             <div class="mt-6 border-t border-slate-700 pt-4">
-                <p class="text-[10px] font-medium text-slate-500 uppercase tracking-wider">AbsenSlip Dinia House Of Hijab</p>
+                <p class="text-[10px] font-medium text-slate-500 uppercase tracking-wider">AbsenKita Java Abadi Gemilang</p>
             </div>
         </div>
     </div>
@@ -544,7 +544,7 @@ $admin_count = $res_admin_count->fetch_assoc()['total_admin'];
             </div>
             
             <div class="mt-6 border-t border-slate-700 pt-4">
-                <p class="text-[10px] font-medium text-slate-500 uppercase tracking-wider">AbsenSlip Dinia House Of Hijab</p>
+                <p class="text-[10px] font-medium text-slate-500 uppercase tracking-wider">AbsenKita Java Abadi Gemilang</p>
             </div>
         </div>
     </div>

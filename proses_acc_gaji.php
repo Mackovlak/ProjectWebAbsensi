@@ -125,7 +125,7 @@ if ($action === 'acc_admin') {
                 $base_url = $protocol . "://" . $domain . dirname($_SERVER['PHP_SELF']);
                 $login_url = $base_url . "/login.php?username=" . urlencode($id_k);
 
-                $pesan = "Assalamualaikum\n*" . $nama . "*\n\nKami mau menginformasikan bahwa Slip Gaji Kamu telah selesai diperiksa dan *Telah Disetujui*.\n\nTotal Gaji Bersih (Digenapkan) : *Rp " . $gaji . "*\n\nSilakan login ke link dibawah ini untuk melihat rincian slip gaji:\n" . $login_url . "\n\nThanks for your hard work and performance 😊\n\n" . $admin . "\n*ManagementHRDDinia*";
+                $pesan = "Assalamualaikum\n*" . $nama . "*\n\nKami mau menginformasikan bahwa Slip Gaji Kamu telah selesai diperiksa dan *Telah Disetujui*.\n\nTotal Gaji Bersih (Digenapkan) : *Rp " . $gaji . "*\n\nSilakan login ke link dibawah ini untuk melihat rincian slip gaji:\n" . $login_url . "\n\nThanks for your hard work and performance 😊\n\n" . $admin . "\n*ManagementHRDJavag*";
 
                 $curl = curl_init();
                 curl_setopt_array($curl, array(
