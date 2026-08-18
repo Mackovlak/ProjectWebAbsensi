@@ -69,15 +69,14 @@ if ($tipe === 'cetak_slip_batch') {
         SELECT sg.*, COALESCE(k.nama_karyawan, CONCAT('Karyawan Dihapus (', sg.id_karyawan, ')')) as nama_karyawan, COALESCE(j.nama_jabatan, '-') as nama_jabatan, COALESCE(c.nama_cabang, '-') as nama_cabang,
                u_admin.ttd_path as admin_ttd, u_admin.nama as admin_nama,
                u_owner.ttd_path as owner_ttd, u_owner.stempel_path as owner_stempel,
-               u_staff.ttd_path as staff_ttd
+               (SELECT u.ttd_path FROM users u WHERE u.id_karyawan = sg.id_karyawan ORDER BY (u.role = 'staff') DESC, u.id ASC LIMIT 1) as staff_ttd
         FROM slip_gaji sg
         LEFT JOIN karyawan k ON sg.id_karyawan = k.id_karyawan
         LEFT JOIN jabatan j ON k.id_jabatan = j.id
         LEFT JOIN cabang c ON k.id_cabang = c.id
         LEFT JOIN users u_admin ON sg.admin_id = u_admin.id
         LEFT JOIN users u_owner ON sg.owner_id = u_owner.id
-        LEFT JOIN users u_staff ON sg.id_karyawan = u_staff.id_karyawan
-        WHERE sg.id_karyawan = ? 
+        WHERE sg.id_karyawan = ?
         AND STR_TO_DATE(CONCAT(sg.tahun, '-', LPAD(sg.bulan, 2, '0'), '-01'), '%Y-%m-%d') >= DATE_FORMAT(?, '%Y-%m-01') 
         AND STR_TO_DATE(CONCAT(sg.tahun, '-', LPAD(sg.bulan, 2, '0'), '-01'), '%Y-%m-%d') <= DATE_FORMAT(?, '%Y-%m-01')
         GROUP BY sg.id
@@ -90,14 +89,13 @@ if ($tipe === 'cetak_slip_batch') {
             SELECT sg.*, COALESCE(k.nama_karyawan, CONCAT('Karyawan Dihapus (', sg.id_karyawan, ')')) as nama_karyawan, COALESCE(j.nama_jabatan, '-') as nama_jabatan, COALESCE(c.nama_cabang, '-') as nama_cabang,
                    u_admin.ttd_path as admin_ttd, u_admin.nama as admin_nama,
                    u_owner.ttd_path as owner_ttd, u_owner.stempel_path as owner_stempel,
-                   u_staff.ttd_path as staff_ttd
+                   (SELECT u.ttd_path FROM users u WHERE u.id_karyawan = sg.id_karyawan ORDER BY (u.role = 'staff') DESC, u.id ASC LIMIT 1) as staff_ttd
             FROM slip_gaji sg
             LEFT JOIN karyawan k ON sg.id_karyawan = k.id_karyawan
             LEFT JOIN jabatan j ON k.id_jabatan = j.id
             LEFT JOIN cabang c ON k.id_cabang = c.id
             LEFT JOIN users u_admin ON sg.admin_id = u_admin.id
             LEFT JOIN users u_owner ON sg.owner_id = u_owner.id
-            LEFT JOIN users u_staff ON sg.id_karyawan = u_staff.id_karyawan
             WHERE STR_TO_DATE(CONCAT(sg.tahun, '-', LPAD(sg.bulan, 2, '0'), '-01'), '%Y-%m-%d') >= DATE_FORMAT(?, '%Y-%m-01') 
             AND STR_TO_DATE(CONCAT(sg.tahun, '-', LPAD(sg.bulan, 2, '0'), '-01'), '%Y-%m-%d') <= DATE_FORMAT(?, '%Y-%m-01')
             GROUP BY sg.id
@@ -109,15 +107,14 @@ if ($tipe === 'cetak_slip_batch') {
             SELECT sg.*, COALESCE(k.nama_karyawan, CONCAT('Karyawan Dihapus (', sg.id_karyawan, ')')) as nama_karyawan, COALESCE(j.nama_jabatan, '-') as nama_jabatan, COALESCE(c.nama_cabang, '-') as nama_cabang,
                    u_admin.ttd_path as admin_ttd, u_admin.nama as admin_nama,
                    u_owner.ttd_path as owner_ttd, u_owner.stempel_path as owner_stempel,
-                   u_staff.ttd_path as staff_ttd
+                   (SELECT u.ttd_path FROM users u WHERE u.id_karyawan = sg.id_karyawan ORDER BY (u.role = 'staff') DESC, u.id ASC LIMIT 1) as staff_ttd
             FROM slip_gaji sg
             LEFT JOIN karyawan k ON sg.id_karyawan = k.id_karyawan
             LEFT JOIN jabatan j ON k.id_jabatan = j.id
             LEFT JOIN cabang c ON k.id_cabang = c.id
             LEFT JOIN users u_admin ON sg.admin_id = u_admin.id
             LEFT JOIN users u_owner ON sg.owner_id = u_owner.id
-            LEFT JOIN users u_staff ON sg.id_karyawan = u_staff.id_karyawan
-            WHERE k.id_cabang = ? 
+            WHERE k.id_cabang = ?
             AND STR_TO_DATE(CONCAT(sg.tahun, '-', LPAD(sg.bulan, 2, '0'), '-01'), '%Y-%m-%d') >= DATE_FORMAT(?, '%Y-%m-01') 
             AND STR_TO_DATE(CONCAT(sg.tahun, '-', LPAD(sg.bulan, 2, '0'), '-01'), '%Y-%m-%d') <= DATE_FORMAT(?, '%Y-%m-01')
             GROUP BY sg.id
