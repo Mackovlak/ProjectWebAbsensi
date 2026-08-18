@@ -2,7 +2,7 @@
 /**
  * ==========================================
  * BATALKAN LIBUR BERSAMA - Admin Only
- * Dinia Team - Bulk Manual Attendance Deletion System
+ * Javag Team - Bulk Manual Attendance Deletion System
  * ==========================================
  */
 

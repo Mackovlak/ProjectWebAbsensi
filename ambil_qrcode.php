@@ -183,7 +183,7 @@ sort($cabangs);
                 <!-- Header Card -->
                 <div class="bg-purple-700 text-white text-center py-3 border-b-4 border-purple-900">
                     <i class="fa-solid fa-user-shield text-2xl mb-1 text-white"></i>
-                    <h4 class="text-sm font-bold tracking-widest text-white">ABSENSI DINIA</h4>
+                    <h4 class="text-sm font-bold tracking-widest text-white">ABSENSI JAVAG</h4>
                 </div>
                 
                 <!-- Content Card -->
@@ -433,7 +433,7 @@ sort($cabangs);
                     const cardHTML = `
                         <div style="width: 175px; height: 100%; display: flex; flex-direction: column; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; font-family: sans-serif; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);">
                             <div style="background-color: #7e22ce; color: white; text-align: center; padding: 8px 0; border-bottom: 3px solid #581c87;">
-                                <h4 style="margin: 0; font-size: 10px; letter-spacing: 1px;">ABSENSI DINIA</h4>
+                                <h4 style="margin: 0; font-size: 10px; letter-spacing: 1px;">ABSENSI JAVAG</h4>
                             </div>
                             <div style="padding: 12px; display: flex; flex-direction: column; align-items: center; flex-grow: 1;">
                                 <h2 style="margin: 0 0 4px 0; font-size: 13px; font-weight: bold; color: #1e293b; text-align: center; text-transform: uppercase;">${name}</h2>
@@ -470,7 +470,7 @@ sort($cabangs);
 
                 if (i > 0) pdf.addPage();
                 
-                pdf.text(`Data Cetak ID Card - Dinia Team (Hal ${Math.floor(i/cardsPerPage) + 1})`, 14, 10);
+                pdf.text(`Data Cetak ID Card - Javag Team (Hal ${Math.floor(i/cardsPerPage) + 1})`, 14, 10);
                 pdf.addImage(imgData, 'PNG', 0, 15, pdfWidth, pdfHeight);
             }
 

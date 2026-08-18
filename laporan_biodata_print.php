@@ -142,11 +142,11 @@ while ($row = $result->fetch_assoc()) {
                     <!-- Header Kop Laporan -->
                     <div class="flex items-center justify-between border-b-2 border-slate-800 pb-6 mb-8">
                         <div>
-                            <img src="Dinia-Logo.png" alt="Logo" class="h-12 object-contain" onerror="this.style.display='none'">
+                            <img src="/assets/images/logo.png" alt="Logo" class="h-12 object-contain" onerror="this.style.display='none'">
                         </div>
                         <div class="text-right">
                             <h1 class="text-xl font-black text-slate-800 uppercase tracking-widest">BIODATA KARYAWAN</h1>
-                            <p class="text-sm font-semibold text-fuchsia-600 tracking-wider">DINIA HOUSE OF HIJAB TEGAL</p>
+                            <p class="text-sm font-semibold text-fuchsia-600 tracking-wider">JAVA ABADI GEMILANG</p>
                         </div>
                     </div>
 

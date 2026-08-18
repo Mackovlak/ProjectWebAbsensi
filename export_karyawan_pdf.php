@@ -33,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <html>
     <head>
         <meta charset="UTF-8">
-        <title>Data Karyawan - Dinia Team</title>
+        <title>Data Karyawan - Javag Team</title>
         <style>
             @page {
                 size: A4;
@@ -195,7 +195,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         <div class="container">
             <div class="header">
                 <h1>Data Seluruh Karyawan</h1>
-                <h2>DINIA TEAM</h2>
+                <h2>JAVAG TEAM</h2>
             </div>
             
             <div class="info-box">
@@ -254,8 +254,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             </table>
             
             <div class="footer">
-                <p>Dokumen ini dicetak secara otomatis dari Sistem Absensi Dinia Team</p>
-                <p>&copy; <?php echo date('Y'); ?> Dinia Team - All Rights Reserved</p>
+                <p>Dokumen ini dicetak secara otomatis dari Sistem Absensi Javag Team</p>
+                <p>&copy; <?php echo date('Y'); ?> Javag Team - All Rights Reserved</p>
             </div>
         </div>
     </body>

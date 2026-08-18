@@ -73,7 +73,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pendaftaran Owner - Absensi Dinia</title>
+    <title>Pendaftaran Owner - Absensi Javag</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
