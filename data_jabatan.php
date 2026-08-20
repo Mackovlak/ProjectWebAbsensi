@@ -57,6 +57,7 @@ $result = $conn->query("SELECT * FROM jabatan ORDER BY nama_jabatan ASC");
                     <th class="px-6 py-4 font-semibold w-24 text-center">No</th>
                     <th class="px-6 py-4 font-semibold">Nama Jabatan</th>
                     <th class="px-6 py-4 font-semibold text-right">Tunjangan Jabatan</th>
+                    <th class="px-6 py-4 font-semibold text-center">Lembur Sabtu</th>
                     <th class="px-6 py-4 font-semibold text-right">Aksi</th>
                 </tr>
             </thead>
@@ -76,9 +77,18 @@ $result = $conn->query("SELECT * FROM jabatan ORDER BY nama_jabatan ASC");
                             <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-slate-700 dark:text-slate-300">
                                 Rp <?php echo number_format($row['tunjangan_jabatan'], 0, ',', '.'); ?>
                             </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-center">
+                                <?php if (!empty($row['overtime_sabtu'])): ?>
+                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800/50">
+                                        <i class="fa-solid fa-hourglass-half"></i> Aktif
+                                    </span>
+                                <?php else: ?>
+                                    <span class="text-xs text-slate-400">&mdash;</span>
+                                <?php endif; ?>
+                            </td>
                             <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                 <div class="flex items-center justify-end gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                                    <button onclick="openEditModal(<?php echo $row['id']; ?>, '<?php echo htmlspecialchars(addslashes($row['nama_jabatan'])); ?>', '<?php echo $row['tunjangan_jabatan']; ?>')" class="p-2 text-brand-600 hover:bg-brand-50 rounded-lg dark:text-brand-400 dark:hover:bg-brand-900/30 transition-colors" title="Edit Data">
+                                    <button onclick="openEditModal(<?php echo $row['id']; ?>, '<?php echo htmlspecialchars(addslashes($row['nama_jabatan'])); ?>', '<?php echo $row['tunjangan_jabatan']; ?>', <?php echo !empty($row['overtime_sabtu']) ? 'true' : 'false'; ?>)" class="p-2 text-brand-600 hover:bg-brand-50 rounded-lg dark:text-brand-400 dark:hover:bg-brand-900/30 transition-colors" title="Edit Data">
                                         <i class="fa-solid fa-pen-to-square"></i>
                                     </button>
                                     <a href="master_process.php?hapus_jabatan=<?php echo $row['id']; ?>" onclick="event.preventDefault(); handleDeleteAction(this.href, 'Hapus Jabatan?', 'Apakah Anda yakin ingin menghapus jabatan <?php echo addslashes($row['nama_jabatan']); ?>?');" class="p-2 text-red-600 hover:bg-red-50 rounded-lg dark:text-red-400 dark:hover:bg-red-900/30 transition-colors" title="Hapus">
@@ -90,7 +100,7 @@ $result = $conn->query("SELECT * FROM jabatan ORDER BY nama_jabatan ASC");
                     <?php endwhile; ?>
                 <?php else: ?>
                     <tr>
-                        <td colspan="3" class="px-6 py-8 text-center text-slate-500 dark:text-slate-400">
+                        <td colspan="5" class="px-6 py-8 text-center text-slate-500 dark:text-slate-400">
                             <i class="fa-solid fa-folder-open text-4xl mb-3 opacity-50"></i>
                             <p>Tidak ada data jabatan.</p>
                         </td>
@@ -130,6 +140,13 @@ $result = $conn->query("SELECT * FROM jabatan ORDER BY nama_jabatan ASC");
                         <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Tunjangan Jabatan (Rp) <span class="text-red-500">*</span></label>
                         <input type="text" inputmode="numeric" name="tunjangan_jabatan" required value="0" class="format-rp w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 transition-colors">
                     </div>
+                    <label class="flex items-start gap-3 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 cursor-pointer">
+                        <input type="checkbox" name="overtime_sabtu" value="1" class="mt-0.5 w-4 h-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500">
+                        <span class="text-sm text-amber-800 dark:text-amber-300">
+                            <b>Bisa ditugaskan lembur hari Sabtu</b>
+                            <span class="block text-xs mt-0.5 opacity-90">Jam kerja Sabtu jabatan ini akan dihitung sebagai lembur pada slip gaji. Biarkan kosong untuk jabatan tanpa lembur.</span>
+                        </span>
+                    </label>
                 </div>
                 <div class="px-6 py-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
                     <button type="button" onclick="closeModal('modal-tambah')" class="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-sm font-medium">Batal</button>
@@ -162,6 +179,13 @@ $result = $conn->query("SELECT * FROM jabatan ORDER BY nama_jabatan ASC");
                         <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Tunjangan Jabatan (Rp) <span class="text-red-500">*</span></label>
                         <input type="text" inputmode="numeric" name="tunjangan_jabatan" id="edit-tunjangan-jabatan" required class="format-rp w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 transition-colors">
                     </div>
+                    <label class="flex items-start gap-3 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 cursor-pointer">
+                        <input type="checkbox" name="overtime_sabtu" id="edit-overtime-sabtu" value="1" class="mt-0.5 w-4 h-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500">
+                        <span class="text-sm text-amber-800 dark:text-amber-300">
+                            <b>Bisa ditugaskan lembur hari Sabtu</b>
+                            <span class="block text-xs mt-0.5 opacity-90">Jam kerja Sabtu jabatan ini akan dihitung sebagai lembur pada slip gaji.</span>
+                        </span>
+                    </label>
                 </div>
                 <div class="px-6 py-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
                     <button type="button" onclick="closeModal('modal-edit')" class="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-sm font-medium">Batal</button>
@@ -176,7 +200,8 @@ $result = $conn->query("SELECT * FROM jabatan ORDER BY nama_jabatan ASC");
 let currentPage = 1;
 let entriesPerPage = 5;
 
-function openEditModal(id, nama, tunjangan) {
+function openEditModal(id, nama, tunjangan, overtimeSabtu) {
+    document.getElementById('edit-overtime-sabtu').checked = !!overtimeSabtu;
     document.getElementById('form-edit').reset();
     document.getElementById('edit-id-jabatan').value = id;
     document.getElementById('edit-nama-jabatan').value = nama;

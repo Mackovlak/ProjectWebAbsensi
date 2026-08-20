@@ -86,6 +86,13 @@ $absensi = [
     'total_ahad_setengah' => $raw_absensi['total_ahad_setengah'] ?? 0
 ];
 
+// ---------- Lembur hari lembur (Sabtu) ----------
+// Jam kerja Sabtu bervariasi dan tidak bisa diukur dari selisih jam_pulang
+// shift, jadi dihitung dari durasi kerja sebenarnya. Hanya jabatan dengan
+// overtime_sabtu = 1 yang dihitung. Angkanya DISARANKAN, bukan otomatis
+// menimpa - admin yang memutuskan lewat tombol "Tambahkan".
+$lembur_sabtu = getLemburHariSabtu($conn, $id_karyawan, $bulan, $tahun);
+
 // Check existing slip
 $stmt = $conn->prepare("SELECT * FROM slip_gaji WHERE id_karyawan = ? AND bulan = ? AND tahun = ?");
 $stmt->bind_param("sii", $id_karyawan, $bulan, $tahun);
@@ -347,6 +354,43 @@ require 'admin_header.php';
                             <?php endif; ?>
                         </div>
                     </div>
+
+                    <?php if (!empty($lembur_sabtu['berhak']) && $lembur_sabtu['total_jam'] > 0): ?>
+                    <!-- Saran lembur hari Sabtu -->
+                    <div class="flex items-start gap-3 p-3.5 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50">
+                        <i class="fa-solid fa-hourglass-half text-amber-600 dark:text-amber-400 mt-0.5"></i>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-bold text-amber-800 dark:text-amber-300">
+                                Lembur hari Sabtu: <?php echo $lembur_sabtu['total_jam']; ?> jam
+                                (<?php echo count($lembur_sabtu['rincian']); ?> hari)
+                            </p>
+                            <p class="text-xs text-amber-700 dark:text-amber-400/90 mt-1">
+                                <?php
+                                $potongan_rincian = array_slice($lembur_sabtu['rincian'], 0, 5);
+                                $teks = [];
+                                foreach ($potongan_rincian as $r) {
+                                    $teks[] = date('j M', strtotime($r['tanggal'])) . ' ('
+                                        . substr($r['jam_masuk'], 0, 5) . '-' . substr($r['jam_pulang'], 0, 5)
+                                        . ' = ' . $r['jam'] . 'j)';
+                                }
+                                echo safe_output(implode(', ', $teks));
+                                if (count($lembur_sabtu['rincian']) > 5) {
+                                    echo ' &hellip; +' . (count($lembur_sabtu['rincian']) - 5) . ' hari lagi';
+                                }
+                                ?>
+                            </p>
+                            <p class="text-[11px] text-amber-600 dark:text-amber-500 mt-1.5">
+                                Belum termasuk pada kolom Overtime di bawah &mdash; tekan tombol untuk menambahkannya.
+                            </p>
+                        </div>
+                        <?php if (!$is_locked): ?>
+                        <button type="button" onclick="tambahLemburSabtu(<?php echo (float)$lembur_sabtu['total_jam']; ?>, this)"
+                                class="shrink-0 px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-colors">
+                            <i class="fa-solid fa-plus"></i> Tambahkan
+                        </button>
+                        <?php endif; ?>
+                    </div>
+                    <?php endif; ?>
 
                     <!-- Overtime (Otomatis Absen) -->
                     <div class="flex items-start gap-4">
@@ -624,6 +668,26 @@ require 'admin_header.php';
         ahad: <?php echo isset($existing['insentif_ahad_hari']) ? $existing['insentif_ahad_hari'] : (($absensi["total_ahad_full"]??0) + (($absensi["total_ahad_setengah"]??0)*0.5)); ?>,
         lembur: <?php echo isset($existing['overtime_jam']) ? $existing['overtime_jam'] : ($absensi['total_overtime'] ?? 0); ?>
     };
+
+    // Tambahkan jam lembur Sabtu ke hitungan overtime (sekali klik saja)
+    function tambahLemburSabtu(jam, btn) {
+        calcAbsen.lembur = (parseFloat(calcAbsen.lembur) || 0) + jam;
+        calculateAll();
+        if (btn) {
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+            btn.innerHTML = '<i class="fa-solid fa-check"></i> Ditambahkan';
+        }
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                icon: 'success',
+                title: 'Lembur Sabtu ditambahkan',
+                text: jam + ' jam masuk ke perhitungan Overtime. Periksa nominalnya sebelum menyimpan.',
+                timer: 2600,
+                showConfirmButton: false
+            });
+        }
+    }
 
     function resetAttendanceCalculation(type) {
         if(type === 'hadir') calcAbsen.hadir = realtimeAbsen.hadir;

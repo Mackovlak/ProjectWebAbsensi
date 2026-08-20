@@ -187,7 +187,7 @@ $avatar_bg = ($staff_jk == 'P') ? 'bg-pink-100' : 'bg-fuchsia-100';
         <!-- Top Left Logo -->
         <div class="h-20 flex items-center gap-3 px-5 border-b border-[#1e293b] shrink-0 bg-slate-950">
             <div class="bg-white/10 p-1.5 rounded-xl shadow-lg border border-white/10">
-                <img src="Javag-Logo.png" alt="Javag Logo" class="h-8 w-auto" onerror="this.style.display='none'">
+                <img src="/assets/images/logo.png" alt="Javag Logo" class="h-8 w-auto" onerror="this.style.display='none'">
             </div>
             <div class="flex flex-col justify-center space-y-0.5 logo-text-container">
                 <h2 class="text-2xl font-bold tracking-tight text-white leading-none">
@@ -207,6 +207,11 @@ $avatar_bg = ($staff_jk == 'P') ? 'bg-pink-100' : 'bg-fuchsia-100';
             <a href="staff_dashboard.php" class="flex items-center gap-3 px-4 py-3 mx-4 <?php echo basename($_SERVER['PHP_SELF']) == 'staff_dashboard.php' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
                 <i class="ph-duotone ph-clock-counter-clockwise text-xl w-6 flex items-center justify-center <?php echo basename($_SERVER['PHP_SELF']) == 'staff_dashboard.php' ? '' : 'opacity-70 group-hover:opacity-100 transition-opacity'; ?>"></i>
                 <span class="font-medium text-sm">Histori Absensi</span>
+            </a>
+
+            <a href="staff_kalender.php" class="flex items-center gap-3 px-4 py-3 mx-4 <?php echo basename($_SERVER['PHP_SELF']) == 'staff_kalender.php' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
+                <i class="ph-duotone ph-calendar-dots text-xl w-6 flex items-center justify-center <?php echo basename($_SERVER['PHP_SELF']) == 'staff_kalender.php' ? '' : 'opacity-70 group-hover:opacity-100 transition-opacity'; ?>"></i>
+                <span class="font-medium text-sm">Kalender Saya</span>
             </a>
 
             <!-- Riwayat Ranking Pribadi -->

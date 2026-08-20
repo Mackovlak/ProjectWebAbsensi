@@ -187,8 +187,13 @@ try {
         }
 
         // ============== CEK OVERTIME =================
+        // Pada hari lembur (mis. Sabtu) seluruh jam kerjanya memang sudah
+        // dihitung lembur lewat getLemburHariSabtu(), jadi form alasan+foto
+        // overtime tidak perlu diminta lagi.
+        $is_hari_lembur = isHariOvertime($conn, $tanggal);
+
         $is_overtime_request = false;
-        if ($is_hadir_masuk) {
+        if ($is_hadir_masuk && !$is_hari_lembur) {
             $stmt_jam_pulang = $conn->prepare("
                 SELECT jk.jam_pulang 
                 FROM jam_kerja jk 
@@ -292,8 +297,16 @@ try {
         }
         $status_masuk = 'Tepat Waktu';
 
+        // Keterlambatan hanya berlaku pada HARI KERJA normal. Pada hari lembur
+        // (mis. Sabtu) jam masuk memang tidak tetap - bisa 10:00 tergantung
+        // penugasan - sehingga membandingkannya dengan jam_masuk_akhir shift
+        // akan salah menandai 'Terlambat' dan memotong gaji lewat
+        // rate_keterlambatan. Hari libur nasional diperlakukan sama.
+        $hari_kerja_normal = isHariKerja($conn, $tanggal)
+            && empty(getHariLibur($conn, $tanggal, $tanggal, $id_cabang));
+
         // Cek status keterlambatan HANYA untuk 'Hadir' (Pending Dinas kita anggap Tepat Waktu sementara, atau bisa juga terlambat jika mau)
-        if ($keterangan == 'Hadir') {
+        if ($keterangan == 'Hadir' && $hari_kerja_normal) {
             $stmt_jam = $conn->prepare("SELECT jam_masuk_akhir FROM jam_kerja WHERE id_cabang = ?");
             $stmt_jam->bind_param("i", $id_cabang);
             $stmt_jam->execute();

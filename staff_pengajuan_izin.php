@@ -18,6 +18,24 @@ if ($tahun_aktif < 2020 || $tahun_aktif > (int)date('Y') + 1) {
 }
 
 $kuota = getRingkasanKuotaIzin($conn, $id_karyawan_staff, $tahun_aktif);
+
+// Data untuk estimasi hari kerja di sisi klien. Angka final tetap dihitung
+// ulang di server saat pengajuan disimpan & disetujui.
+$stmt_cbg_izin = $conn->prepare("SELECT id_cabang FROM karyawan WHERE id_karyawan = ?");
+$stmt_cbg_izin->bind_param("s", $id_karyawan_staff);
+$stmt_cbg_izin->execute();
+$row_cbg_izin = $stmt_cbg_izin->get_result()->fetch_assoc();
+$stmt_cbg_izin->close();
+$id_cabang_staff = $row_cbg_izin ? (int)$row_cbg_izin['id_cabang'] : null;
+
+$hari_kerja_js = getHariKerja($conn);
+// Ambil libur setahun ke depan supaya estimasi klien ikut melewatinya
+$libur_js = array_keys(getHariLibur(
+    $conn,
+    date('Y-m-d', strtotime('-1 month')),
+    date('Y-m-d', strtotime('+13 months')),
+    $id_cabang_staff
+));
 $persen_terpakai = $kuota['jatah'] > 0 ? min(100, round(($kuota['terpakai'] / $kuota['jatah']) * 100)) : 0;
 
 // Riwayat pengajuan pada tahun terpilih
@@ -103,7 +121,7 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
             </li>
             <li class="flex gap-2.5">
                 <i class="ph-duotone ph-calendar-x text-slate-400 text-lg shrink-0"></i>
-                <span>Hari Minggu dan hari libur bersama tidak dihitung.</span>
+                <span>Hanya hari kerja (<b><?php echo labelHariKerja($conn); ?></b>) yang dihitung. Hari lembur, akhir pekan, dan hari libur nasional tidak memotong kuota.</span>
             </li>
         </ul>
     </div>
@@ -274,6 +292,9 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
 
     const kuotaTersedia = <?php echo (int)$kuota['tersedia']; ?>;
     const hariIni = '<?php echo date('Y-m-d'); ?>';
+    // 1 = Senin ... 7 = Minggu, mengikuti pengaturan hari kerja perusahaan
+    const hariKerja = <?php echo json_encode($hari_kerja_js); ?>;
+    const tanggalLibur = <?php echo json_encode($libur_js); ?>;
 
     const keteranganJenis = {
         'Cuti':       'Memotong kuota tahunan Anda.',
@@ -311,14 +332,27 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
             return;
         }
 
-        let total = 0, efektif = 0;
+        let total = 0, efektif = 0, dilewati = 0;
         for (let d = new Date(mulai); d <= selesai; d.setDate(d.getDate() + 1)) {
             total++;
-            if (d.getDay() !== 0) efektif++;
+            // getDay(): 0 = Minggu. Ubah ke ISO 1-7 agar cocok dengan hariKerja.
+            const iso = d.getDay() === 0 ? 7 : d.getDay();
+            const ymd = d.getFullYear() + '-' +
+                        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                        String(d.getDate()).padStart(2, '0');
+
+            if (hariKerja.indexOf(iso) === -1 || tanggalLibur.indexOf(ymd) !== -1) {
+                dilewati++;
+            } else {
+                efektif++;
+            }
         }
 
         const potong = jenisEl.value !== 'Dinas Luar';
-        let teks = `<b>${total} hari kalender</b>, perkiraan <b>${efektif} hari kerja</b> (hari Minggu tidak dihitung).`;
+        let teks = `<b>${total} hari kalender</b>, perkiraan <b>${efektif} hari kerja</b>`;
+        teks += dilewati > 0
+            ? ` (${dilewati} hari dilewati: akhir pekan/hari lembur/libur nasional).`
+            : '.';
 
         if (potong) {
             teks += ` Sisa kuota yang bisa dipakai: <b>${kuotaTersedia} hari</b>.`;
@@ -327,6 +361,10 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
             }
         } else {
             teks += ' Dinas Luar tidak memotong kuota.';
+        }
+
+        if (efektif === 0) {
+            teks += ' <span class="font-bold text-rose-600 dark:text-rose-400">Tidak ada hari kerja pada rentang ini.</span>';
         }
 
         ringkasan.innerHTML = teks;

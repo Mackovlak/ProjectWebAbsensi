@@ -111,7 +111,7 @@ if (isset($_POST['ajukan_izin'])) {
     $potong_kuota = izinPotongKuota($jenis) ? 1 : 0;
 
     if ($rincian['hari_efektif'] < 1) {
-        selesai("❌ Tidak ada hari kerja efektif pada rentang tersebut (semuanya hari Minggu atau sudah memiliki absensi).", false);
+        selesai("❌ Tidak ada hari kerja efektif pada rentang tersebut (semuanya hari libur, akhir pekan, atau sudah memiliki absensi).", false);
     }
 
     if ($potong_kuota) {

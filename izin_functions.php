@@ -44,6 +44,11 @@ function izinKeteranganAbsensi($jenis) {
 /**
  * Hitung rincian hari untuk sebuah rentang pengajuan.
  *
+ * Hanya hari kerja normal perusahaan (lihat `hari_kerja` di system_settings,
+ * default Senin-Jumat) yang memotong kuota dan dibuatkan baris absensi.
+ * Hari lembur (Sabtu), libur mingguan (Minggu), hari libur nasional, dan
+ * tanggal yang sudah punya baris absensi semuanya dilewati.
+ *
  * Mengembalikan:
  *  - hari_kalender     : jumlah hari total dalam rentang
  *  - hari_efektif      : jumlah hari yang dihitung kuota & dibuatkan absensi
@@ -64,6 +69,22 @@ function hitungHariIzin($conn, $id_karyawan, $tanggal_mulai, $tanggal_selesai) {
         return $hasil;
     }
 
+    // Kebijakan hari kerja + hari libur diambil sekali di luar loop harian.
+    $hari_kerja = getHariKerja($conn);
+
+    $id_cabang = null;
+    $stmt_cbg = $conn->prepare("SELECT id_cabang FROM karyawan WHERE id_karyawan = ?");
+    if ($stmt_cbg) {
+        $stmt_cbg->bind_param("s", $id_karyawan);
+        $stmt_cbg->execute();
+        $row_cbg = $stmt_cbg->get_result()->fetch_assoc();
+        $stmt_cbg->close();
+        if ($row_cbg) {
+            $id_cabang = (int)$row_cbg['id_cabang'];
+        }
+    }
+    $daftar_libur = getHariLibur($conn, $tanggal_mulai, $tanggal_selesai, $id_cabang);
+
     // Ambil sekali semua tanggal yang sudah punya baris absensi dalam rentang,
     // supaya tidak melakukan query di dalam loop harian.
     $sudah_terisi = [];
@@ -81,9 +102,22 @@ function hitungHariIzin($conn, $id_karyawan, $tanggal_mulai, $tanggal_selesai) {
         $tgl = date('Y-m-d', $ts);
         $hasil['hari_kalender']++;
 
-        // Hari Minggu dianggap libur mingguan, tidak memotong kuota.
-        if (date('w', $ts) == 0) {
-            $hasil['tanggal_dilewati'][] = ['tanggal' => $tgl, 'alasan' => 'Hari Minggu'];
+        // Bukan hari kerja normal (Sabtu = hari lembur, Minggu = libur mingguan).
+        $nomor_hari = (int)date('N', $ts);
+        if (!in_array($nomor_hari, $hari_kerja, true)) {
+            $hasil['tanggal_dilewati'][] = [
+                'tanggal' => $tgl,
+                'alasan'  => 'Bukan hari kerja (' . KALENDER_NAMA_HARI[$nomor_hari] . ')',
+            ];
+            continue;
+        }
+
+        // Hari libur nasional / cuti bersama / libur perusahaan.
+        if (isset($daftar_libur[$tgl])) {
+            $hasil['tanggal_dilewati'][] = [
+                'tanggal' => $tgl,
+                'alasan'  => 'Hari libur: ' . $daftar_libur[$tgl]['nama'],
+            ];
             continue;
         }
 
