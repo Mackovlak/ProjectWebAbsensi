@@ -153,9 +153,9 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
 
             <div>
                 <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Lampiran <span class="font-normal text-slate-400">(opsional)</span></label>
-                <input type="file" name="lampiran" accept=".jpg,.jpeg,.png,.pdf"
+                <input type="file" name="lampiran" id="lampiran-izin" accept=".jpg,.jpeg,.png,.pdf"
                        class="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-white text-sm file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-fuchsia-50 file:text-fuchsia-700 hover:file:bg-fuchsia-100">
-                <p class="text-xs text-slate-400 mt-1.5">Surat dokter / undangan / bukti pendukung. JPG, PNG, atau PDF maks 6 MB.</p>
+                <p class="text-xs text-slate-400 mt-1.5" id="info-lampiran">Surat dokter / undangan / bukti pendukung. JPG, PNG, atau PDF maks 6 MB.</p>
             </div>
 
             <div>
@@ -284,11 +284,13 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
 
 <script>
 (function () {
-    const jenisEl   = document.getElementById('jenis-izin');
-    const infoEl    = document.getElementById('info-jenis');
-    const mulaiEl   = document.getElementById('tanggal-mulai');
-    const selesaiEl = document.getElementById('tanggal-selesai');
-    const ringkasan = document.getElementById('ringkasan-hari');
+    const jenisEl     = document.getElementById('jenis-izin');
+    const infoEl      = document.getElementById('info-jenis');
+    const mulaiEl     = document.getElementById('tanggal-mulai');
+    const selesaiEl   = document.getElementById('tanggal-selesai');
+    const ringkasan   = document.getElementById('ringkasan-hari');
+    const lampiranEl  = document.getElementById('lampiran-izin');
+    const infoLampiranEl = document.getElementById('info-lampiran');
 
     const kuotaTersedia = <?php echo (int)$kuota['tersedia']; ?>;
     const hariIni = '<?php echo date('Y-m-d'); ?>';
@@ -299,9 +301,20 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
     const keteranganJenis = {
         'Cuti':       'Memotong kuota tahunan Anda.',
         'Izin':       'Memotong kuota tahunan Anda.',
-        'Sakit':      'Memotong kuota tahunan. Boleh diajukan mundur maksimal 14 hari, sebaiknya lampirkan surat dokter.',
+        'Sakit':      'Boleh diajukan mundur maksimal 14 hari. Lampirkan surat dokter agar TIDAK memotong kuota tahunan Anda.',
         'Dinas Luar': 'Tidak memotong kuota. Setelah disetujui, absen di lokasi tugas tidak akan ditolak sistem.'
     };
+
+    const infoLampiranDefault = infoLampiranEl.textContent;
+
+    function perbaruiInfoLampiran() {
+        const adaLampiran = lampiranEl.files && lampiranEl.files.length > 0;
+        if (jenisEl.value === 'Sakit' && adaLampiran) {
+            infoLampiranEl.innerHTML = '<b class="text-emerald-600 dark:text-emerald-400">Lampiran terpasang - pengajuan Sakit ini tidak akan memotong kuota tahunan.</b>';
+        } else {
+            infoLampiranEl.textContent = infoLampiranDefault;
+        }
+    }
 
     function batasTanggalMinimum() {
         // Hanya Sakit yang boleh mundur ke belakang
@@ -348,7 +361,9 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
             }
         }
 
-        const potong = jenisEl.value !== 'Dinas Luar';
+        const adaLampiran = lampiranEl.files && lampiranEl.files.length > 0;
+        const sakitDenganBukti = jenisEl.value === 'Sakit' && adaLampiran;
+        const potong = jenisEl.value !== 'Dinas Luar' && !sakitDenganBukti;
         let teks = `<b>${total} hari kalender</b>, perkiraan <b>${efektif} hari kerja</b>`;
         teks += dilewati > 0
             ? ` (${dilewati} hari dilewati: akhir pekan/hari lembur/libur nasional).`
@@ -359,6 +374,8 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
             if (efektif > kuotaTersedia) {
                 teks += ` <span class="font-bold text-rose-600 dark:text-rose-400">Melebihi kuota Anda.</span>`;
             }
+        } else if (sakitDenganBukti) {
+            teks += ' Sakit dengan lampiran tidak memotong kuota.';
         } else {
             teks += ' Dinas Luar tidak memotong kuota.';
         }
@@ -371,14 +388,16 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
         ringkasan.classList.remove('hidden');
     }
 
-    jenisEl.addEventListener('change', function () { perbaruiBatas(); hitungRingkasan(); });
+    jenisEl.addEventListener('change', function () { perbaruiBatas(); perbaruiInfoLampiran(); hitungRingkasan(); });
     mulaiEl.addEventListener('change', function () {
         selesaiEl.min = mulaiEl.value;
         if (selesaiEl.value && selesaiEl.value < mulaiEl.value) selesaiEl.value = mulaiEl.value;
         hitungRingkasan();
     });
     selesaiEl.addEventListener('change', hitungRingkasan);
+    lampiranEl.addEventListener('change', function () { perbaruiInfoLampiran(); hitungRingkasan(); });
     perbaruiBatas();
+    perbaruiInfoLampiran();
 
     // Konfirmasi pembatalan
     document.querySelectorAll('.form-batal').forEach(function (form) {

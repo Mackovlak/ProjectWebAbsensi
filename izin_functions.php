@@ -22,8 +22,16 @@ define('IZIN_JATAH_DEFAULT', 12);
 
 /**
  * Apakah jenis pengajuan ini memotong kuota tahunan?
+ *
+ * Pengecualian: Sakit yang dilampiri bukti (surat dokter) tidak memotong
+ * kuota sama sekali - hanya jenis Sakit yang diberi pengecualian ini, sesuai
+ * kebijakan bahwa sakit dengan bukti resmi bukan hak istirahat yang dijatah.
+ * Cuti dan Izin tetap memotong kuota walau ada lampiran.
  */
-function izinPotongKuota($jenis) {
+function izinPotongKuota($jenis, $ada_bukti_sakit = false) {
+    if ($jenis === 'Sakit' && $ada_bukti_sakit) {
+        return false;
+    }
     return in_array($jenis, IZIN_JENIS_POTONG_KUOTA, true);
 }
 
