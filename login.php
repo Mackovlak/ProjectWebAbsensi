@@ -99,8 +99,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && $_SESSION['login_attempts'] < $max_a
                 $_SESSION['foto_profil'] = $user['foto_profil'] ?? null;
                 $_SESSION['login_time'] = time();
                 
-                // Set id_karyawan for staff
-                if ($user['role'] == 'staff' && $user['id_karyawan']) {
+                // Semua akun yang tertaut karyawan (staff/admin/supervisor)
+                // membawa ID karyawan untuk biodata dan pembatasan akses.
+                if ($user['id_karyawan']) {
                     $_SESSION['id_karyawan'] = $user['id_karyawan'];
                 }
                 

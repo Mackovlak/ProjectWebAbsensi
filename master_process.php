@@ -769,32 +769,30 @@ if (isset($_POST['simpan_hari_kerja'])) {
 }
 
 // Handler Tambah Supervisor
-// Supervisor hanya mereview pengajuan izin pada satu cabang, sehingga
-// id_cabang wajib diisi saat pembuatan akun.
+// Supervisor wajib tertaut ke karyawan aktif. Nama, gender, dan cabang
+// selalu mengikuti master data karyawan agar cakupan akses tidak dapat dipilih bebas.
 if (isset($_POST['tambah_supervisor'])) {
-    $nama          = sanitizeInput($_POST['nama_supervisor'] ?? '');
+    $id_karyawan   = sanitizeInput($_POST['id_karyawan_supervisor'] ?? '');
     $username      = sanitizeInput($_POST['username_supervisor'] ?? '');
     $password      = $_POST['password_supervisor'] ?? '';
-    $jenis_kelamin = sanitizeInput($_POST['jenis_kelamin_supervisor'] ?? 'L');
-    $id_cabang     = intval($_POST['id_cabang_supervisor'] ?? 0);
 
     $error_msg = null;
+    $data_karyawan = null;
 
-    if (empty($nama) || strlen($username) < 4 || strlen($password) < 8) {
-        $error_msg = "Nama wajib diisi, username min 4 karakter, password min 8 karakter.";
-    } elseif (!in_array($jenis_kelamin, ['L', 'P'], true)) {
-        $error_msg = "Jenis kelamin tidak valid.";
-    } elseif ($id_cabang <= 0) {
-        $error_msg = "Cabang yang disupervisi wajib dipilih.";
+    if (empty($id_karyawan) || strlen($username) < 4 || preg_match('/\s/', $username) || strlen($password) < 8) {
+        $error_msg = "Karyawan wajib dipilih, username min 4 karakter tanpa spasi, password min 8 karakter.";
     } else {
-        // Pastikan cabang benar-benar ada
-        $stmt_cabang = $conn->prepare("SELECT id FROM cabang WHERE id = ?");
-        $stmt_cabang->bind_param("i", $id_cabang);
-        $stmt_cabang->execute();
-        if ($stmt_cabang->get_result()->num_rows === 0) {
-            $error_msg = "Cabang tidak ditemukan.";
+        $stmt_karyawan = $conn->prepare("SELECT k.nama_karyawan, k.jenis_kelamin, k.id_cabang
+                                         FROM karyawan k
+                                         LEFT JOIN users u ON u.id_karyawan = k.id_karyawan AND u.role = 'supervisor'
+                                         WHERE k.id_karyawan = ? AND k.status = 'aktif' AND u.id IS NULL");
+        $stmt_karyawan->bind_param("s", $id_karyawan);
+        $stmt_karyawan->execute();
+        $data_karyawan = $stmt_karyawan->get_result()->fetch_assoc();
+        if (!$data_karyawan || empty($data_karyawan['id_cabang'])) {
+            $error_msg = "Karyawan tidak tersedia, sudah memiliki akun Supervisor, atau belum memiliki cabang.";
         }
-        $stmt_cabang->close();
+        $stmt_karyawan->close();
 
         if (!$error_msg) {
             $stmt_check = $conn->prepare("SELECT id FROM users WHERE username = ?");
@@ -810,16 +808,19 @@ if (isset($_POST['tambah_supervisor'])) {
     if ($error_msg) {
         $_SESSION['error_message'] = $error_msg;
     } else {
+        $nama = $data_karyawan['nama_karyawan'];
+        $jenis_kelamin = in_array($data_karyawan['jenis_kelamin'], ['L', 'P'], true) ? $data_karyawan['jenis_kelamin'] : 'L';
+        $id_cabang = (int)$data_karyawan['id_cabang'];
         $hashed_password = password_hash($password, PASSWORD_DEFAULT);
         $role = 'supervisor';
 
-        $stmt = $conn->prepare("INSERT INTO users (nama, username, password, role, jenis_kelamin, id_cabang)
-                                VALUES (?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("sssssi", $nama, $username, $hashed_password, $role, $jenis_kelamin, $id_cabang);
+        $stmt = $conn->prepare("INSERT INTO users (nama, username, password, role, jenis_kelamin, id_karyawan, id_cabang)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("ssssssi", $nama, $username, $hashed_password, $role, $jenis_kelamin, $id_karyawan, $id_cabang);
 
         if ($stmt->execute()) {
             $_SESSION['success_message'] = "Akun Supervisor berhasil dibuat.";
-            logActivity($conn, 'create_user', "Buat akun supervisor: $username (cabang #$id_cabang)", null);
+            logActivity($conn, 'create_user', "Buat akun supervisor: $username ($id_karyawan, cabang #$id_cabang)", $id_karyawan);
         } else {
             $_SESSION['error_message'] = "Gagal membuat akun supervisor.";
         }

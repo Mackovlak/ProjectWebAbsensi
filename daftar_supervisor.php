@@ -6,18 +6,16 @@ $secret_salt = "DINIA_SUPERVISOR_SECRET_2026";
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     header('Content-Type: application/json');
 
-    $nama = trim($_POST['nama'] ?? '');
+    $id_karyawan = trim($_POST['id_karyawan'] ?? '');
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
     $confirm_password = $_POST['confirm_password'] ?? '';
-    $jenis_kelamin = $_POST['jenis_kelamin'] ?? 'L';
-    $id_cabang = (int) ($_POST['id_cabang'] ?? 0);
     $kode_rahasia = strtoupper(trim($_POST['kode_rahasia'] ?? ''));
 
     $current_token = substr(strtoupper(md5(date('Y-m-d H') . $secret_salt)), 0, 6);
     $previous_token = substr(strtoupper(md5(date('Y-m-d H', strtotime('-1 hour')) . $secret_salt)), 0, 6);
 
-    if ($nama === '' || $username === '' || $password === '' || $confirm_password === '' || $id_cabang <= 0 || $kode_rahasia === '') {
+    if ($id_karyawan === '' || $username === '' || $password === '' || $confirm_password === '' || $kode_rahasia === '') {
         echo json_encode(['success' => false, 'message' => 'Semua field wajib diisi.']);
         exit();
     }
@@ -33,23 +31,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         echo json_encode(['success' => false, 'message' => 'Password dan konfirmasi password tidak sama.']);
         exit();
     }
-    if (!in_array($jenis_kelamin, ['L', 'P'], true)) {
-        echo json_encode(['success' => false, 'message' => 'Jenis kelamin tidak valid.']);
-        exit();
-    }
     if (!hash_equals($current_token, $kode_rahasia) && !hash_equals($previous_token, $kode_rahasia)) {
         echo json_encode(['success' => false, 'message' => 'Kode Rahasia tidak valid atau sudah kedaluwarsa.']);
         exit();
     }
 
-    $stmt_cabang = $conn->prepare('SELECT id FROM cabang WHERE id = ?');
-    $stmt_cabang->bind_param('i', $id_cabang);
-    $stmt_cabang->execute();
-    if ($stmt_cabang->get_result()->num_rows === 0) {
-        echo json_encode(['success' => false, 'message' => 'Cabang yang dipilih tidak ditemukan.']);
+    // Data identitas dan cakupan cabang wajib berasal dari data karyawan aktif.
+    $stmt_karyawan = $conn->prepare("SELECT k.nama_karyawan, k.jenis_kelamin, k.id_cabang
+                                     FROM karyawan k
+                                     LEFT JOIN users u ON u.id_karyawan = k.id_karyawan AND u.role = 'supervisor'
+                                     WHERE k.id_karyawan = ? AND k.status = 'aktif' AND u.id IS NULL");
+    $stmt_karyawan->bind_param('s', $id_karyawan);
+    $stmt_karyawan->execute();
+    $data_karyawan = $stmt_karyawan->get_result()->fetch_assoc();
+    $stmt_karyawan->close();
+    if (!$data_karyawan || empty($data_karyawan['id_cabang'])) {
+        echo json_encode(['success' => false, 'message' => 'Karyawan tidak tersedia, sudah memiliki akun Supervisor, atau belum memiliki cabang.']);
         exit();
     }
-    $stmt_cabang->close();
+    $nama = $data_karyawan['nama_karyawan'];
+    $jenis_kelamin = in_array($data_karyawan['jenis_kelamin'], ['L', 'P'], true) ? $data_karyawan['jenis_kelamin'] : 'L';
+    $id_cabang = (int) $data_karyawan['id_cabang'];
 
     $stmt_check = $conn->prepare('SELECT id FROM users WHERE username = ?');
     $stmt_check->bind_param('s', $username);
@@ -62,8 +64,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $hashed_password = password_hash($password, PASSWORD_DEFAULT);
     $role = 'supervisor';
-    $stmt_insert = $conn->prepare('INSERT INTO users (nama, username, password, role, jenis_kelamin, id_cabang) VALUES (?, ?, ?, ?, ?, ?)');
-    $stmt_insert->bind_param('sssssi', $nama, $username, $hashed_password, $role, $jenis_kelamin, $id_cabang);
+    $stmt_insert = $conn->prepare('INSERT INTO users (nama, username, password, role, jenis_kelamin, id_karyawan, id_cabang) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    $stmt_insert->bind_param('ssssssi', $nama, $username, $hashed_password, $role, $jenis_kelamin, $id_karyawan, $id_cabang);
 
     if ($stmt_insert->execute()) {
         echo json_encode(['success' => true, 'message' => 'Akun Supervisor berhasil dibuat.']);
@@ -74,7 +76,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     exit();
 }
 
-$res_cabang = $conn->query('SELECT id, nama_cabang FROM cabang ORDER BY nama_cabang ASC');
+$res_karyawan = $conn->query("SELECT k.id_karyawan, k.nama_karyawan, c.nama_cabang
+                              FROM karyawan k
+                              LEFT JOIN cabang c ON c.id = k.id_cabang
+                              LEFT JOIN users u ON u.id_karyawan = k.id_karyawan AND u.role = 'supervisor'
+                              WHERE k.status = 'aktif' AND u.id IS NULL
+                              ORDER BY k.nama_karyawan ASC");
 ?>
 <!DOCTYPE html>
 <html lang="id" class="light">
@@ -118,50 +125,31 @@ $res_cabang = $conn->query('SELECT id, nama_cabang FROM cabang ORDER BY nama_cab
                 <i class="fa-solid fa-user-check"></i>
             </div>
             <h1 class="text-2xl font-bold text-slate-800 dark:text-white mb-2">Registrasi Supervisor Baru</h1>
-            <p class="text-slate-500 dark:text-slate-400 text-sm px-4">Isi data akun, pilih cabang yang akan disupervisi, lalu masukkan kode rahasia dari Admin.</p>
+            <p class="text-slate-500 dark:text-slate-400 text-sm px-4">Pilih data karyawan Anda. Cabang Supervisor akan otomatis mengikuti cabang karyawan.</p>
         </div>
 
         <div class="p-6 sm:p-8">
             <form id="registerSupervisorForm" class="space-y-5">
                 <div>
-                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2" for="nama">Nama Lengkap</label>
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2" for="id_karyawan">Data Karyawan</label>
                     <div class="relative group">
-                        <i class="fa-solid fa-address-card absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                        <input type="text" id="nama" name="nama" required class="block w-full pl-11 pr-4 py-3.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500" placeholder="Nama lengkap">
-                    </div>
-                </div>
-
-                <div>
-                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2" for="id_cabang">Cabang yang Disupervisi</label>
-                    <div class="relative group">
-                        <i class="fa-solid fa-building absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
-                        <select id="id_cabang" name="id_cabang" required class="block w-full pl-11 pr-10 py-3.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 appearance-none">
-                            <option value="">-- Pilih Cabang --</option>
-                            <?php if ($res_cabang): while ($cabang = $res_cabang->fetch_assoc()): ?>
-                                <option value="<?php echo (int) $cabang['id']; ?>"><?php echo htmlspecialchars($cabang['nama_cabang']); ?></option>
+                        <i class="fa-solid fa-id-card absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
+                        <select id="id_karyawan" name="id_karyawan" required class="block w-full pl-11 pr-10 py-3.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 appearance-none">
+                            <option value="">-- Pilih Data Karyawan --</option>
+                            <?php if ($res_karyawan): while ($karyawan = $res_karyawan->fetch_assoc()): ?>
+                                <option value="<?php echo htmlspecialchars($karyawan['id_karyawan']); ?>"><?php echo htmlspecialchars($karyawan['nama_karyawan'] . ' — ' . ($karyawan['nama_cabang'] ?? 'Cabang belum diset')); ?></option>
                             <?php endwhile; endif; ?>
                         </select>
                         <i class="fa-solid fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none"></i>
                     </div>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-2">Nama, gender, dan cabang diambil langsung dari biodata karyawan.</p>
                 </div>
 
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2" for="username">Username</label>
-                        <div class="relative">
-                            <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                            <input type="text" id="username" name="username" required minlength="4" pattern="[^\s]+" class="block w-full pl-11 pr-4 py-3.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500" placeholder="Min. 4 karakter">
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2" for="jenis_kelamin">Gender</label>
-                        <div class="relative">
-                            <i class="fa-solid fa-venus-mars absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
-                            <select id="jenis_kelamin" name="jenis_kelamin" required class="block w-full pl-11 pr-9 py-3.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 appearance-none">
-                                <option value="L">Laki-laki</option>
-                                <option value="P">Perempuan</option>
-                            </select>
-                        </div>
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2" for="username">Username</label>
+                    <div class="relative">
+                        <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                        <input type="text" id="username" name="username" required minlength="4" pattern="[^\s]+" class="block w-full pl-11 pr-4 py-3.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500" placeholder="Minimal 4 karakter, tanpa spasi">
                     </div>
                 </div>
 

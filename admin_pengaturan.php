@@ -1,9 +1,15 @@
 <?php
-include 'admin_header.php';
+require_once 'config.php';
+$is_supervisor_pengaturan = (($_SESSION['role'] ?? '') === 'supervisor');
+include $is_supervisor_pengaturan ? 'supervisor_header.php' : 'admin_header.php';
 
 // Fetch existing user data
 $user_id = $_SESSION['user_id'];
-$sql_user = "SELECT nama, jenis_kelamin, foto_profil, ttd_path, wa_token FROM users WHERE id = ?";
+$sql_user = "SELECT u.nama, u.jenis_kelamin, u.foto_profil, u.ttd_path, u.wa_token, u.id_karyawan,
+                    k.nama_karyawan, k.jenis_kelamin AS jenis_kelamin_karyawan, k.foto AS foto_karyawan
+             FROM users u
+             LEFT JOIN karyawan k ON k.id_karyawan = u.id_karyawan
+             WHERE u.id = ?";
 $stmt_user = $conn->prepare($sql_user);
 $stmt_user->bind_param("i", $user_id);
 $stmt_user->execute();
@@ -11,16 +17,28 @@ $user_data = $stmt_user->get_result()->fetch_assoc();
 $stmt_user->close();
 
 $ttd = $user_data['ttd_path'] ? 'assets/uploads/' . $user_data['ttd_path'] : null;
-$foto_profil = $user_data['foto_profil'] ? 'assets/uploads/' . $user_data['foto_profil'] : 'https://ui-avatars.com/api/?name=' . urlencode($user_data['nama'] ?? 'Admin') . '&background=f43f5e&color=fff';
-$nama = $user_data['nama'] ?? '';
-$jenis_kelamin = $user_data['jenis_kelamin'] ?? '';
+$is_linked_profile = !empty($user_data['id_karyawan']);
+$has_profile_photo = false;
+if ($is_linked_profile && !empty($user_data['foto_karyawan'])) {
+    $foto_profil = 'assets/images/foto_karyawan/' . $user_data['foto_karyawan'];
+    $has_profile_photo = true;
+} elseif (!empty($user_data['foto_profil'])) {
+    // Fallback untuk foto lama sebelum akun dipindahkan ke master karyawan.
+    $foto_profil = 'assets/uploads/' . $user_data['foto_profil'];
+    $has_profile_photo = true;
+} else {
+    $profile_name = $user_data['nama_karyawan'] ?: ($user_data['nama'] ?? 'Admin');
+    $foto_profil = 'https://ui-avatars.com/api/?name=' . urlencode($profile_name) . '&background=f43f5e&color=fff';
+}
+$nama = $user_data['nama_karyawan'] ?: ($user_data['nama'] ?? '');
+$jenis_kelamin = $is_linked_profile ? ($user_data['jenis_kelamin_karyawan'] ?? $user_data['jenis_kelamin']) : ($user_data['jenis_kelamin'] ?? '');
 $wa_token = $user_data['wa_token'] ?? '';
 ?>
 
 <div class="max-w-4xl mx-auto mt-4 px-4 sm:px-0">
     <div class="mb-8">
         <h2 class="text-2xl font-bold text-slate-800 dark:text-white mb-2">Pengaturan Akun</h2>
-        <p class="text-slate-500 dark:text-slate-400">Atur Tanda Tangan Digital untuk pengesahan slip gaji.</p>
+        <p class="text-slate-500 dark:text-slate-400">Atur profil akun, tanda tangan digital, dan biodata karyawan Anda.</p>
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -44,7 +62,7 @@ $wa_token = $user_data['wa_token'] ?? '';
                     </div>
                 </div>
                 <p class="text-xs text-slate-500 dark:text-slate-400 text-center mt-1">Klik foto untuk mengubah.<br>Format PNG/JPG. Maks 5MB.</p>
-                <?php if ($user_data['foto_profil']): ?>
+                <?php if ($has_profile_photo): ?>
                 <button type="button" onclick="hapusFile('foto_profil')" class="text-xs text-rose-500 hover:text-rose-700 mt-2 font-semibold">Hapus Foto</button>
                 <?php endif; ?>
                 
@@ -57,7 +75,7 @@ $wa_token = $user_data['wa_token'] ?? '';
                 <div>
                     <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">Nama Lengkap</label>
                     <input type="text" value="<?php echo htmlspecialchars($nama); ?>" class="w-full px-4 py-2 bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-500 dark:text-slate-400 focus:outline-none cursor-not-allowed" readonly>
-                    <p class="text-[11px] text-slate-400 mt-1">*Nama lengkap tidak dapat diubah (paten dari awal pendaftaran).</p>
+                    <p class="text-[11px] text-slate-400 mt-1"><?php echo $is_linked_profile ? '*Nama mengikuti Master Data Karyawan.' : '*Nama akun tidak dapat diubah.'; ?></p>
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">Jenis Kelamin</label>
@@ -66,6 +84,7 @@ $wa_token = $user_data['wa_token'] ?? '';
                         <option value="L" <?php echo ($jenis_kelamin == 'L') ? 'selected' : ''; ?>>Laki-laki</option>
                         <option value="P" <?php echo ($jenis_kelamin == 'P') ? 'selected' : ''; ?>>Perempuan</option>
                     </select>
+                    <?php if ($is_linked_profile): ?><p class="text-[11px] text-slate-400 mt-1">Perubahan juga diterapkan ke Master Data Karyawan.</p><?php endif; ?>
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">Token API WhatsApp (Fonnte)</label>
@@ -113,6 +132,8 @@ $wa_token = $user_data['wa_token'] ?? '';
         </div>
     </div>
 </div>
+
+<?php include 'biodata_akun_form.php'; ?>
 
 <script>
     function uploadFile(type) {
@@ -269,4 +290,4 @@ $wa_token = $user_data['wa_token'] ?? '';
     }
 </script>
 
-<?php include 'admin_footer.php'; ?>
+<?php include $is_supervisor_pengaturan ? 'supervisor_footer.php' : 'admin_footer.php'; ?>

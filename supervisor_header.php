@@ -5,9 +5,22 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'supervisor') {
     header("Location: login.php");
     exit();
 }
-$admin_jk = $_SESSION['jenis_kelamin'] ?? 'L';
-if (isset($_SESSION['foto_profil']) && !empty($_SESSION['foto_profil'])) {
-    $avatar_src = 'assets/uploads/' . $_SESSION['foto_profil'];
+$stmt_header_profile = $conn->prepare("SELECT u.id_karyawan, u.jenis_kelamin, u.foto_profil,
+                                              k.jenis_kelamin AS jenis_kelamin_karyawan, k.foto AS foto_karyawan
+                                       FROM users u
+                                       LEFT JOIN karyawan k ON k.id_karyawan = u.id_karyawan
+                                       WHERE u.id = ?");
+$stmt_header_profile->bind_param('i', $_SESSION['user_id']);
+$stmt_header_profile->execute();
+$header_profile = $stmt_header_profile->get_result()->fetch_assoc() ?: [];
+$stmt_header_profile->close();
+$admin_jk = !empty($header_profile['id_karyawan'])
+    ? ($header_profile['jenis_kelamin_karyawan'] ?? $header_profile['jenis_kelamin'] ?? 'L')
+    : ($header_profile['jenis_kelamin'] ?? $_SESSION['jenis_kelamin'] ?? 'L');
+if (!empty($header_profile['id_karyawan']) && !empty($header_profile['foto_karyawan'])) {
+    $avatar_src = 'assets/images/foto_karyawan/' . $header_profile['foto_karyawan'];
+} elseif (!empty($header_profile['foto_profil'])) {
+    $avatar_src = 'assets/uploads/' . $header_profile['foto_profil'];
 } else {
     $avatar_src = ($admin_jk == 'P') ? 'assets/images/avatar_p.png?v=2' : 'assets/images/avatar_l.png?v=2';
 }
@@ -25,7 +38,7 @@ if ($cabang_supervisor > 0) {
     $nama_cabang_supervisor = $row_cbg['nama_cabang'] ?? null;
 }
 
-// --- Notifikasi Supervisor: pengajuan izin menunggu review di cabangnya ---
+// --- Notifikasi Supervisor: seluruhnya dibatasi ke cabang yang disupervisi ---
 $notif_pengajuan = [];
 $stmt_notif = $conn->prepare("SELECT p.id, p.jenis, p.tanggal_mulai, p.tanggal_selesai, p.keperluan,
                                      p.jumlah_hari_kerja, k.nama_karyawan
@@ -42,8 +55,40 @@ while ($row = $res_notif->fetch_assoc()) {
 }
 $stmt_notif->close();
 
-$actionable_notif_count = count($notif_pengajuan);
-$total_notif = $actionable_notif_count;
+$notif_dinas = [];
+$stmt_dinas = $conn->prepare("SELECT a.id, a.tanggal, a.alasan, k.nama_karyawan
+                              FROM absensi a
+                              JOIN karyawan k ON a.id_karyawan = k.id_karyawan
+                              WHERE a.keterangan = 'Pending Dinas' AND k.id_cabang = ?
+                              ORDER BY a.tanggal DESC
+                              LIMIT 20");
+$stmt_dinas->bind_param("i", $cabang_supervisor);
+$stmt_dinas->execute();
+$res_dinas = $stmt_dinas->get_result();
+while ($row = $res_dinas->fetch_assoc()) {
+    $notif_dinas[] = $row;
+}
+$stmt_dinas->close();
+
+$notif_izin_info = [];
+$stmt_izin_info = $conn->prepare("SELECT a.id, a.tanggal, a.keterangan, a.alasan, k.nama_karyawan
+                                  FROM absensi a
+                                  JOIN karyawan k ON a.id_karyawan = k.id_karyawan
+                                  WHERE a.keterangan IN ('Sakit', 'Cuti', 'Izin')
+                                    AND a.tanggal >= DATE_SUB(CURDATE(), INTERVAL 2 DAY)
+                                    AND k.id_cabang = ?
+                                  ORDER BY a.tanggal DESC
+                                  LIMIT 20");
+$stmt_izin_info->bind_param("i", $cabang_supervisor);
+$stmt_izin_info->execute();
+$res_izin_info = $stmt_izin_info->get_result();
+while ($row = $res_izin_info->fetch_assoc()) {
+    $notif_izin_info[] = $row;
+}
+$stmt_izin_info->close();
+
+$actionable_notif_count = count($notif_pengajuan) + count($notif_dinas);
+$total_notif = $actionable_notif_count + count($notif_izin_info);
 // ------------------------------
 ?>
 <!DOCTYPE html>
@@ -187,11 +232,10 @@ $total_notif = $actionable_notif_count;
             </div>
             <div class="flex flex-col justify-center space-y-0.5 logo-text-container">
                 <h2 class="text-2xl font-bold tracking-tight text-white leading-none">
-                    Absen<span class="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-200">Slip</span>
+                    Absen<span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-400">Kita</span>
                 </h2>
                 <span class="text-xs text-slate-300 font-medium tracking-wide leading-none ml-0.5 pt-0.5">
-                    <!-- TODO SLAMET -->
-                    Dinia House Of Hijab
+                    Java Abadi Gemilang
                 </span>
             </div>
 
@@ -283,7 +327,7 @@ $total_notif = $actionable_notif_count;
                 <div x-data="{ 
                     openNotif: false, 
                     actionableCount: <?php echo $actionable_notif_count; ?>,
-                    hasInfo: false,
+                    hasInfo: <?php echo count($notif_izin_info) > 0 ? 'true' : 'false'; ?>,
                     get showBadge() {
                         if (this.actionableCount > 0) return true;
                         return this.hasInfo && !sessionStorage.getItem('notif_opened');
@@ -323,6 +367,7 @@ $total_notif = $actionable_notif_count;
                                 <p class="text-xs text-slate-400 mt-1">Tidak ada pengajuan yang menunggu review.</p>
                             </div>
                             <?php else: ?>
+                                <?php if (count($notif_pengajuan) > 0): ?>
                                 <div class="px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border-y border-slate-100 dark:border-slate-700/50 sticky top-0 z-10 backdrop-blur-sm">
                                     <p class="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Menunggu Review Anda</p>
                                 </div>
@@ -339,7 +384,54 @@ $total_notif = $actionable_notif_count;
                                         &middot; <?php echo (int)$np['jumlah_hari_kerja']; ?> hari kerja
                                     </p>
                                 </a>
-                                <?php endforeach; ?>
+                                <?php endforeach; endif; ?>
+
+                                <?php if (count($notif_dinas) > 0): ?>
+                                <div class="px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border-y border-slate-100 dark:border-slate-700/50 sticky top-0 z-10 backdrop-blur-sm">
+                                    <p class="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Pending Dinas Luar</p>
+                                </div>
+                                <?php foreach ($notif_dinas as $nd): ?>
+                                <div class="p-4 border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                                    <div class="flex items-start justify-between gap-3">
+                                        <div class="flex-1 min-w-0">
+                                            <p class="text-sm font-bold text-slate-800 dark:text-white truncate"><?php echo htmlspecialchars($nd['nama_karyawan']); ?></p>
+                                            <p class="text-xs text-slate-600 dark:text-slate-300 mt-1 line-clamp-2"><?php echo htmlspecialchars($nd['alasan'] ?? '-'); ?></p>
+                                            <p class="text-[10px] font-medium text-slate-400 mt-2"><i class="fa-regular fa-calendar mr-1"></i><?php echo date('d M Y', strtotime($nd['tanggal'])); ?></p>
+                                        </div>
+                                        <div class="flex flex-col gap-1.5 shrink-0 w-20">
+                                            <form action="proses_persetujuan_dinas.php" method="POST" class="w-full">
+                                                <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token'] ?? ''; ?>">
+                                                <input type="hidden" name="id_absensi" value="<?php echo (int)$nd['id']; ?>">
+                                                <input type="hidden" name="action" value="acc">
+                                                <input type="hidden" name="redirect_url" value="<?php echo basename($_SERVER['PHP_SELF']); ?>">
+                                                <button type="submit" class="w-full px-2 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50 rounded-lg text-xs font-bold transition-colors">ACC</button>
+                                            </form>
+                                            <form action="proses_persetujuan_dinas.php" method="POST" class="w-full">
+                                                <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token'] ?? ''; ?>">
+                                                <input type="hidden" name="id_absensi" value="<?php echo (int)$nd['id']; ?>">
+                                                <input type="hidden" name="action" value="tolak">
+                                                <input type="hidden" name="redirect_url" value="<?php echo basename($_SERVER['PHP_SELF']); ?>">
+                                                <button type="submit" class="w-full px-2 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-500 hover:text-white dark:bg-rose-500/10 dark:text-rose-400 border border-rose-200 dark:border-rose-800/50 rounded-lg text-xs font-bold transition-colors">Tolak</button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                                <?php endforeach; endif; ?>
+
+                                <?php if (count($notif_izin_info) > 0): ?>
+                                <div class="px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border-y border-slate-100 dark:border-slate-700/50 sticky top-0 z-10 backdrop-blur-sm">
+                                    <p class="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Sakit, Cuti &amp; Izin (2 Hari Terakhir)</p>
+                                </div>
+                                <?php foreach ($notif_izin_info as $ni): ?>
+                                <div class="p-4 border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                                    <div class="flex items-center justify-between gap-2 mb-1">
+                                        <p class="text-sm font-bold text-slate-800 dark:text-white truncate"><?php echo htmlspecialchars($ni['nama_karyawan']); ?></p>
+                                        <span class="text-[10px] px-2 py-0.5 rounded-full border font-bold shrink-0 bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800/50"><?php echo htmlspecialchars($ni['keterangan']); ?></span>
+                                    </div>
+                                    <p class="text-xs text-slate-600 dark:text-slate-300 line-clamp-2"><?php echo htmlspecialchars($ni['alasan'] ?? '-'); ?></p>
+                                    <p class="text-[10px] font-medium text-slate-400 mt-1"><i class="fa-regular fa-calendar mr-1"></i><?php echo date('d M Y', strtotime($ni['tanggal'])); ?></p>
+                                </div>
+                                <?php endforeach; endif; ?>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -379,6 +471,12 @@ $total_notif = $actionable_notif_count;
                         <div class="py-1">
                             <button onclick="openModalHeader('modal-ganti-password-header')" class="w-full text-left px-5 py-2.5 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 flex items-center gap-3 transition-colors">
                                 <i class="fa-solid fa-key w-4 text-center text-slate-400"></i> Ganti Password
+                            </button>
+                            <a href="supervisor_pengaturan.php" class="block px-5 py-2.5 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 flex items-center gap-3 transition-colors">
+                                <i class="fa-solid fa-user-gear w-4 text-center text-slate-400"></i> Pengaturan Akun
+                            </a>
+                            <button onclick="confirmDeleteAkunSupervisorHeader()" class="w-full text-left px-5 py-2.5 text-sm text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 flex items-center gap-3 transition-colors">
+                                <i class="fa-solid fa-user-xmark w-4 text-center text-rose-400"></i> Hapus Akun
                             </button>
                         </div>
                         
@@ -454,6 +552,36 @@ $total_notif = $actionable_notif_count;
                 input.type = 'password';
                 icon.classList.remove('fa-eye-slash');
                 icon.classList.add('fa-eye');
+            }
+        }
+        function confirmDeleteAkunSupervisorHeader() {
+            const submitDelete = function () {
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = 'hapus_akun_sendiri.php';
+                const csrf = document.createElement('input');
+                csrf.type = 'hidden';
+                csrf.name = 'csrf_token';
+                csrf.value = <?php echo json_encode($_SESSION['csrf_token'] ?? ''); ?>;
+                form.appendChild(csrf);
+                document.body.appendChild(form);
+                form.submit();
+            };
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                    title: 'Hapus Akun Supervisor?',
+                    text: 'Akun login Supervisor Anda akan dihapus dan Anda akan logout. Data karyawan tidak ikut dihapus.',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#ef4444',
+                    cancelButtonColor: '#94a3b8',
+                    confirmButtonText: 'Ya, Hapus Akun',
+                    cancelButtonText: 'Batal'
+                }).then(function (result) {
+                    if (result.isConfirmed) submitDelete();
+                });
+            } else if (confirm('Hapus akun Supervisor Anda dan logout?')) {
+                submitDelete();
             }
         }
         function kirimGantiPassword(event) {

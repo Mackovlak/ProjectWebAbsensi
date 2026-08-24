@@ -10,13 +10,18 @@ function sendJson($data) {
     exit();
 }
 
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'staff') {
+if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'] ?? '', ['staff', 'admin', 'supervisor'], true)) {
     sendJson(['success' => false, 'message' => 'Unauthorized access.']);
 }
 
-$id_karyawan = $_SESSION['id_karyawan'] ?? '';
+$stmt_user = $conn->prepare("SELECT id_karyawan FROM users WHERE id = ?");
+$stmt_user->bind_param("i", $_SESSION['user_id']);
+$stmt_user->execute();
+$user_link = $stmt_user->get_result()->fetch_assoc();
+$stmt_user->close();
+$id_karyawan = $user_link['id_karyawan'] ?? '';
 if (empty($id_karyawan)) {
-    sendJson(['success' => false, 'message' => 'ID Karyawan tidak ditemukan di sesi.']);
+    sendJson(['success' => false, 'message' => 'Akun ini belum tertaut ke data karyawan.']);
 }
 
 $action = $_POST['action'] ?? '';

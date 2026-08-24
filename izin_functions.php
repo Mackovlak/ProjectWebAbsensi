@@ -298,8 +298,8 @@ function getIzinDinasDisetujui($conn, $id_karyawan, $tanggal) {
 /**
  * Cabang yang boleh direview oleh user yang sedang login.
  * - admin & owner : null (artinya semua cabang)
- * - supervisor    : id cabang miliknya (users.id_cabang, fallback ke cabang
- *                   karyawan yang tertaut bila kolom belum diisi)
+ * - supervisor    : cabang karyawan yang tertaut (users.id_cabang hanya
+ *                   fallback untuk akun lama yang belum tertaut)
  */
 function getCabangReviewer($conn, $user_id, $role) {
     if ($role === 'admin' || $role === 'owner') {
@@ -317,8 +317,8 @@ function getCabangReviewer($conn, $user_id, $role) {
 
     if (!$row) return 0; // tidak ada cabang => tidak melihat apa pun
 
-    if (!empty($row['id_cabang']))       return (int)$row['id_cabang'];
     if (!empty($row['cabang_karyawan'])) return (int)$row['cabang_karyawan'];
+    if (!empty($row['id_cabang']))       return (int)$row['id_cabang'];
 
     return 0;
 }

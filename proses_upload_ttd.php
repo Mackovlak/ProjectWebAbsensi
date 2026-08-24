@@ -11,6 +11,19 @@ $action = $_POST['action'] ?? '';
 $user_id = $_SESSION['user_id'];
 $upload_dir = 'assets/uploads/';
 
+// Profil personal akun yang tertaut disimpan di master karyawan.
+$stmt_link = $conn->prepare("SELECT u.id_karyawan, u.foto_profil, k.foto AS foto_karyawan
+                             FROM users u
+                             LEFT JOIN karyawan k ON k.id_karyawan = u.id_karyawan
+                             WHERE u.id = ?");
+$stmt_link->bind_param("i", $user_id);
+$stmt_link->execute();
+$profile_link = $stmt_link->get_result()->fetch_assoc() ?: [];
+$stmt_link->close();
+$linked_id_karyawan = $profile_link['id_karyawan'] ?? '';
+$is_linked_karyawan = $linked_id_karyawan !== '';
+$employee_photo_dir = 'assets/images/foto_karyawan/';
+
 if (!is_dir($upload_dir)) {
     mkdir($upload_dir, 0755, true);
 }
@@ -160,26 +173,54 @@ if ($action === 'upload_ttd') {
             exit();
         }
 
-        $stmt_old = $conn->prepare("SELECT foto_profil FROM users WHERE id = ?");
-        $stmt_old->bind_param("i", $user_id);
-        $stmt_old->execute();
-        $old_foto = $stmt_old->get_result()->fetch_assoc()['foto_profil'];
-        $stmt_old->close();
-
-        $new_filename = 'profil_' . $user_id . '_' . time() . '.' . $ext;
-        $destination = $upload_dir . $new_filename;
+        $old_user_foto = $profile_link['foto_profil'] ?? null;
+        $old_karyawan_foto = $profile_link['foto_karyawan'] ?? null;
+        $target_dir = $is_linked_karyawan ? $employee_photo_dir : $upload_dir;
+        if (!is_dir($target_dir)) {
+            mkdir($target_dir, 0755, true);
+        }
+        $safe_employee_id = preg_replace('/[^a-zA-Z0-9_-]/', '_', $linked_id_karyawan);
+        $new_filename = $is_linked_karyawan
+            ? $safe_employee_id . '_' . time() . '.' . $ext
+            : 'profil_' . $user_id . '_' . time() . '.' . $ext;
+        $destination = $target_dir . $new_filename;
 
         if (move_uploaded_file($file['tmp_name'], $destination)) {
-            if ($old_foto && file_exists($upload_dir . $old_foto)) {
-                unlink($upload_dir . $old_foto);
-            }
-
-            $stmt = $conn->prepare("UPDATE users SET foto_profil = ? WHERE id = ?");
-            $stmt->bind_param("si", $new_filename, $user_id);
-            if ($stmt->execute()) {
-                $_SESSION['foto_profil'] = $new_filename; // Update session if needed
-                echo json_encode(['success' => true, 'message' => 'Foto profil berhasil diupload.', 'foto' => $new_filename]);
+            if ($is_linked_karyawan) {
+                $stmt = $conn->prepare("UPDATE karyawan SET foto = ? WHERE id_karyawan = ?");
+                $stmt->bind_param("ss", $new_filename, $linked_id_karyawan);
             } else {
+                $stmt = $conn->prepare("UPDATE users SET foto_profil = ? WHERE id = ?");
+                $stmt->bind_param("si", $new_filename, $user_id);
+            }
+            if ($stmt->execute()) {
+                if ($is_linked_karyawan) {
+                    if ($old_karyawan_foto && basename($old_karyawan_foto) === $old_karyawan_foto && file_exists($employee_photo_dir . $old_karyawan_foto)) {
+                        unlink($employee_photo_dir . $old_karyawan_foto);
+                    }
+                    // Bersihkan foto akun lama setelah sumber profil pindah ke master karyawan.
+                    if ($old_user_foto && basename($old_user_foto) === $old_user_foto && file_exists($upload_dir . $old_user_foto)) {
+                        unlink($upload_dir . $old_user_foto);
+                    }
+                    $stmt_clear = $conn->prepare("UPDATE users SET foto_profil = NULL WHERE id = ?");
+                    $stmt_clear->bind_param("i", $user_id);
+                    $stmt_clear->execute();
+                    $stmt_clear->close();
+                    unset($_SESSION['foto_profil']);
+                } else {
+                    if ($old_user_foto && basename($old_user_foto) === $old_user_foto && file_exists($upload_dir . $old_user_foto)) {
+                        unlink($upload_dir . $old_user_foto);
+                    }
+                    $_SESSION['foto_profil'] = $new_filename;
+                }
+                echo json_encode([
+                    'success' => true,
+                    'message' => $is_linked_karyawan ? 'Foto profil dan Master Data Karyawan berhasil diperbarui.' : 'Foto profil berhasil diupload.',
+                    'foto' => $new_filename,
+                    'foto_url' => $target_dir . $new_filename
+                ]);
+            } else {
+                if (file_exists($destination)) unlink($destination);
                 echo json_encode(['success' => false, 'message' => 'Gagal mengupdate database.']);
             }
             $stmt->close();
@@ -190,21 +231,30 @@ if ($action === 'upload_ttd') {
         echo json_encode(['success' => false, 'message' => 'File tidak ditemukan atau terjadi kesalahan saat upload.']);
     }
 } elseif ($action === 'hapus_foto_profil') {
-    $stmt_old = $conn->prepare("SELECT foto_profil FROM users WHERE id = ?");
-    $stmt_old->bind_param("i", $user_id);
-    $stmt_old->execute();
-    $old_foto = $stmt_old->get_result()->fetch_assoc()['foto_profil'];
-    $stmt_old->close();
-
-    if ($old_foto && file_exists($upload_dir . $old_foto)) {
-        unlink($upload_dir . $old_foto);
+    $old_user_foto = $profile_link['foto_profil'] ?? null;
+    $old_karyawan_foto = $profile_link['foto_karyawan'] ?? null;
+    if ($is_linked_karyawan) {
+        $stmt = $conn->prepare("UPDATE karyawan SET foto = NULL WHERE id_karyawan = ?");
+        $stmt->bind_param("s", $linked_id_karyawan);
+    } else {
+        $stmt = $conn->prepare("UPDATE users SET foto_profil = NULL WHERE id = ?");
+        $stmt->bind_param("i", $user_id);
     }
-
-    $stmt = $conn->prepare("UPDATE users SET foto_profil = NULL WHERE id = ?");
-    $stmt->bind_param("i", $user_id);
     if ($stmt->execute()) {
+        if ($old_karyawan_foto && basename($old_karyawan_foto) === $old_karyawan_foto && file_exists($employee_photo_dir . $old_karyawan_foto)) {
+            unlink($employee_photo_dir . $old_karyawan_foto);
+        }
+        if ($old_user_foto && basename($old_user_foto) === $old_user_foto && file_exists($upload_dir . $old_user_foto)) {
+            unlink($upload_dir . $old_user_foto);
+        }
+        if ($is_linked_karyawan) {
+            $stmt_clear = $conn->prepare("UPDATE users SET foto_profil = NULL WHERE id = ?");
+            $stmt_clear->bind_param("i", $user_id);
+            $stmt_clear->execute();
+            $stmt_clear->close();
+        }
         unset($_SESSION['foto_profil']);
-        echo json_encode(['success' => true, 'message' => 'Foto profil berhasil dihapus.']);
+        echo json_encode(['success' => true, 'message' => $is_linked_karyawan ? 'Foto profil pada Master Data Karyawan berhasil dihapus.' : 'Foto profil berhasil dihapus.']);
     } else {
         echo json_encode(['success' => false, 'message' => 'Gagal menghapus dari database.']);
     }
@@ -213,16 +263,27 @@ if ($action === 'upload_ttd') {
     $jenis_kelamin = $_POST['jenis_kelamin'] ?? '';
     $wa_token = $_POST['wa_token'] ?? '';
     
-    if (in_array($jenis_kelamin, ['L', 'P'])) {
-        $stmt = $conn->prepare("UPDATE users SET jenis_kelamin = ?, wa_token = ? WHERE id = ?");
-        $stmt->bind_param("ssi", $jenis_kelamin, $wa_token, $user_id);
-        if ($stmt->execute()) {
+    if (in_array($jenis_kelamin, ['L', 'P'], true)) {
+        $conn->begin_transaction();
+        try {
+            $stmt = $conn->prepare("UPDATE users SET jenis_kelamin = ?, wa_token = ? WHERE id = ?");
+            $stmt->bind_param("ssi", $jenis_kelamin, $wa_token, $user_id);
+            if (!$stmt->execute()) throw new Exception('Gagal mengupdate profil akun.');
+            $stmt->close();
+
+            if ($is_linked_karyawan) {
+                $stmt_karyawan = $conn->prepare("UPDATE karyawan SET jenis_kelamin = ? WHERE id_karyawan = ?");
+                $stmt_karyawan->bind_param("ss", $jenis_kelamin, $linked_id_karyawan);
+                if (!$stmt_karyawan->execute()) throw new Exception('Gagal mengupdate Master Data Karyawan.');
+                $stmt_karyawan->close();
+            }
+            $conn->commit();
             $_SESSION['jenis_kelamin'] = $jenis_kelamin;
-            echo json_encode(['success' => true, 'message' => 'Profil berhasil diperbarui.']);
-        } else {
-            echo json_encode(['success' => false, 'message' => 'Gagal mengupdate profil.']);
+            echo json_encode(['success' => true, 'message' => $is_linked_karyawan ? 'Profil dan Master Data Karyawan berhasil diperbarui.' : 'Profil berhasil diperbarui.']);
+        } catch (Throwable $e) {
+            $conn->rollback();
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
         }
-        $stmt->close();
     } else {
         echo json_encode(['success' => false, 'message' => 'Data tidak valid.']);
     }
