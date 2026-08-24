@@ -52,7 +52,7 @@ $total_notif = $actionable_notif_count;
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="view-transition" content="same-origin">
-    <title>Dashboard Supervisor - Absensi Dinia</title>
+    <title>Dashboard Supervisor - Absensi Javag</title>
     
     <!-- Tailwind CSS via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -190,6 +190,7 @@ $total_notif = $actionable_notif_count;
                     Absen<span class="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-200">Slip</span>
                 </h2>
                 <span class="text-xs text-slate-300 font-medium tracking-wide leading-none ml-0.5 pt-0.5">
+                    <!-- TODO SLAMET -->
                     Dinia House Of Hijab
                 </span>
             </div>

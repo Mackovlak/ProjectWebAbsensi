@@ -361,7 +361,7 @@ sort($cabangs);
             
             const downloadLink = document.createElement("a");
             downloadLink.href = imageURI;
-            downloadLink.download = `ID_Card_Dinia_${empName}.png`;
+            downloadLink.download = `ID_Card_Javag_${empName}.png`;
             
             document.body.appendChild(downloadLink);
             downloadLink.click();
