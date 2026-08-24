@@ -217,6 +217,9 @@ require_once 'security_functions.php';
 // Include helper pengajuan izin/cuti/dinas luar
 require_once 'izin_functions.php';
 
+// Include helper kalender, hari libur & hari kerja
+require_once 'kalender_functions.php';
+
 // Function untuk generate CSRF token
 function generateCSRFToken() {
     if (!isset($_SESSION['csrf_token'])) {

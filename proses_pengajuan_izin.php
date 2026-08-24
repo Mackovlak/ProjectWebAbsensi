@@ -107,11 +107,17 @@ if (isset($_POST['ajukan_izin'])) {
     }
 
     // ---------- Hitung hari efektif & kuota ----------
+    // Deteksi kehadiran lampiran di sini saja (belum divalidasi/dipindah) supaya
+    // Sakit + bukti bisa dibebaskan dari kuota SEBELUM cek kuota di bawah.
+    // Upload sungguhannya baru terjadi nanti di blok "Lampiran" agar tidak ada
+    // file yatim bila pengajuan ditolak duluan oleh cek kuota.
+    $ada_lampiran = isset($_FILES['lampiran']) && $_FILES['lampiran']['error'] == 0 && $_FILES['lampiran']['size'] > 0;
+
     $rincian = hitungHariIzin($conn, $id_karyawan, $tanggal_mulai, $tanggal_selesai);
-    $potong_kuota = izinPotongKuota($jenis) ? 1 : 0;
+    $potong_kuota = izinPotongKuota($jenis, $ada_lampiran) ? 1 : 0;
 
     if ($rincian['hari_efektif'] < 1) {
-        selesai("❌ Tidak ada hari kerja efektif pada rentang tersebut (semuanya hari Minggu atau sudah memiliki absensi).", false);
+        selesai("❌ Tidak ada hari kerja efektif pada rentang tersebut (semuanya hari libur, akhir pekan, atau sudah memiliki absensi).", false);
     }
 
     if ($potong_kuota) {
@@ -173,7 +179,10 @@ if (isset($_POST['ajukan_izin'])) {
             "Mengajukan {$jenis} {$rentang} ({$rincian['hari_efektif']} hari kerja) - #{$id_baru}",
             $_SESSION['user_id']);
 
-        selesai("✅ Pengajuan {$jenis} untuk {$rentang} berhasil dikirim dan menunggu persetujuan Supervisor.");
+        $ket_kuota = (!$potong_kuota && $jenis === 'Sakit')
+            ? " Karena dilampiri bukti, pengajuan ini <b>tidak memotong kuota tahunan</b> Anda."
+            : "";
+        selesai("✅ Pengajuan {$jenis} untuk {$rentang} berhasil dikirim dan menunggu persetujuan Supervisor.{$ket_kuota}");
     } else {
         $stmt->close();
         // Bersihkan lampiran yang terlanjur naik supaya tidak jadi file yatim

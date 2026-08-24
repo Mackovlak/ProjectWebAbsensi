@@ -93,6 +93,26 @@ $stmt_check->close();
 // Pengajuan Dinas Luar yang sudah disetujui untuk hari ini (validasi lokasi dilewati)
 $izin_dinas_hari_ini = getIzinDinasDisetujui($conn, $id_karyawan, $today);
 
+// Pengajuan Sakit/Cuti dadakan (lewat tombol kiosk) yang masih Pending hari ini.
+// Begitu disetujui, materialisasiIzin() akan membuat baris absensi dan status
+// ini otomatis tergantikan oleh cek $absen_hari_ini di atas.
+$izin_lain_hari_ini = null;
+if ($status_absen === 'belum_absen') {
+    $stmt_izin_pending = $conn->prepare(
+        "SELECT jenis, keperluan, created_at FROM pengajuan_izin
+         WHERE id_karyawan = ? AND jenis IN ('Sakit','Cuti') AND status = 'Pending'
+           AND ? BETWEEN tanggal_mulai AND tanggal_selesai
+         LIMIT 1"
+    );
+    $stmt_izin_pending->bind_param("ss", $id_karyawan, $today);
+    $stmt_izin_pending->execute();
+    $izin_lain_hari_ini = $stmt_izin_pending->get_result()->fetch_assoc();
+    $stmt_izin_pending->close();
+    if ($izin_lain_hari_ini) {
+        $status_absen = 'izin_pending';
+    }
+}
+
 $disable_pulang = false;
 $alasan_disable = '';
 if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir' && $absen_hari_ini['keterangan'] !== 'Dinas Luar') {
@@ -396,6 +416,40 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
         </div>
         <?php endif; ?>
 
+        <?php if ($status_absen == 'izin_pending'): ?>
+        <div class="absen-container">
+            <div class="logo-container">
+                <div class="logo-img-wrapper">
+                    <img src="/assets/images/logo.png" alt="Javag Logo" onerror="this.style.display='none'">
+                </div>
+                <div class="logo-text-wrapper">
+                    <div class="logo-title">Absen<span>Kita</span></div>
+                    <div class="logo-subtitle">Java Abadi Gemilang</div>
+                </div>
+            </div>
+            <div class="greeting-wrapper" style="margin-bottom: 16px;">
+                <span style="display: block; font-size: 14px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 6px;">Menunggu Persetujuan,</span>
+                <h2 style="margin: 0; font-size: 24px; color: #1e293b; font-weight: 800; letter-spacing: -0.5px; line-height: 1.2;"><?php echo htmlspecialchars($nama_karyawan); ?></h2>
+            </div>
+            <p class="date-text"><?php echo formatTanggalIndonesia($today); ?></p>
+            <div class="info-disabled" style="background-color: #fff3cd; border-color: #ffeeba; color: #856404;">
+                <i class="fas fa-info-circle"></i>
+                <div>
+                    <strong>Permohonan <?php echo htmlspecialchars($izin_lain_hari_ini['jenis']); ?> Terkirim</strong><br>
+                    "<?php echo htmlspecialchars($izin_lain_hari_ini['keperluan']); ?>"<br>
+                    Mohon menunggu persetujuan atasan. Anda tidak perlu absen lagi hari ini kecuali permohonan ini ditolak.
+                </div>
+            </div>
+            <?php if (!empty($username_karyawan)): ?>
+            <div style="margin-top: 25px; border-top: 1px dashed #cbd5e1; padding-top: 20px;">
+                <a href="login.php?username=<?php echo urlencode($username_karyawan); ?>" class="btn" style="background: #f1f5f9; color: #3b82f6; border: 2px solid #e2e8f0; font-weight: 600; text-decoration: none; box-shadow: none;">
+                    <i class="fas fa-user-circle"></i> Login ke Akun
+                </a>
+            </div>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
+
         <?php if ($status_absen == 'sudah_masuk'): ?>
         <div class="absen-container">
             <div class="logo-container">
@@ -424,10 +478,12 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
             <?php if (!$disable_pulang): ?>
                 <p>Jangan lupa untuk absen pulang yaaw...</p>
             <?php endif; ?>
+            <?php if (!empty($absen_hari_ini['jam_masuk'])): ?>
             <div class="absen-info">
                 <strong><i class="fas fa-sign-in-alt"></i> Jam Masuk:</strong>
                 <span><?php echo date('H:i:s', strtotime($absen_hari_ini['jam_masuk'])); ?></span>
             </div>
+            <?php endif; ?>
             <?php if($absen_hari_ini['keterangan'] == 'Hadir'): ?>
             <div class="absen-info">
                 <strong><i class="fas fa-info-circle"></i> Status Masuk:</strong>
@@ -566,7 +622,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                     <textarea id="input-alasan-text" required rows="3" style="width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #ccc; font-family: inherit; font-size: 14px; outline: none;"></textarea>
                 </div>
                 <div style="margin-bottom: 20px;">
-                    <label style="display: block; font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #333;">Foto Bukti (Opsional)</label>
+                    <label id="input-foto-label" style="display: block; font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #333;">Foto Bukti (Opsional)</label>
                     <div style="display: flex; gap: 10px; margin-bottom: 10px;">
                         <button type="button" class="btn" style="background: #e2e8f0; color: #475569; margin:0; padding: 10px; font-size: 13px; flex: 1;" onclick="document.getElementById('input-foto-bukti').setAttribute('capture', 'environment'); document.getElementById('input-foto-bukti').click();">
                             <i class="fas fa-camera"></i> Kamera
@@ -577,7 +633,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                     </div>
                     <input type="file" id="input-foto-bukti" accept="image/*" style="display: none;" onchange="updateFileName('input-foto-bukti', 'input-file-name')">
                     <div id="input-file-name" style="font-size: 12px; color: #0ea5e9; font-weight: 500; margin-bottom: 5px;"></div>
-                    <small style="display: block; margin-top: 5px; color: #666; font-size: 11px;">Maks. 6MB. Format JPG, PNG.</small>
+                    <small id="input-foto-hint" style="display: block; margin-top: 5px; color: #666; font-size: 11px;">Maks. 6MB. Format JPG, PNG.</small>
                 </div>
                 <div style="display: flex; gap: 10px;">
                     <button type="button" class="btn" style="background: #f1f5f9; color: #475569;" onclick="document.getElementById('modal-input-alasan').style.display='none'">Batal</button>
@@ -880,6 +936,15 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                     if (keterangan === 'Sakit' || keterangan === 'Cuti') {
                         document.getElementById('input-keterangan').value = keterangan;
                         document.getElementById('modal-input-title').innerHTML = `<i class="fas fa-edit text-brand-500"></i> Alasan ${keterangan}`;
+                        const fotoLabel = document.getElementById('input-foto-label');
+                        const fotoHint = document.getElementById('input-foto-hint');
+                        if (keterangan === 'Sakit') {
+                            fotoLabel.innerHTML = 'Surat Dokter / Foto Bukti <span style="color:#0ea5e9;">(disarankan)</span>';
+                            fotoHint.innerHTML = '📎 Lampirkan surat dokter agar permohonan SAKIT ini <b>tidak memotong kuota cuti tahunan</b> Anda. Maks. 6MB, JPG/PNG.';
+                        } else {
+                            fotoLabel.textContent = 'Foto Bukti (Opsional)';
+                            fotoHint.textContent = 'Maks. 6MB. Format JPG, PNG.';
+                        }
                         document.getElementById('modal-input-alasan').style.display = 'flex';
                     } else {
                         submitAbsen(keterangan);

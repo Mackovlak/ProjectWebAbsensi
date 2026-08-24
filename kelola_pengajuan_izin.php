@@ -239,6 +239,12 @@ if ($cabang_reviewer !== null && $cabang_reviewer > 0) {
                         <span class="text-slate-500 dark:text-slate-400">
                             Sisa: <b class="text-emerald-600 dark:text-emerald-400"><?php echo $kuota_kar['sisa']; ?> hari</b>
                         </span>
+                        <?php if (!$row['potong_kuota']): ?>
+                            <span class="text-emerald-600 dark:text-emerald-400 font-semibold">
+                                <i class="ph-bold ph-check-circle"></i>
+                                <?php echo ($row['jenis'] === 'Sakit') ? 'Sakit + bukti - tidak memotong kuota' : 'Tidak memotong kuota'; ?>
+                            </span>
+                        <?php endif; ?>
                         <?php if ($is_pending && $rincian['hari_efektif'] !== (int)$row['jumlah_hari_kerja']): ?>
                             <span class="text-amber-600 dark:text-amber-400 font-semibold">
                                 <i class="ph-bold ph-warning"></i>

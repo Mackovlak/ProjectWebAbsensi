@@ -74,7 +74,7 @@ Both submit to **`proses_absen.php`**, a JSON API that is the single source of t
 Staff submit a **request covering a date range** (e.g. 2–5 Aug) from `staff_pengajuan_izin.php`; everything is handled by `proses_pengajuan_izin.php` (dispatch-by-POST-key: `ajukan_izin` / `batal_izin` / `review_izin`).
 
 - **Types:** `Cuti`, `Sakit`, `Izin` consume the annual quota (`karyawan.jatah_cuti`, default 12/year); `Dinas Luar` does not.
-- **Effective days:** Sundays and dates that already have an `absensi` row (libur bersama, or an existing clock-in) are skipped — they neither consume quota nor generate rows. Recomputed at approval time, since the calendar can change between submission and review.
+- **Effective days:** only configured work days count (Mon–Fri by default); Saturdays, Sundays, registered holidays, and dates that already have an `absensi` row are skipped — they neither consume quota nor generate rows. Recomputed at approval time, since the calendar can change between submission and review.
 - **Quota holds:** pending requests reserve quota (`tersedia = jatah - terpakai - tertahan`) so the same days can't be requested twice.
 - **Review:** Supervisor (own branch) or Admin (all branches) approves/rejects via `kelola_pengajuan_izin.php`; Owner sees the same page read-only. Rejection requires a reason.
 - **On approval**, `absensi` rows are materialised for each effective day with the matching `keterangan` and `id_pengajuan` set, so every existing report, export, and payroll query keeps working unchanged. These rows carry `is_manual_entry = 0` so `hapus_libur_bersama.php` can't wipe them.
@@ -82,6 +82,26 @@ Staff submit a **request covering a date range** (e.g. 2–5 Aug) from `staff_pe
 - **Cancellation:** staff may cancel while `Pending`, or while `Disetujui` if the range hasn't started yet; materialised rows are removed only for days with no `jam_masuk`, so real attendance is never destroyed.
 
 Domain logic lives in `izin_functions.php` (auto-included by `config.php`).
+
+### 4.2c Workweek, holidays & the calendar
+
+The company workweek is stored in `system_settings`, not hardcoded: `hari_kerja` (default `1,2,3,4,5` = **Mon–Fri**) and `hari_overtime` (default `6` = **Saturday**), in ISO weekday numbers (1 = Monday). Admins edit both, plus the holiday list, at `data_hari_libur.php`.
+
+- `hari_libur` holds the holidays that drive every calendar: name, `jenis` (Nasional / Cuti Bersama / Perusahaan), and an optional `id_cabang` when a holiday applies to one branch only. Holidays never consume leave quota.
+- Every "is this a work day?" decision goes through `kalender_functions.php` (`isHariKerja()`, `isHariOvertime()`, `getHariLibur()`) — don't test `date('w')` directly in new code.
+- `bangunKalenderBulan()` + `kalender_widget.php` render a Monday-first month grid with an agenda list, in two modes: **personal** (staff: own attendance + own leave, Pending included) and **global** (supervisor scoped to their branch, admin/owner company-wide: all *approved* leave ranges, so a whole team's absences are readable at a glance). Navigation is `?bulan=&tahun=`.
+
+**Saturday is an overtime day, not a work day.** That distinction is enforced in several places, and matters because Saturday hours vary by assignment (a Product Manager might work 10:00–15:00 one week and not at all the next):
+
+| Behaviour | Work day (Mon–Fri) | Overtime day (Sat) |
+|---|---|---|
+| Consumes leave quota | Yes | No |
+| `Terlambat` / late deduction | Yes, vs shift `jam_masuk_akhir` | **Never** — no fixed start time |
+| Overtime measured by | Clock-out past shift `jam_pulang` | **Actual hours worked** (`hitungJamKerja()`) |
+| Overtime photo + reason form | Required past `jam_pulang` | Not required — the whole day is overtime |
+| Who is eligible | — | Only positions with `jabatan.overtime_sabtu = 1` |
+
+Saturday hours are surfaced in `slip_gaji_form.php` as a **suggestion with an explicit "Tambahkan" button**, never applied automatically. No stored payroll formula changed, so existing slips do not recalculate on their own.
 
 ### 4.3 Face registration
 Staff enroll their face once via **`register_face.php`** (camera UI) → **`process_face_register.php`** (saves the descriptor to `users.face_descriptor`, logs to `face_recognition_logs`). The client-side engine (`assets/js/face-recognition.js`) also implements **liveness checks** (blink detection via Eye Aspect Ratio, mouth-open detection via Mouth Aspect Ratio) to make simple photo-spoofing harder, and a face-quality check (size/centering) before capture. Matching at check-in time uses Euclidean distance between descriptors, converted to a 0–100% confidence score (63% threshold client-side / 62% server-side).
@@ -134,8 +154,10 @@ Rather than each management page having its own save/delete script, almost all A
 | `users` | Login accounts. `role` = admin/owner/staff, `id_karyawan` FK (nullable for admin/owner), `face_descriptor`/`face_registered_at`/`face_reset_allowed`, `foto_profil`, `ttd_path` (signature), `stempel_path` (owner's company stamp), `wa_token` (Fonnte API token, stored per-user), `no_whatsapp` on the employee side is actually on `karyawan`. |
 | `karyawan` | Employee master data. Public-facing `id_karyawan` is an 11-digit code (`YYYYMMDDXXX`). `id_jabatan`, `id_cabang` FKs, `status` (aktif/nonaktif), `tanggal_resign`, `jatah_cuti` (annual leave quota, default 12), payroll default rates (`rate_transport`, `rate_overtime`, `rate_insentif_minggu`, `gaji_pokok`, `rate_keterlambatan`), `no_whatsapp`. |
 | `cabang` | Branches. `latitude`/`longitude`/`radius_meter` power the check-in geofence. |
-| `jabatan` | Positions, each with a default `tunjangan_jabatan` allowance. |
+| `jabatan` | Positions, each with a default `tunjangan_jabatan` allowance and `overtime_sabtu` (1 = this position can be assigned Saturday overtime). |
 | `jam_kerja` | Per-branch shift rules: `nama_shift`, `jam_masuk_akhir` (latest on-time clock-in), `jam_pulang` (scheduled clock-out). A branch can have several. |
+| `hari_libur` | Holiday master driving every calendar. `tanggal`, `nama`, `jenis` (Nasional/Cuti Bersama/Perusahaan), nullable `id_cabang` (NULL = all branches), `perlu_verifikasi` (1 = seeded lunar date, still needs SKB confirmation). Unique on (`tanggal`, `id_cabang`). |
+| `system_settings` | Key/value config. `hari_kerja` and `hari_overtime` hold the workweek as ISO weekday lists (1 = Monday). |
 | `absensi` | One row per employee per date. `jam_masuk`/`jam_pulang`, `lokasi_masuk`/`lokasi_pulang` (GPS), `keterangan` (Hadir/OFF/Sakit/Cuti/Izin/Alpha/Pending Dinas/Dinas Luar), `id_pengajuan` (set when the row was generated by an approved leave request), `status_masuk` (Tepat Waktu/Terlambat), `face_verified`/`face_confidence`, `alasan`/`foto_bukti` (reason/proof photo), `alasan_pulang`/`foto_pulang` (overtime proof), `is_manual_entry`/`manual_entry_by`. |
 | `pengajuan_izin` | One row per leave / permission **request** (a date range, not a day). `jenis` (Cuti/Sakit/Izin/Dinas Luar), `tanggal_mulai`/`tanggal_selesai`, `jumlah_hari` (calendar days) vs `jumlah_hari_kerja` (effective days that consume quota), `keperluan`, `lampiran`, `status` (Pending/Disetujui/Ditolak/Dibatalkan), `potong_kuota`, `id_cabang` (snapshot for supervisor scoping), `reviewed_by`/`reviewed_at`/`catatan_reviewer`. |
 | `slip_gaji` | One row per employee per payroll period (`bulan`/`tahun`). All computed pay components, plus 3-stage approval flags: `status_admin_acc`/`admin_id`/`admin_acc_at`, `status_owner_acc`/`owner_id`/`owner_acc_at`, `status_karyawan_acc`/`karyawan_acc_at`. |
@@ -190,6 +212,13 @@ Rather than each management page having its own save/delete script, almost all A
 | `izin_functions.php` | Domain helpers: effective-day counting, quota summary, overlap check, materialise/roll back attendance rows, approved-Dinas-Luar lookup, badge/format helpers. |
 | `supervisor_dashboard.php` | Supervisor home: pending-review count, who's out today, and per-employee quota usage for their branch. |
 | `supervisor_header.php` / `supervisor_footer.php` | Supervisor chrome; the header re-checks the role, resolves the supervised branch, and lists pending requests in the notification bell. |
+
+### Calendar, holidays & workweek
+| File | Purpose |
+|---|---|
+| `kalender_functions.php` | Workweek settings accessor (`getHariKerja`/`getHariOvertime`), holiday lookup, month-grid builder (`bangunKalenderBulan`), work-duration and Saturday-overtime calculation. |
+| `kalender_widget.php` | Reusable month-calendar partial (personal or global mode) with colour legend and agenda list. Included by all four dashboards. |
+| `data_hari_libur.php` | Admin: holiday CRUD (single date or range, per-branch or global) plus the work-day / overtime-day checkbox matrix. Flags seeded lunar dates as needing SKB verification. |
 
 ### Statistics, ranking & reports
 | File | Purpose |
@@ -264,6 +293,7 @@ Rather than each management page having its own save/delete script, almost all A
 |---|---|
 | `check_db.php` | Dumps `SHOW TABLES` — quick DB sanity check, not part of any tooling pipeline. |
 | `update_db.php` | Example of the pattern used for ad-hoc idempotent schema migrations (checks a column exists, `ALTER TABLE` if not). There is no formal migration system. |
+| `update_db_kalender.php` | **Run once after `update_db_izin.php`.** Creates `hari_libur`, seeds 2026 Indonesian national holidays (lunar dates flagged `perlu_verifikasi` — verify against the official SKB), seeds the `hari_kerja`/`hari_overtime` settings (Mon–Fri work, Sat overtime), and adds `jabatan.overtime_sabtu`. Idempotent. |
 | `update_db_izin.php` | **Run once after deploying the leave-request feature.** Creates `pengajuan_izin`, adds `supervisor` to the `users.role` enum, `users.id_cabang`, `karyawan.jatah_cuti`, `absensi.id_pengajuan`, and `Izin` to the `absensi.keterangan` enum. Idempotent — safe to re-run. |
 
 ---

@@ -241,6 +241,11 @@ $is_admin_for_notif = false;
                 <span class="font-medium text-sm">Dashboard</span>
             </a>
 
+            <a href="owner_kalender.php" class="flex items-center gap-3 px-4 py-3 mx-4 <?php echo basename($_SERVER['PHP_SELF']) == 'owner_kalender.php' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
+                <i class="ph-duotone ph-calendar-dots text-xl w-6 flex items-center justify-center <?php echo basename($_SERVER['PHP_SELF']) == 'owner_kalender.php' ? '' : 'opacity-70 group-hover:opacity-100 transition-opacity'; ?>"></i>
+                <span class="font-medium text-sm">Kalender</span>
+            </a>
+
             <a href="owner_cabang.php" class="flex items-center gap-3 px-4 py-3 mx-4 <?php echo basename($_SERVER['PHP_SELF']) == 'owner_cabang.php' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
                 <i class="ph-duotone ph-buildings text-xl w-6 flex items-center justify-center <?php echo basename($_SERVER['PHP_SELF']) == 'owner_cabang.php' ? '' : 'opacity-70 group-hover:opacity-100 transition-opacity'; ?>"></i>
                 <span class="font-medium text-sm">Data Cabang</span>
