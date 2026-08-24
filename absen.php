@@ -733,7 +733,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
         </div>
     </div>
 
-    <script src="/assets/js/face-recognition.js?v=2.0"></script>
+    <script src="assets/js/face-recognition.js?v=2.0"></script>
     <script>
         function updateFileName(inputId, textId) {
             const input = document.getElementById(inputId);
