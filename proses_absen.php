@@ -134,6 +134,95 @@ try {
     $result_check = $stmt_check->get_result();
     $is_absen_pulang = $result_check->num_rows > 0;
 
+    // ============== SAKIT / CUTI: rute lewat pengajuan_izin ==============
+    // Dulu keterangan ini langsung diinsert ke absensi (auto-approved, tanpa
+    // potong kuota). Sekarang dibuat sebagai pengajuan Pending yang tunduk
+    // pada kuota tahunan (izinPotongKuota) dan butuh persetujuan atasan,
+    // sama seperti Dinas Luar dadakan - supaya kedua sistem tetap konsisten
+    // dan bisa dipantau lewat satu layar (kelola_pengajuan_izin.php).
+    if (!$is_dinas_luar && !$izin_dinas_hari_ini && in_array($keterangan_param, ['Sakit', 'Cuti'], true)) {
+        $stmt_check->close();
+
+        if ($is_absen_pulang) {
+            outputJSON(['success' => false, 'message' => 'Anda sudah tercatat absen hari ini.']);
+        }
+
+        $alasan_izin = isset($_POST['alasan']) ? sanitizeInput($_POST['alasan']) : '';
+        if (strlen($alasan_izin) < 5) {
+            outputJSON(['success' => false, 'message' => 'Alasan wajib diisi minimal 5 karakter.']);
+        }
+
+        // Hanya deteksi kehadiran foto di sini (belum divalidasi/dipindah), supaya
+        // Sakit + bukti bisa dibebaskan dari kuota SEBELUM cek kuota di bawah.
+        $ada_bukti_izin = isset($_FILES['foto_bukti']) && $_FILES['foto_bukti']['error'] == 0 && $_FILES['foto_bukti']['size'] > 0;
+
+        $bentrok = cekTumpangTindihIzin($conn, $id_karyawan, $tanggal, $tanggal);
+        if ($bentrok) {
+            outputJSON(['success' => false, 'message' => "Anda sudah punya pengajuan {$bentrok['jenis']} ({$bentrok['status']}) yang mencakup hari ini."]);
+        }
+
+        $rincian = hitungHariIzin($conn, $id_karyawan, $tanggal, $tanggal);
+        if ($rincian['hari_efektif'] < 1) {
+            outputJSON(['success' => false, 'message' => 'Hari ini bukan hari kerja efektif, sehingga tidak perlu mengajukan izin.']);
+        }
+
+        $potong_kuota = izinPotongKuota($keterangan_param, $ada_bukti_izin) ? 1 : 0;
+        if ($potong_kuota) {
+            $kuota = getRingkasanKuotaIzin($conn, $id_karyawan, (int)date('Y'));
+            if ($rincian['hari_efektif'] > $kuota['tersedia']) {
+                outputJSON(['success' => false, 'message' => "Kuota izin/cuti tahun ini sudah habis (sisa {$kuota['tersedia']} dari {$kuota['jatah']} hari). Lampirkan surat dokter agar Sakit tidak memotong kuota."]);
+            }
+        }
+
+        // Validasi tegas (bukan dilewati diam-diam): kalau ada file tapi tidak
+        // valid, tolak seluruh pengajuan - supaya potong_kuota=0 di atas tidak
+        // pernah tersimpan tanpa bukti yang benar-benar berhasil diunggah.
+        $foto_izin_name = null;
+        if ($ada_bukti_izin) {
+            $ext = strtolower(pathinfo($_FILES['foto_bukti']['name'], PATHINFO_EXTENSION));
+            if (!in_array($ext, ['jpg', 'jpeg', 'png'], true)) {
+                outputJSON(['success' => false, 'message' => 'Format foto bukti tidak valid. Gunakan JPG atau PNG.']);
+            }
+            if ($_FILES['foto_bukti']['size'] > 6 * 1024 * 1024) {
+                outputJSON(['success' => false, 'message' => 'Ukuran foto bukti maksimal 6MB.']);
+            }
+            $upload_dir = __DIR__ . '/assets/uploads/izin/';
+            if (!file_exists($upload_dir)) mkdir($upload_dir, 0777, true);
+            $foto_izin_name = $id_karyawan . '_izin_' . date('Ymd_His') . '_' . uniqid() . '.' . $ext;
+            if (!move_uploaded_file($_FILES['foto_bukti']['tmp_name'], $upload_dir . $foto_izin_name)) {
+                outputJSON(['success' => false, 'message' => 'Gagal mengunggah foto bukti. Silakan coba lagi.']);
+            }
+        }
+
+        $stmt_izin_insert = $conn->prepare("INSERT INTO pengajuan_izin
+            (id_karyawan, jenis, tanggal_mulai, tanggal_selesai, jumlah_hari, jumlah_hari_kerja,
+             keperluan, lampiran, status, potong_kuota, id_cabang)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?, ?)");
+        $stmt_izin_insert->bind_param(
+            "ssssiissii",
+            $id_karyawan, $keterangan_param, $tanggal, $tanggal,
+            $rincian['hari_kalender'], $rincian['hari_efektif'],
+            $alasan_izin, $foto_izin_name, $potong_kuota, $id_cabang
+        );
+
+        if ($stmt_izin_insert->execute()) {
+            $stmt_izin_insert->close();
+            logActivity($conn, 'ajukan_izin', "Ajukan $keterangan_param dadakan via kiosk absen", $id_karyawan);
+            $ket_kuota = (!$potong_kuota && $keterangan_param === 'Sakit')
+                ? ' Karena dilampiri bukti, permohonan ini tidak memotong kuota tahunan Anda.'
+                : '';
+            outputJSON([
+                'success' => true,
+                'title' => 'Permintaan Terkirim',
+                'message' => "Permohonan $keterangan_param Anda telah dikirim dan menunggu persetujuan atasan.$ket_kuota"
+            ]);
+        } else {
+            $stmt_izin_insert->close();
+            outputJSON(['success' => false, 'message' => 'Gagal mengirim permohonan: ' . $conn->error]);
+        }
+    }
+    // =======================================================================
+
     if ($is_absen_pulang) {
         // ============== PROSES ABSEN PULANG ==============
         $data_absen = $result_check->fetch_assoc();
@@ -187,8 +276,13 @@ try {
         }
 
         // ============== CEK OVERTIME =================
+        // Pada hari lembur (mis. Sabtu) seluruh jam kerjanya memang sudah
+        // dihitung lembur lewat getLemburHariSabtu(), jadi form alasan+foto
+        // overtime tidak perlu diminta lagi.
+        $is_hari_lembur = isHariOvertime($conn, $tanggal);
+
         $is_overtime_request = false;
-        if ($is_hadir_masuk) {
+        if ($is_hadir_masuk && !$is_hari_lembur) {
             $stmt_jam_pulang = $conn->prepare("
                 SELECT jk.jam_pulang 
                 FROM jam_kerja jk 
@@ -292,8 +386,16 @@ try {
         }
         $status_masuk = 'Tepat Waktu';
 
+        // Keterlambatan hanya berlaku pada HARI KERJA normal. Pada hari lembur
+        // (mis. Sabtu) jam masuk memang tidak tetap - bisa 10:00 tergantung
+        // penugasan - sehingga membandingkannya dengan jam_masuk_akhir shift
+        // akan salah menandai 'Terlambat' dan memotong gaji lewat
+        // rate_keterlambatan. Hari libur nasional diperlakukan sama.
+        $hari_kerja_normal = isHariKerja($conn, $tanggal)
+            && empty(getHariLibur($conn, $tanggal, $tanggal, $id_cabang));
+
         // Cek status keterlambatan HANYA untuk 'Hadir' (Pending Dinas kita anggap Tepat Waktu sementara, atau bisa juga terlambat jika mau)
-        if ($keterangan == 'Hadir') {
+        if ($keterangan == 'Hadir' && $hari_kerja_normal) {
             $stmt_jam = $conn->prepare("SELECT jam_masuk_akhir FROM jam_kerja WHERE id_cabang = ?");
             $stmt_jam->bind_param("i", $id_cabang);
             $stmt_jam->execute();
@@ -395,14 +497,8 @@ try {
                 $judul_sukses = "Terima Kasih!";
 
                 switch ($keterangan) {
-                    case 'Sakit':
-                        $judul_sukses = "Semoga Lekas Sembuh";
-                        $pesan_sukses = "Absensi SAKIT telah kami catat. Prioritaskan kesehatan dan istirahatlah yang cukup.";
-                        break;
-                    case 'Cuti':
-                        $judul_sukses = "Selamat Menikmati Waktu Cuti";
-                        $pesan_sukses = "Absensi CUTI telah disetujui. Gunakan waktu cuti Anda sebaik-baiknya.";
-                        break;
+                    // Sakit & Cuti tidak lagi muncul di sini - keduanya dibelokkan
+                    // ke pengajuan_izin (Pending) lebih awal di atas.
                     case 'OFF':
                         $judul_sukses = "Selamat Libur!";
                         $pesan_sukses = "Absensi OFF telah dicatat. Selamat menikmati hari libur.";

@@ -88,8 +88,11 @@ if (isset($_POST['tambah_jabatan'])) {
     $tunjangan_str = str_replace('.', '', $tunjangan_str);
     $tunjangan_jabatan = floatval($tunjangan_str);
     
-    $stmt = $conn->prepare("INSERT INTO jabatan (nama_jabatan, tunjangan_jabatan) VALUES (?, ?)");
-    $stmt->bind_param("sd", $nama_jabatan, $tunjangan_jabatan);
+    // Kelayakan lembur Sabtu (tidak semua jabatan punya lembur)
+    $overtime_sabtu = isset($_POST['overtime_sabtu']) ? 1 : 0;
+
+    $stmt = $conn->prepare("INSERT INTO jabatan (nama_jabatan, tunjangan_jabatan, overtime_sabtu) VALUES (?, ?, ?)");
+    $stmt->bind_param("sdi", $nama_jabatan, $tunjangan_jabatan, $overtime_sabtu);
     if ($stmt->execute()) {
         $_SESSION['success_message'] = "Jabatan berhasil ditambahkan!";
     } else {
@@ -109,8 +112,10 @@ if (isset($_POST['edit_jabatan'])) {
     $tunjangan_str = str_replace('.', '', $tunjangan_str);
     $tunjangan_jabatan = floatval($tunjangan_str);
     
-    $stmt = $conn->prepare("UPDATE jabatan SET nama_jabatan = ?, tunjangan_jabatan = ? WHERE id = ?");
-    $stmt->bind_param("sdi", $nama_jabatan, $tunjangan_jabatan, $id);
+    $overtime_sabtu = isset($_POST['overtime_sabtu']) ? 1 : 0;
+
+    $stmt = $conn->prepare("UPDATE jabatan SET nama_jabatan = ?, tunjangan_jabatan = ?, overtime_sabtu = ? WHERE id = ?");
+    $stmt->bind_param("sdii", $nama_jabatan, $tunjangan_jabatan, $overtime_sabtu, $id);
     if ($stmt->execute()) {
         if (isset($_POST['is_ajax'])) {
             echo json_encode(['status' => 'success', 'message' => 'Jabatan berhasil diperbarui!']);
@@ -592,6 +597,174 @@ if (isset($_POST['tambah_owner'])) {
     }
     
     header("Location: setting_users.php");
+    exit();
+}
+
+// Handler Simpan Hari Libur (tambah / edit, mendukung rentang tanggal)
+if (isset($_POST['simpan_hari_libur'])) {
+    verifyCSRFToken($_POST['csrf_token'] ?? '');
+
+    $id_libur        = intval($_POST['id_libur'] ?? 0);
+    $tanggal_mulai   = sanitizeInput($_POST['tanggal_mulai'] ?? '');
+    $tanggal_selesai = sanitizeInput($_POST['tanggal_selesai'] ?? '');
+    $nama            = sanitizeInput($_POST['nama'] ?? '');
+    $jenis           = sanitizeInput($_POST['jenis'] ?? 'Nasional');
+    $id_cabang       = ($_POST['id_cabang'] ?? '') === '' ? null : intval($_POST['id_cabang']);
+
+    $cek = DateTime::createFromFormat('Y-m-d', $tanggal_mulai);
+    if (!$cek || $cek->format('Y-m-d') !== $tanggal_mulai) {
+        $_SESSION['error_message'] = "❌ Tanggal tidak valid.";
+        header("Location: data_hari_libur.php");
+        exit();
+    }
+    if ($nama === '') {
+        $_SESSION['error_message'] = "❌ Keterangan hari libur wajib diisi.";
+        header("Location: data_hari_libur.php");
+        exit();
+    }
+    if (!in_array($jenis, ['Nasional', 'Cuti Bersama', 'Perusahaan'], true)) {
+        $jenis = 'Nasional';
+    }
+
+    if ($id_libur > 0) {
+        // Edit satu tanggal. perlu_verifikasi dinolkan: admin sudah memeriksanya.
+        $stmt = $conn->prepare("UPDATE hari_libur
+                                SET tanggal = ?, nama = ?, jenis = ?, id_cabang = ?, perlu_verifikasi = 0
+                                WHERE id = ?");
+        $stmt->bind_param("sssii", $tanggal_mulai, $nama, $jenis, $id_cabang, $id_libur);
+        if ($stmt->execute()) {
+            $_SESSION['success_message'] = "✅ Hari libur \"{$nama}\" berhasil diperbarui.";
+            logActivity($conn, 'edit_hari_libur', "Mengubah hari libur #{$id_libur}: {$nama} ({$tanggal_mulai})", $_SESSION['user_id']);
+        } else {
+            $_SESSION['error_message'] = "❌ Gagal memperbarui hari libur. Pastikan tanggal tersebut belum terdaftar.";
+        }
+        $stmt->close();
+    } else {
+        // Tambah, boleh berupa rentang (mis. cuti bersama beberapa hari)
+        if ($tanggal_selesai === '') {
+            $tanggal_selesai = $tanggal_mulai;
+        }
+        $cek_akhir = DateTime::createFromFormat('Y-m-d', $tanggal_selesai);
+        if (!$cek_akhir || $cek_akhir->format('Y-m-d') !== $tanggal_selesai || $tanggal_selesai < $tanggal_mulai) {
+            $_SESSION['error_message'] = "❌ Tanggal selesai tidak valid.";
+            header("Location: data_hari_libur.php");
+            exit();
+        }
+        if ((strtotime($tanggal_selesai) - strtotime($tanggal_mulai)) / 86400 > 30) {
+            $_SESSION['error_message'] = "❌ Rentang hari libur maksimal 31 hari sekali simpan.";
+            header("Location: data_hari_libur.php");
+            exit();
+        }
+
+        // INSERT IGNORE: tanggal yang sudah terdaftar dilewati, bukan error
+        $stmt = $conn->prepare("INSERT IGNORE INTO hari_libur
+                                (tanggal, nama, jenis, id_cabang, perlu_verifikasi, created_by)
+                                VALUES (?, ?, ?, ?, 0, ?)");
+        $tersimpan = 0;
+        $dilewati  = 0;
+        for ($ts = strtotime($tanggal_mulai); $ts <= strtotime($tanggal_selesai); $ts = strtotime('+1 day', $ts)) {
+            $tgl = date('Y-m-d', $ts);
+            $stmt->bind_param("sssii", $tgl, $nama, $jenis, $id_cabang, $_SESSION['user_id']);
+            if ($stmt->execute() && $conn->affected_rows > 0) {
+                $tersimpan++;
+            } else {
+                $dilewati++;
+            }
+        }
+        $stmt->close();
+
+        if ($tersimpan > 0) {
+            $_SESSION['success_message'] = "✅ {$tersimpan} hari libur \"{$nama}\" berhasil ditambahkan."
+                . ($dilewati > 0 ? " {$dilewati} tanggal dilewati karena sudah terdaftar." : "");
+            logActivity($conn, 'tambah_hari_libur',
+                "Menambah hari libur {$nama} ({$tanggal_mulai} s/d {$tanggal_selesai}), tersimpan {$tersimpan}",
+                $_SESSION['user_id']);
+        } else {
+            $_SESSION['error_message'] = "❌ Semua tanggal pada rentang tersebut sudah terdaftar sebagai hari libur.";
+        }
+    }
+
+    header("Location: data_hari_libur.php?tahun=" . date('Y', strtotime($tanggal_mulai)));
+    exit();
+}
+
+// Handler Hapus Hari Libur
+if (isset($_POST['hapus_hari_libur'])) {
+    verifyCSRFToken($_POST['csrf_token'] ?? '');
+
+    $id_libur = intval($_POST['id_libur'] ?? 0);
+    $nama     = sanitizeInput($_POST['nama_libur'] ?? '');
+
+    if ($id_libur <= 0) {
+        $_SESSION['error_message'] = "❌ Data hari libur tidak valid.";
+    } else {
+        $stmt = $conn->prepare("DELETE FROM hari_libur WHERE id = ?");
+        $stmt->bind_param("i", $id_libur);
+        if ($stmt->execute() && $stmt->affected_rows > 0) {
+            $_SESSION['success_message'] = "✅ Hari libur \"{$nama}\" berhasil dihapus.";
+            logActivity($conn, 'hapus_hari_libur', "Menghapus hari libur #{$id_libur}: {$nama}", $_SESSION['user_id']);
+        } else {
+            $_SESSION['error_message'] = "❌ Hari libur tidak ditemukan atau sudah dihapus.";
+        }
+        $stmt->close();
+    }
+
+    header("Location: data_hari_libur.php");
+    exit();
+}
+
+// Handler Simpan Pengaturan Hari Kerja / Hari Lembur
+if (isset($_POST['simpan_hari_kerja'])) {
+    verifyCSRFToken($_POST['csrf_token'] ?? '');
+
+    $hari_kerja    = isset($_POST['hari_kerja']) && is_array($_POST['hari_kerja']) ? $_POST['hari_kerja'] : [];
+    $hari_overtime = isset($_POST['hari_overtime']) && is_array($_POST['hari_overtime']) ? $_POST['hari_overtime'] : [];
+
+    // Bersihkan ke angka 1-7 saja
+    $bersih = function ($arr) {
+        $out = [];
+        foreach ($arr as $v) {
+            $n = intval($v);
+            if ($n >= 1 && $n <= 7 && !in_array($n, $out, true)) $out[] = $n;
+        }
+        sort($out);
+        return $out;
+    };
+    $hari_kerja    = $bersih($hari_kerja);
+    $hari_overtime = $bersih($hari_overtime);
+
+    if (empty($hari_kerja)) {
+        $_SESSION['error_message'] = "❌ Minimal satu hari kerja harus dipilih.";
+        header("Location: data_hari_libur.php");
+        exit();
+    }
+
+    // Satu hari tidak boleh menjadi hari kerja sekaligus hari lembur
+    $tabrakan = array_intersect($hari_kerja, $hari_overtime);
+    if (!empty($tabrakan)) {
+        $nama_tabrakan = array_map(function ($n) { return KALENDER_NAMA_HARI[$n]; }, $tabrakan);
+        $_SESSION['error_message'] = "❌ " . implode(', ', $nama_tabrakan)
+            . " tidak boleh dicentang sebagai hari kerja dan hari lembur sekaligus.";
+        header("Location: data_hari_libur.php");
+        exit();
+    }
+
+    $ok1 = setPengaturan($conn, 'hari_kerja', implode(',', $hari_kerja),
+        'Hari kerja normal perusahaan (1=Senin ... 7=Minggu)');
+    $ok2 = setPengaturan($conn, 'hari_overtime', implode(',', $hari_overtime),
+        'Hari yang dihitung sebagai hari lembur/overtime, bukan hari kerja normal');
+
+    if ($ok1 && $ok2) {
+        $_SESSION['success_message'] = "✅ Pengaturan hari kerja berhasil disimpan. "
+            . "Perhitungan kuota cuti dan keterlambatan mengikuti pengaturan baru mulai sekarang.";
+        logActivity($conn, 'ubah_hari_kerja',
+            "Mengubah hari kerja menjadi [" . implode(',', $hari_kerja) . "], hari lembur [" . implode(',', $hari_overtime) . "]",
+            $_SESSION['user_id']);
+    } else {
+        $_SESSION['error_message'] = "❌ Gagal menyimpan pengaturan hari kerja.";
+    }
+
+    header("Location: data_hari_libur.php");
     exit();
 }
 

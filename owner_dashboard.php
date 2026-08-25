@@ -417,4 +417,21 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
+
+<!-- Kalender Global Perusahaan -->
+<div class="mb-8">
+    <a href="owner_kalender.php" class="flex items-center justify-between gap-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 hover:-translate-y-0.5 hover:shadow-md transition-all group">
+        <div class="flex items-center gap-4 min-w-0">
+            <div class="w-12 h-12 shrink-0 rounded-xl bg-fuchsia-50 dark:bg-fuchsia-900/30 flex items-center justify-center">
+                <i class="ph-duotone ph-calendar-dots text-2xl text-fuchsia-600 dark:text-fuchsia-400"></i>
+            </div>
+            <div class="min-w-0">
+                <h3 class="font-bold text-slate-800 dark:text-white">Kalender Perusahaan</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400 truncate">Hari kerja, hari libur, dan jadwal izin seluruh cabang.</p>
+            </div>
+        </div>
+        <i class="ph-bold ph-arrow-right text-slate-400 group-hover:translate-x-1 transition-transform shrink-0"></i>
+    </a>
+</div>
+
 <?php require 'owner_footer.php'; ?>

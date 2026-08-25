@@ -18,6 +18,24 @@ if ($tahun_aktif < 2020 || $tahun_aktif > (int)date('Y') + 1) {
 }
 
 $kuota = getRingkasanKuotaIzin($conn, $id_karyawan_staff, $tahun_aktif);
+
+// Data untuk estimasi hari kerja di sisi klien. Angka final tetap dihitung
+// ulang di server saat pengajuan disimpan & disetujui.
+$stmt_cbg_izin = $conn->prepare("SELECT id_cabang FROM karyawan WHERE id_karyawan = ?");
+$stmt_cbg_izin->bind_param("s", $id_karyawan_staff);
+$stmt_cbg_izin->execute();
+$row_cbg_izin = $stmt_cbg_izin->get_result()->fetch_assoc();
+$stmt_cbg_izin->close();
+$id_cabang_staff = $row_cbg_izin ? (int)$row_cbg_izin['id_cabang'] : null;
+
+$hari_kerja_js = getHariKerja($conn);
+// Ambil libur setahun ke depan supaya estimasi klien ikut melewatinya
+$libur_js = array_keys(getHariLibur(
+    $conn,
+    date('Y-m-d', strtotime('-1 month')),
+    date('Y-m-d', strtotime('+13 months')),
+    $id_cabang_staff
+));
 $persen_terpakai = $kuota['jatah'] > 0 ? min(100, round(($kuota['terpakai'] / $kuota['jatah']) * 100)) : 0;
 
 // Riwayat pengajuan pada tahun terpilih
@@ -103,7 +121,7 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
             </li>
             <li class="flex gap-2.5">
                 <i class="ph-duotone ph-calendar-x text-slate-400 text-lg shrink-0"></i>
-                <span>Hari Minggu dan hari libur bersama tidak dihitung.</span>
+                <span>Hanya hari kerja (<b><?php echo labelHariKerja($conn); ?></b>) yang dihitung. Hari lembur, akhir pekan, dan hari libur nasional tidak memotong kuota.</span>
             </li>
         </ul>
     </div>
@@ -135,9 +153,9 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
 
             <div>
                 <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Lampiran <span class="font-normal text-slate-400">(opsional)</span></label>
-                <input type="file" name="lampiran" accept=".jpg,.jpeg,.png,.pdf"
+                <input type="file" name="lampiran" id="lampiran-izin" accept=".jpg,.jpeg,.png,.pdf"
                        class="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-white text-sm file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-fuchsia-50 file:text-fuchsia-700 hover:file:bg-fuchsia-100">
-                <p class="text-xs text-slate-400 mt-1.5">Surat dokter / undangan / bukti pendukung. JPG, PNG, atau PDF maks 6 MB.</p>
+                <p class="text-xs text-slate-400 mt-1.5" id="info-lampiran">Surat dokter / undangan / bukti pendukung. JPG, PNG, atau PDF maks 6 MB.</p>
             </div>
 
             <div>
@@ -266,21 +284,37 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
 
 <script>
 (function () {
-    const jenisEl   = document.getElementById('jenis-izin');
-    const infoEl    = document.getElementById('info-jenis');
-    const mulaiEl   = document.getElementById('tanggal-mulai');
-    const selesaiEl = document.getElementById('tanggal-selesai');
-    const ringkasan = document.getElementById('ringkasan-hari');
+    const jenisEl     = document.getElementById('jenis-izin');
+    const infoEl      = document.getElementById('info-jenis');
+    const mulaiEl     = document.getElementById('tanggal-mulai');
+    const selesaiEl   = document.getElementById('tanggal-selesai');
+    const ringkasan   = document.getElementById('ringkasan-hari');
+    const lampiranEl  = document.getElementById('lampiran-izin');
+    const infoLampiranEl = document.getElementById('info-lampiran');
 
     const kuotaTersedia = <?php echo (int)$kuota['tersedia']; ?>;
     const hariIni = '<?php echo date('Y-m-d'); ?>';
+    // 1 = Senin ... 7 = Minggu, mengikuti pengaturan hari kerja perusahaan
+    const hariKerja = <?php echo json_encode($hari_kerja_js); ?>;
+    const tanggalLibur = <?php echo json_encode($libur_js); ?>;
 
     const keteranganJenis = {
         'Cuti':       'Memotong kuota tahunan Anda.',
         'Izin':       'Memotong kuota tahunan Anda.',
-        'Sakit':      'Memotong kuota tahunan. Boleh diajukan mundur maksimal 14 hari, sebaiknya lampirkan surat dokter.',
+        'Sakit':      'Boleh diajukan mundur maksimal 14 hari. Lampirkan surat dokter agar TIDAK memotong kuota tahunan Anda.',
         'Dinas Luar': 'Tidak memotong kuota. Setelah disetujui, absen di lokasi tugas tidak akan ditolak sistem.'
     };
+
+    const infoLampiranDefault = infoLampiranEl.textContent;
+
+    function perbaruiInfoLampiran() {
+        const adaLampiran = lampiranEl.files && lampiranEl.files.length > 0;
+        if (jenisEl.value === 'Sakit' && adaLampiran) {
+            infoLampiranEl.innerHTML = '<b class="text-emerald-600 dark:text-emerald-400">Lampiran terpasang - pengajuan Sakit ini tidak akan memotong kuota tahunan.</b>';
+        } else {
+            infoLampiranEl.textContent = infoLampiranDefault;
+        }
+    }
 
     function batasTanggalMinimum() {
         // Hanya Sakit yang boleh mundur ke belakang
@@ -311,36 +345,59 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
             return;
         }
 
-        let total = 0, efektif = 0;
+        let total = 0, efektif = 0, dilewati = 0;
         for (let d = new Date(mulai); d <= selesai; d.setDate(d.getDate() + 1)) {
             total++;
-            if (d.getDay() !== 0) efektif++;
+            // getDay(): 0 = Minggu. Ubah ke ISO 1-7 agar cocok dengan hariKerja.
+            const iso = d.getDay() === 0 ? 7 : d.getDay();
+            const ymd = d.getFullYear() + '-' +
+                        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                        String(d.getDate()).padStart(2, '0');
+
+            if (hariKerja.indexOf(iso) === -1 || tanggalLibur.indexOf(ymd) !== -1) {
+                dilewati++;
+            } else {
+                efektif++;
+            }
         }
 
-        const potong = jenisEl.value !== 'Dinas Luar';
-        let teks = `<b>${total} hari kalender</b>, perkiraan <b>${efektif} hari kerja</b> (hari Minggu tidak dihitung).`;
+        const adaLampiran = lampiranEl.files && lampiranEl.files.length > 0;
+        const sakitDenganBukti = jenisEl.value === 'Sakit' && adaLampiran;
+        const potong = jenisEl.value !== 'Dinas Luar' && !sakitDenganBukti;
+        let teks = `<b>${total} hari kalender</b>, perkiraan <b>${efektif} hari kerja</b>`;
+        teks += dilewati > 0
+            ? ` (${dilewati} hari dilewati: akhir pekan/hari lembur/libur nasional).`
+            : '.';
 
         if (potong) {
             teks += ` Sisa kuota yang bisa dipakai: <b>${kuotaTersedia} hari</b>.`;
             if (efektif > kuotaTersedia) {
                 teks += ` <span class="font-bold text-rose-600 dark:text-rose-400">Melebihi kuota Anda.</span>`;
             }
+        } else if (sakitDenganBukti) {
+            teks += ' Sakit dengan lampiran tidak memotong kuota.';
         } else {
             teks += ' Dinas Luar tidak memotong kuota.';
+        }
+
+        if (efektif === 0) {
+            teks += ' <span class="font-bold text-rose-600 dark:text-rose-400">Tidak ada hari kerja pada rentang ini.</span>';
         }
 
         ringkasan.innerHTML = teks;
         ringkasan.classList.remove('hidden');
     }
 
-    jenisEl.addEventListener('change', function () { perbaruiBatas(); hitungRingkasan(); });
+    jenisEl.addEventListener('change', function () { perbaruiBatas(); perbaruiInfoLampiran(); hitungRingkasan(); });
     mulaiEl.addEventListener('change', function () {
         selesaiEl.min = mulaiEl.value;
         if (selesaiEl.value && selesaiEl.value < mulaiEl.value) selesaiEl.value = mulaiEl.value;
         hitungRingkasan();
     });
     selesaiEl.addEventListener('change', hitungRingkasan);
+    lampiranEl.addEventListener('change', function () { perbaruiInfoLampiran(); hitungRingkasan(); });
     perbaruiBatas();
+    perbaruiInfoLampiran();
 
     // Konfirmasi pembatalan
     document.querySelectorAll('.form-batal').forEach(function (form) {

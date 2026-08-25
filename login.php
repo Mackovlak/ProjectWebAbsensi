@@ -46,7 +46,7 @@ if (isset($_GET['message']) && $_GET['message'] == 'owner_deleted') {
 
 if ($_SERVER["REQUEST_METHOD"] == "POST" && $_SESSION['login_attempts'] < $max_attempts) {
     // Verify CSRF token
-    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+    if (!isset($_SESSION['csrf_token']) || !isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
         $error = "Invalid request. Please try again.";
     } else {
         $username = $conn->real_escape_string(sanitizeInput($_POST['username']));

@@ -221,23 +221,29 @@ $is_admin_for_notif = true;
                 <span class="font-medium text-sm">Dashboard</span>
             </a>
 
+            <a href="admin_kalender.php" class="flex items-center gap-3 px-4 py-3 mx-4 <?php echo basename($_SERVER['PHP_SELF']) == 'admin_kalender.php' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
+                <i class="ph-duotone ph-calendar-dots text-xl w-6 flex items-center justify-center <?php echo basename($_SERVER['PHP_SELF']) == 'admin_kalender.php' ? '' : 'opacity-70 group-hover:opacity-100 transition-opacity'; ?>"></i>
+                <span class="font-medium text-sm">Kalender</span>
+            </a>
+
             <!-- Master Data dengan Submenu -->
             <p class="px-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 mt-8">Master Data</p>
             
-            <div x-data="{ open: <?php echo in_array(basename($_SERVER['PHP_SELF']), ['data_karyawan.php', 'data_jabatan.php', 'data_cabang.php', 'jam_kerja.php']) ? 'true' : 'false'; ?> }">
-                <button @click="open = !open" class="w-[calc(100%-2rem)] flex items-center justify-between px-4 py-3 mx-4 <?php echo in_array(basename($_SERVER['PHP_SELF']), ['data_karyawan.php', 'data_jabatan.php', 'data_cabang.php', 'jam_kerja.php']) ? 'bg-slate-800/50 text-white' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
+            <div x-data="{ open: <?php echo in_array(basename($_SERVER['PHP_SELF']), ['data_karyawan.php', 'data_jabatan.php', 'data_cabang.php', 'jam_kerja.php', 'data_hari_libur.php']) ? 'true' : 'false'; ?> }">
+                <button @click="open = !open" class="w-[calc(100%-2rem)] flex items-center justify-between px-4 py-3 mx-4 <?php echo in_array(basename($_SERVER['PHP_SELF']), ['data_karyawan.php', 'data_jabatan.php', 'data_cabang.php', 'jam_kerja.php', 'data_hari_libur.php']) ? 'bg-slate-800/50 text-white' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
                     <div class="flex items-center gap-3">
-                        <i class="ph-duotone ph-database text-xl w-6 flex items-center justify-center <?php echo in_array(basename($_SERVER['PHP_SELF']), ['data_karyawan.php', 'data_jabatan.php', 'data_cabang.php', 'jam_kerja.php']) ? 'text-purple-400' : 'opacity-70 group-hover:opacity-100 transition-opacity'; ?>"></i>
+                        <i class="ph-duotone ph-database text-xl w-6 flex items-center justify-center <?php echo in_array(basename($_SERVER['PHP_SELF']), ['data_karyawan.php', 'data_jabatan.php', 'data_cabang.php', 'jam_kerja.php', 'data_hari_libur.php']) ? 'text-purple-400' : 'opacity-70 group-hover:opacity-100 transition-opacity'; ?>"></i>
                         <span class="font-medium text-sm">Master Data</span>
                     </div>
                     <i class="ph-bold ph-caret-down text-xs transition-transform duration-300" :class="open ? 'rotate-180' : ''"></i>
                 </button>
-                <div x-show="open" x-collapse <?php echo in_array(basename($_SERVER['PHP_SELF']), ['data_karyawan.php', 'data_jabatan.php', 'data_cabang.php', 'jam_kerja.php']) ? '' : 'style="display: none;"'; ?>>
+                <div x-show="open" x-collapse <?php echo in_array(basename($_SERVER['PHP_SELF']), ['data_karyawan.php', 'data_jabatan.php', 'data_cabang.php', 'jam_kerja.php', 'data_hari_libur.php']) ? '' : 'style="display: none;"'; ?>>
                     <div class="pl-11 pr-2 py-2 space-y-1 mt-1 mx-4">
                         <a href="data_karyawan.php" class="block px-3 py-2 text-sm <?php echo basename($_SERVER['PHP_SELF']) == 'data_karyawan.php' ? 'bg-purple-500/20 text-purple-400 font-semibold rounded-lg' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded-lg'; ?> transition-colors">Data Karyawan</a>
                         <a href="data_jabatan.php" class="block px-3 py-2 text-sm <?php echo basename($_SERVER['PHP_SELF']) == 'data_jabatan.php' ? 'bg-purple-500/20 text-purple-400 font-semibold rounded-lg' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded-lg'; ?> transition-colors">Data Jabatan</a>
                         <a href="data_cabang.php" class="block px-3 py-2 text-sm <?php echo basename($_SERVER['PHP_SELF']) == 'data_cabang.php' ? 'bg-purple-500/20 text-purple-400 font-semibold rounded-lg' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded-lg'; ?> transition-colors">Data Cabang</a>
                         <a href="jam_kerja.php" class="block px-3 py-2 text-sm <?php echo basename($_SERVER['PHP_SELF']) == 'jam_kerja.php' ? 'bg-purple-500/20 text-purple-400 font-semibold rounded-lg' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded-lg'; ?> transition-colors">Jam Kerja</a>
+                        <a href="data_hari_libur.php" class="block px-3 py-2 text-sm <?php echo basename($_SERVER['PHP_SELF']) == 'data_hari_libur.php' ? 'bg-purple-500/20 text-purple-400 font-semibold rounded-lg' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded-lg'; ?> transition-colors">Hari Libur</a>
                     </div>
                 </div>
             </div>
