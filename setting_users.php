@@ -312,8 +312,7 @@ $admin_count = $res_admin_count->fetch_assoc()['total_admin'];
             </div>
             <div class="p-6">
                 <?php
-                $supervisor_secret_salt = "DINIA_SUPERVISOR_SECRET_2026";
-                $current_supervisor_token = substr(strtoupper(md5(date('Y-m-d H') . $supervisor_secret_salt)), 0, 6);
+                $current_supervisor_token = generateRegistrationToken('supervisor');
                 $protocol = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http');
                 $host = $_SERVER['HTTP_HOST'];
                 $dir = dirname($_SERVER['PHP_SELF']);
@@ -387,8 +386,9 @@ $admin_count = $res_admin_count->fetch_assoc()['total_admin'];
             </div>
             <div class="p-6">
                 <?php
-                $secret_salt = "DINIA_OWNER_SECRET_2026";
-                $current_owner_token = substr(strtoupper(md5(date('Y-m-d H') . $secret_salt)), 0, 6);
+                // $secret_salt = "DINIA_OWNER_SECRET_2026";
+                // $current_owner_token = substr(strtoupper(md5(date('Y-m-d H') . $secret_salt)), 0, 6);
+                $current_owner_token = generateRegistrationToken('owner');
                 $protocol = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http");
                 $host = $_SERVER['HTTP_HOST'];
                 $dir = dirname($_SERVER['PHP_SELF']);
@@ -481,8 +481,9 @@ $admin_count = $res_admin_count->fetch_assoc()['total_admin'];
             </div>
             <div class="p-6">
                 <?php
-                $admin_secret_salt = "DINIA_ADMIN_SECRET_2026";
-                $current_admin_token = substr(strtoupper(md5(date('Y-m-d H') . $admin_secret_salt)), 0, 6);
+                // $admin_secret_salt = "DINIA_ADMIN_SECRET_2026";
+                // $current_admin_token = substr(strtoupper(md5(date('Y-m-d H') . $admin_secret_salt)), 0, 6);
+                $current_admin_token = generateRegistrationToken('admin');
                 $admin_reg_link = $protocol . "://" . $host . $dir . "/daftar_admin.php";
                 ?>
                 <div class="bg-blue-50 dark:bg-blue-900/30 p-4 rounded-xl border border-blue-100 dark:border-blue-800/50 mb-5 text-sm text-blue-700 dark:text-blue-300">

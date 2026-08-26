@@ -1,7 +1,7 @@
 <?php
 require 'config.php';
 
-$secret_salt = "DINIA_SUPERVISOR_SECRET_2026";
+// $secret_salt = "DINIA_SUPERVISOR_SECRET_2026";
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     header('Content-Type: application/json');
@@ -12,8 +12,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $confirm_password = $_POST['confirm_password'] ?? '';
     $kode_rahasia = strtoupper(trim($_POST['kode_rahasia'] ?? ''));
 
-    $current_token = substr(strtoupper(md5(date('Y-m-d H') . $secret_salt)), 0, 6);
-    $previous_token = substr(strtoupper(md5(date('Y-m-d H', strtotime('-1 hour')) . $secret_salt)), 0, 6);
+    
+    // $current_token = substr(strtoupper(md5(date('Y-m-d H') . $secret_salt)), 0, 6);
+    // $previous_token = substr(strtoupper(md5(date('Y-m-d H', strtotime('-1 hour')) . $secret_salt)), 0, 6);
 
     if ($id_karyawan === '' || $username === '' || $password === '' || $confirm_password === '' || $kode_rahasia === '') {
         echo json_encode(['success' => false, 'message' => 'Semua field wajib diisi.']);
@@ -31,9 +32,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         echo json_encode(['success' => false, 'message' => 'Password dan konfirmasi password tidak sama.']);
         exit();
     }
-    if (!hash_equals($current_token, $kode_rahasia) && !hash_equals($previous_token, $kode_rahasia)) {
-        echo json_encode(['success' => false, 'message' => 'Kode Rahasia tidak valid atau sudah kedaluwarsa.']);
-        exit();
+    // if (!hash_equals($current_token, $kode_rahasia) && !hash_equals($previous_token, $kode_rahasia)) {
+    //     echo json_encode(['success' => false, 'message' => 'Kode Rahasia tidak valid atau sudah kedaluwarsa.']);
+    //     exit();
+    // }
+    if(!verifyRegistrationToken('supervisor', $kode_rahasia)){
+        echo json_encode([
+            'success' => false,
+            'message' => 'Kode rahasia tidak valid atau sudah kedaluwarsa.'
+        ]);
+        exit();   
     }
 
     // Data identitas dan cakupan cabang wajib berasal dari data karyawan aktif.

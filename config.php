@@ -1,4 +1,14 @@
 <?php
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+
+//load env
+require __DIR__ . '/assets/vendor/autoload.php';
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
+$dotenv->load();
+
+
 // PERBAIKAN: Start output buffering di awal sekali
 ob_start();
 
@@ -54,10 +64,10 @@ if (session_status() === PHP_SESSION_NONE) {
 // Falls back to the original hardcoded XAMPP/Laragon-style defaults when no
 // env vars are set, so non-Docker local setups are unaffected. Docker Compose
 // injects DB_HOST/DB_USER/DB_PASS/DB_NAME to point at the `db` service.
-$host = getenv('DB_HOST') ?: "localhost";
-$username = getenv('DB_USER') ?: "root";
-$password = getenv('DB_PASS') ?: "";
-$database = getenv('DB_NAME') ?: "db_absensi.kry";
+$host = $_ENV['DB_HOST'] ?: "localhost";
+$username = $_ENV['DB_USER'] ?: "root";
+$password = $_ENV['DB_PASS'] ?: "";
+$database = $_ENV['DB_NAME'] ?: "db_absensi.kry";
 
 // Restore legacy mysqli behavior (return false on error) instead of PHP 8.1's
 // default of throwing mysqli_sql_exception on every DB error. This codebase's
