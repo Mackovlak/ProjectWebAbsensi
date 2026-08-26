@@ -5,7 +5,7 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'admin') {
     header("Location: login.php");
     exit();
 }
-$stmt_header_profile = $conn->prepare("SELECT u.id_karyawan, u.jenis_kelamin, u.foto_profil,
+$stmt_header_profile = $conn->prepare("SELECT u.id_karyawan, u.jenis_kelamin, u.foto_profil, u.face_descriptor,
                                               k.jenis_kelamin AS jenis_kelamin_karyawan, k.foto AS foto_karyawan
                                        FROM users u
                                        LEFT JOIN karyawan k ON k.id_karyawan = u.id_karyawan
@@ -14,6 +14,7 @@ $stmt_header_profile->bind_param('i', $_SESSION['user_id']);
 $stmt_header_profile->execute();
 $header_profile = $stmt_header_profile->get_result()->fetch_assoc() ?: [];
 $stmt_header_profile->close();
+$has_face_registered = !empty($header_profile['face_descriptor']);
 $admin_jk = !empty($header_profile['id_karyawan'])
     ? ($header_profile['jenis_kelamin_karyawan'] ?? $header_profile['jenis_kelamin'] ?? 'L')
     : ($header_profile['jenis_kelamin'] ?? $_SESSION['jenis_kelamin'] ?? 'L');
@@ -238,6 +239,20 @@ $is_admin_for_notif = true;
                 <i class="ph-duotone ph-calendar-dots text-xl w-6 flex items-center justify-center <?php echo basename($_SERVER['PHP_SELF']) == 'admin_kalender.php' ? '' : 'opacity-70 group-hover:opacity-100 transition-opacity'; ?>"></i>
                 <span class="font-medium text-sm">Kalender</span>
             </a>
+
+            <?php if (!empty($header_profile['id_karyawan'])): ?>
+            <a href="register_face.php" class="flex items-center justify-between px-4 py-3 mx-4 <?php echo basename($_SERVER['PHP_SELF']) == 'register_face.php' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
+                <div class="flex items-center gap-3">
+                    <i class="ph-duotone ph-shield-check text-xl w-6 flex items-center justify-center <?php echo basename($_SERVER['PHP_SELF']) == 'register_face.php' ? '' : 'opacity-70 group-hover:opacity-100 transition-opacity'; ?>"></i>
+                    <span class="font-medium text-sm">Registrasi Wajah</span>
+                </div>
+                <?php if ($has_face_registered): ?>
+                    <span class="inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-500/20 text-emerald-400 px-2.5 py-0.5 rounded-full border border-emerald-500/30 uppercase">
+                        <i class="fa-solid fa-check"></i> Aktif
+                    </span>
+                <?php endif; ?>
+            </a>
+            <?php endif; ?>
 
             <!-- Master Data dengan Submenu -->
             <p class="px-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 mt-8">Master Data</p>
