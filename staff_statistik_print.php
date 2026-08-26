@@ -51,7 +51,7 @@ if ($row = $res->fetch_assoc()) {
     <div id="report-container" class="max-w-6xl mx-auto bg-white p-4 sm:p-8 rounded-lg shadow-sm border border-gray-200">
         <!-- Header Laporan -->
         <div class="text-center mb-8 border-b-2 border-gray-800 pb-4">
-            <img src="/assets/images/logo.png" alt="" class="h-16 mx-auto mb-2" onerror="this.style.display='none'">
+            <img src="assets/images/logo.png" alt="" class="h-16 mx-auto mb-2" onerror="this.style.display='none'">
             <h1 class="text-2xl font-bold uppercase tracking-widest text-gray-900">LAPORAN STATISTIK DETAIL KARYAWAN</h1>
             <p class="text-gray-600 mt-1">Nama Karyawan: <strong><?php echo htmlspecialchars($karyawan_name); ?></strong></p>
             <p class="text-gray-600">Periode: <?php echo date('d M Y', strtotime($start_date)); ?> s/d <?php echo date('d M Y', strtotime($end_date)); ?></p>

@@ -183,7 +183,7 @@ $no = 1;
         
         <!-- HEADER (Logo & Judul) -->
         <div class="flex flex-col items-center mb-6">
-            <img src="/assets/images/logo.png" alt="" class="h-16 mb-2" onerror="this.style.display=\'none\'"> 
+            <img src="assets/images/logo.png" alt="" class="h-16 mb-2" onerror="this.style.display=\'none\'"> 
             <h1 class="font-bold text-base tracking-wide uppercase">GAJI KARYAWAN</h1>
             <p class="text-[10px]">Periode: <?php echo $months[$bulan] . " " . $tahun; ?></p>
         </div>

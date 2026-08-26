@@ -83,7 +83,7 @@ if (in_array($tipe, ['lap_gaji_divisi', 'rekap_gaji_divisi']) && !empty($cabang_
     <div id="report-container" class="max-w-6xl mx-auto bg-white p-4 sm:p-8 rounded-lg shadow-sm border border-gray-200">
         <!-- Header Laporan -->
         <div class="text-center mb-8 border-b-2 border-gray-800 pb-4">
-            <img src="/assets/images/logo.png" alt="" class="h-16 mx-auto mb-2" onerror="this.style.display='none'">
+            <img src="assets/images/logo.png" alt="" class="h-16 mx-auto mb-2" onerror="this.style.display='none'">
             <h1 class="text-2xl font-bold uppercase tracking-widest text-gray-900"><?php echo ($_SESSION['role'] === 'staff') ? 'Laporan Riwayat Gaji' : 'Laporan Pengeluaran Gaji'; ?></h1>
             <?php if ($tipe === 'lap_gaji_divisi'): ?>
             <p class="text-sm text-gray-500 font-semibold uppercase tracking-wide mt-1">(Pernama dan Percabang)</p>
