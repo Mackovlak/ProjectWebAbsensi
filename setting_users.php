@@ -312,7 +312,7 @@ $admin_count = $res_admin_count->fetch_assoc()['total_admin'];
             </div>
             <div class="p-6">
                 <?php
-                $supervisor_secret_salt = "DINIA_SUPERVISOR_SECRET_2026";
+                $supervisor_secret_salt = getSupervisorSecretSalt($conn);
                 $current_supervisor_token = substr(strtoupper(md5(date('Y-m-d H') . $supervisor_secret_salt)), 0, 6);
                 $protocol = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http');
                 $host = $_SERVER['HTTP_HOST'];

@@ -1,7 +1,7 @@
 <?php
 require 'config.php';
 
-$secret_salt = "DINIA_SUPERVISOR_SECRET_2026";
+$secret_salt = getSupervisorSecretSalt($conn);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     header('Content-Type: application/json');
