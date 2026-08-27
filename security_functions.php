@@ -53,6 +53,18 @@ function validateIDKaryawan($id) {
     return preg_match('/^[0-9]{11}$/', $id);
 }
 
+// Salt rahasia untuk kode registrasi supervisor, disimpan di system_settings
+// (bukan hardcode di source) supaya tidak ikut ter-commit ke repo publik.
+// Dibuat otomatis sekali lalu dipakai ulang lewat cache getPengaturan().
+function getSupervisorSecretSalt($conn) {
+    $salt = getPengaturan($conn, 'supervisor_secret_salt', null);
+    if (empty($salt)) {
+        $salt = bin2hex(random_bytes(32));
+        setPengaturan($conn, 'supervisor_secret_salt', $salt, 'Salt rahasia kode registrasi supervisor (auto-generated)');
+    }
+    return $salt;
+}
+
 // Function untuk log aktivitas
 function logActivity($conn, $action, $description, $user_id = null) {
     if ($user_id === null && isset($_SESSION['user_id'])) {

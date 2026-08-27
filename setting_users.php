@@ -11,8 +11,6 @@ $sql_users = "SELECT u.id, u.username, u.role, u.id_karyawan,
                  LEFT JOIN cabang c ON u.id_cabang = c.id
                  ORDER BY FIELD(u.role, 'admin', 'owner', 'supervisor', 'staff'), u.username ASC";
 
-// Daftar cabang untuk form pembuatan akun supervisor
-$res_cabang_supervisor = $conn->query("SELECT id, nama_cabang FROM cabang ORDER BY nama_cabang ASC");
 $result_users = $conn->query($sql_users);
 
 // Ambil data karyawan yang BELUM memiliki akun
@@ -307,60 +305,71 @@ $admin_count = $res_admin_count->fetch_assoc()['total_admin'];
     <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
         <div class="relative bg-white dark:bg-slate-800 rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-md w-full border border-slate-200 dark:border-slate-700">
             <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
-                <h3 class="text-lg font-bold text-slate-800 dark:text-white">Buat Akun Supervisor</h3>
+                <h3 class="text-lg font-bold text-slate-800 dark:text-white">Akses Pendaftaran Supervisor</h3>
                 <button onclick="closeModal('modal-tambah-supervisor')" class="text-slate-400 hover:text-slate-500 dark:hover:text-slate-300">
                     <i class="fa-solid fa-xmark text-xl"></i>
                 </button>
             </div>
+            <div class="p-6">
+                <?php
+                $supervisor_secret_salt = getSupervisorSecretSalt($conn);
+                $current_supervisor_token = substr(strtoupper(md5(date('Y-m-d H') . $supervisor_secret_salt)), 0, 6);
+                $protocol = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http');
+                $host = $_SERVER['HTTP_HOST'];
+                $dir = dirname($_SERVER['PHP_SELF']);
+                $supervisor_reg_link = $protocol . '://' . $host . $dir . '/daftar_supervisor.php';
+                ?>
+                <div class="bg-teal-50 dark:bg-teal-900/20 p-4 rounded-xl border border-teal-100 dark:border-teal-800/50 mb-5 text-sm text-teal-700 dark:text-teal-300">
+                    <p>Bagikan QR Code ini kepada calon Supervisor, <strong>beserta Kode Rahasia</strong> di bawah.</p>
+                </div>
 
-            <form id="formTambahSupervisor" action="master_process.php" method="POST">
-                <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
-                <div class="px-6 py-5 space-y-4">
-                    <div class="bg-teal-50 dark:bg-teal-900/20 p-4 rounded-xl border border-teal-100 dark:border-teal-800/50 text-sm text-teal-700 dark:text-teal-300">
-                        Supervisor hanya dapat meninjau dan menyetujui pengajuan izin karyawan pada cabang yang dipilih.
-                    </div>
+                <div class="flex justify-center mb-5">
+                    <div class="p-3 bg-white rounded-2xl shadow-sm border border-slate-200 flex items-center justify-center w-[216px] h-[216px]" id="visibleQRCodeSupervisorContainer"></div>
+                </div>
 
+                <div class="space-y-4">
                     <div>
-                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Nama Lengkap <span class="text-rose-500">*</span></label>
-                        <input type="text" name="nama_supervisor" required class="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 transition-colors">
+                        <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">OTP Code (Bersifat Rahasia!)</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="tokenSupervisor" value="<?php echo $current_supervisor_token; ?>" readonly class="w-full px-4 py-3 bg-teal-50 dark:bg-teal-900/20 border-2 border-teal-200 dark:border-teal-800/50 rounded-xl text-teal-800 dark:text-teal-400 font-mono text-center tracking-widest text-2xl font-bold outline-none cursor-pointer" onclick="copyToClipboard('tokenSupervisor', 'Kode Rahasia Supervisor')">
+                            <button type="button" onclick="copyToClipboard('tokenSupervisor', 'Kode Rahasia Supervisor')" class="px-5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 rounded-xl transition-colors shadow-sm" title="Salin Kode"><i class="fa-solid fa-copy"></i></button>
+                        </div>
                     </div>
-
                     <div>
-                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Cabang yang Disupervisi <span class="text-rose-500">*</span></label>
-                        <select name="id_cabang_supervisor" required class="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 transition-colors">
-                            <option value="">-- Pilih Cabang --</option>
-                            <?php if ($res_cabang_supervisor) { $res_cabang_supervisor->data_seek(0); while ($cbg = $res_cabang_supervisor->fetch_assoc()): ?>
-                                <option value="<?php echo (int)$cbg['id']; ?>"><?php echo htmlspecialchars($cbg['nama_cabang']); ?></option>
-                            <?php endwhile; } ?>
-                        </select>
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Username <span class="text-rose-500">*</span></label>
-                        <input type="text" name="username_supervisor" required minlength="4" class="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 transition-colors">
-                        <p class="text-xs text-slate-500 mt-1">Minimal 4 karakter, tanpa spasi.</p>
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Password <span class="text-rose-500">*</span></label>
-                        <input type="password" name="password_supervisor" required minlength="8" class="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 transition-colors">
-                        <p class="text-xs text-slate-500 mt-1">Minimal 8 karakter.</p>
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Jenis Kelamin</label>
-                        <select name="jenis_kelamin_supervisor" class="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 transition-colors">
-                            <option value="L">Laki-laki</option>
-                            <option value="P">Perempuan</option>
-                        </select>
+                        <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">Link Pendaftaran</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="linkSupervisor" value="<?php echo htmlspecialchars($supervisor_reg_link); ?>" readonly class="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-600 dark:text-slate-300 text-sm outline-none text-ellipsis">
+                            <button type="button" onclick="copyToClipboard('linkSupervisor', 'Link Pendaftaran Supervisor')" class="px-5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 rounded-xl transition-colors shadow-sm" title="Salin Link"><i class="fa-solid fa-link"></i></button>
+                        </div>
                     </div>
                 </div>
 
-                <div class="px-6 py-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
-                    <button type="button" onclick="closeModal('modal-tambah-supervisor')" class="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-sm font-medium">Batal</button>
-                    <button type="submit" name="tambah_supervisor" class="px-6 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl shadow-sm shadow-teal-500/30 transition-colors text-sm font-medium">Buat Akun</button>
+                <div class="mt-6 flex justify-center">
+                    <button type="button" onclick="downloadSupervisorQRCodeCard(event)" class="w-full px-6 py-3 bg-teal-600 hover:bg-teal-700 text-white rounded-xl shadow-md shadow-teal-500/30 transition-colors text-sm font-bold flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-download"></i> Unduh QR Code
+                    </button>
                 </div>
-            </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Hidden Card for Download Supervisor -->
+<div class="fixed top-[-9999px] left-[-9999px]">
+    <div id="downloadCardSupervisor" class="bg-gradient-to-br from-slate-900 to-slate-800 w-[400px] rounded-3xl p-8 text-center border border-slate-700 shadow-2xl relative overflow-hidden">
+        <div class="absolute -top-20 -right-20 w-40 h-40 bg-teal-500 rounded-full blur-3xl opacity-20"></div>
+        <div class="absolute -bottom-20 -left-20 w-40 h-40 bg-emerald-500 rounded-full blur-3xl opacity-20"></div>
+        <div class="relative z-10">
+            <div class="inline-flex items-center justify-center w-16 h-16 bg-teal-500 rounded-2xl mb-4 text-white text-3xl shadow-lg shadow-teal-500/50"><i class="fa-solid fa-user-check"></i></div>
+            <h2 class="text-2xl font-bold text-white mb-1">Akses Supervisor</h2>
+            <p class="text-slate-400 text-sm mb-6">Scan QR Code ini untuk mendaftarkan akun Supervisor Anda.</p>
+            <div class="bg-white p-4 rounded-2xl inline-block mb-6 shadow-xl flex items-center justify-center w-[224px] h-[224px] mx-auto" id="hiddenQRCodeSupervisorContainer"></div>
+            <div class="bg-slate-800/80 border border-slate-600 rounded-xl p-4 shadow-inner">
+                <p class="text-xs text-slate-400 uppercase tracking-widest font-semibold mb-1">OTP / Kode Rahasia</p>
+                <p class="text-3xl font-mono font-bold text-teal-400 tracking-[0.2em] my-2"><?php echo $current_supervisor_token; ?></p>
+                <p class="text-[10px] text-slate-500">*Kode ini akan berubah setiap 1 Jam</p>
+            </div>
+            <div class="mt-6 border-t border-slate-700 pt-4"><p class="text-[10px] font-medium text-slate-500 uppercase tracking-wider">AbsenKita Java Abadi Gemilang</p></div>
         </div>
     </div>
 </div>
@@ -684,7 +693,53 @@ document.addEventListener("DOMContentLoaded", function() {
             text: adminLink, width: 192, height: 192, colorDark : "#0f172a", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.H
         });
     }
+
+    // Supervisor QR Code
+    const supervisorLink = document.getElementById("linkSupervisor") ? document.getElementById("linkSupervisor").value : null;
+    if (supervisorLink) {
+        new QRCode(document.getElementById("visibleQRCodeSupervisorContainer"), {
+            text: supervisorLink, width: 192, height: 192, colorDark : "#0f172a", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.H
+        });
+        new QRCode(document.getElementById("hiddenQRCodeSupervisorContainer"), {
+            text: supervisorLink, width: 192, height: 192, colorDark : "#0f172a", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.H
+        });
+    }
 });
+
+// Download Supervisor QR Code Card Function
+function downloadSupervisorQRCodeCard(event) {
+    const btn = event.currentTarget;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Memproses...';
+    btn.disabled = true;
+
+    html2canvas(document.getElementById('downloadCardSupervisor'), {
+        backgroundColor: null,
+        scale: 2
+    }).then(canvas => {
+        const link = document.createElement('a');
+        link.download = 'Akses_Supervisor_Javag.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                icon: 'success',
+                title: 'Berhasil Diunduh!',
+                text: 'QR Code Supervisor telah disimpan.',
+                timer: 2000,
+                showConfirmButton: false
+            });
+        }
+    }).catch(err => {
+        console.error('Error generating supervisor QR card:', err);
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        if (typeof Swal !== 'undefined') Swal.fire('Error', 'Gagal memproses gambar.', 'error');
+    });
+}
 
 // Download Admin QR Code Card Function
 function downloadAdminQRCodeCard() {
@@ -699,7 +754,7 @@ function downloadAdminQRCodeCard() {
         scale: 2
     }).then(canvas => {
         let link = document.createElement('a');
-        link.download = 'Akses_Admin_Dinia.png';
+        link.download = 'Akses_Admin_Javag.png';
         link.href = canvas.toDataURL('image/png');
         link.click();
         
@@ -739,7 +794,7 @@ function downloadQRCodeCard() {
         useCORS: true // Memastikan gambar API luar bisa dirender
     }).then(canvas => {
         let link = document.createElement('a');
-        link.download = 'Akses_Owner_Dinia.png';
+        link.download = 'Akses_Owner_Javag.png';
         link.href = canvas.toDataURL('image/png');
         link.click();
         
@@ -1046,7 +1101,6 @@ function handleFormAjax(formId, processText, confirmText) {
                         // Ensure button name is appended since it is used in PHP isset
                         if (formId === 'formTambahStaff') formData.append('tambah_staff', '1');
                         if (formId === 'formTambahOwner') formData.append('tambah_owner', '1');
-                        if (formId === 'formTambahSupervisor') formData.append('tambah_supervisor', '1');
                         if (formId === 'form-edit-user') formData.append('edit_user', '1');
                         
                         fetch(this.action, {
@@ -1095,7 +1149,6 @@ function handleFormAjax(formId, processText, confirmText) {
 document.addEventListener('DOMContentLoaded', function() {
     handleFormAjax('formTambahStaff', 'Membuat akun staff...', 'Apakah Anda yakin ingin menyimpan akun staff ini?');
     handleFormAjax('formTambahOwner', 'Membuat akun owner...', 'Apakah Anda yakin ingin membuat akun owner ini?');
-    handleFormAjax('formTambahSupervisor', 'Membuat akun supervisor...', 'Apakah Anda yakin ingin membuat akun supervisor ini?');
     handleFormAjax('form-edit-user', 'Menyimpan password...', 'Apakah Anda yakin ingin mengganti password user ini?');
 });
 

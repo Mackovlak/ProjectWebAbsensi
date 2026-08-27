@@ -177,7 +177,7 @@ foreach ($log as $baris) {
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>Migrasi Pengajuan Izin - AbsenSlip Dinia</title>
+    <title>Migrasi Pengajuan Izin - AbsenSlip Javag</title>
     <style>
         body { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; background: #f1f5f9; padding: 40px 20px; color: #0f172a; }
         .box { max-width: 720px; margin: 0 auto; background: #fff; border-radius: 14px; padding: 28px 32px; box-shadow: 0 10px 30px rgba(15,23,42,.08); }

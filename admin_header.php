@@ -5,9 +5,22 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'admin') {
     header("Location: login.php");
     exit();
 }
-$admin_jk = $_SESSION['jenis_kelamin'] ?? 'L';
-if (isset($_SESSION['foto_profil']) && !empty($_SESSION['foto_profil'])) {
-    $avatar_src = 'assets/uploads/' . $_SESSION['foto_profil'];
+$stmt_header_profile = $conn->prepare("SELECT u.id_karyawan, u.jenis_kelamin, u.foto_profil,
+                                              k.jenis_kelamin AS jenis_kelamin_karyawan, k.foto AS foto_karyawan
+                                       FROM users u
+                                       LEFT JOIN karyawan k ON k.id_karyawan = u.id_karyawan
+                                       WHERE u.id = ?");
+$stmt_header_profile->bind_param('i', $_SESSION['user_id']);
+$stmt_header_profile->execute();
+$header_profile = $stmt_header_profile->get_result()->fetch_assoc() ?: [];
+$stmt_header_profile->close();
+$admin_jk = !empty($header_profile['id_karyawan'])
+    ? ($header_profile['jenis_kelamin_karyawan'] ?? $header_profile['jenis_kelamin'] ?? 'L')
+    : ($header_profile['jenis_kelamin'] ?? $_SESSION['jenis_kelamin'] ?? 'L');
+if (!empty($header_profile['id_karyawan']) && !empty($header_profile['foto_karyawan'])) {
+    $avatar_src = 'assets/images/foto_karyawan/' . $header_profile['foto_karyawan'];
+} elseif (!empty($header_profile['foto_profil'])) {
+    $avatar_src = 'assets/uploads/' . $header_profile['foto_profil'];
 } else {
     $avatar_src = ($admin_jk == 'P') ? 'assets/images/avatar_p.png?v=2' : 'assets/images/avatar_l.png?v=2';
 }
@@ -199,7 +212,7 @@ $is_admin_for_notif = true;
         <!-- Top Left Logo -->
         <div class="h-20 flex items-center gap-3 px-5 border-b border-[#1e293b] shrink-0 bg-slate-950">
             <div class="bg-white p-1.5 rounded-xl shadow-lg border border-white/10">
-                <img src="/assets/images/logo.png" alt="Javag Logo" class="h-8 w-auto" onerror="this.style.display='none'">
+                <img src="assets/images/logo.png" alt="Javag Logo" class="h-8 w-auto" onerror="this.style.display='none'">
             </div>
             <div class="flex flex-col justify-center space-y-0.5 logo-text-container">
                 <h2 class="text-2xl font-bold tracking-tight text-white leading-none">

@@ -1,23 +1,33 @@
 <?php
 require 'config.php';
-requireAdmin();
+requireLogin();
+
+if (!isAdmin() && !isSupervisor()) {
+    $_SESSION['error'] = "Akses ditolak. Persetujuan Dinas Luar hanya untuk Admin atau Supervisor.";
+    header("Location: " . dashboardUntukRole($_SESSION['role'] ?? 'staff'));
+    exit;
+}
+
+$default_redirect = isSupervisor() ? 'supervisor_dashboard.php' : 'histori_absensi.php';
+$redirect_url = isset($_POST['redirect_url']) ? basename(sanitizeInput($_POST['redirect_url'])) : $default_redirect;
+if (!preg_match('/^[a-zA-Z0-9_-]+\.php$/', $redirect_url)) {
+    $redirect_url = $default_redirect;
+}
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    header("Location: admin_dashboard.php");
+    header("Location: $default_redirect");
     exit;
 }
 
 // Validasi CSRF Token
 if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
     $_SESSION['error'] = "Validasi token gagal. Silakan coba lagi.";
-    $redirect = $_POST['redirect_url'] ?? 'histori_absensi.php';
-    header("Location: $redirect");
+    header("Location: $redirect_url");
     exit;
 }
 
 $id_absensi = isset($_POST['id_absensi']) ? intval($_POST['id_absensi']) : 0;
 $action = isset($_POST['action']) ? sanitizeInput($_POST['action']) : '';
-$redirect_url = isset($_POST['redirect_url']) ? sanitizeInput($_POST['redirect_url']) : 'histori_absensi.php';
 
 if ($id_absensi <= 0 || !in_array($action, ['acc', 'tolak'])) {
     $_SESSION['error'] = "Data tidak valid.";
@@ -25,8 +35,12 @@ if ($id_absensi <= 0 || !in_array($action, ['acc', 'tolak'])) {
     exit;
 }
 
-// Ambil data absensi
-$stmt = $conn->prepare("SELECT a.id, a.id_karyawan, a.keterangan, a.foto_bukti, k.nama_karyawan FROM absensi a JOIN karyawan k ON a.id_karyawan = k.id_karyawan WHERE a.id = ?");
+// Ambil data absensi beserta cabang untuk penegakan scope Supervisor.
+$stmt = $conn->prepare("SELECT a.id, a.id_karyawan, a.keterangan, a.foto_bukti,
+                               k.nama_karyawan, k.id_cabang
+                        FROM absensi a
+                        JOIN karyawan k ON a.id_karyawan = k.id_karyawan
+                        WHERE a.id = ?");
 $stmt->bind_param("i", $id_absensi);
 $stmt->execute();
 $result = $stmt->get_result();
@@ -40,6 +54,15 @@ if ($result->num_rows === 0) {
 
 $data = $result->fetch_assoc();
 $stmt->close();
+
+if (isSupervisor()) {
+    $cabang_supervisor = getCabangReviewer($conn, $_SESSION['user_id'], 'supervisor');
+    if ($cabang_supervisor <= 0 || (int)$data['id_cabang'] !== (int)$cabang_supervisor) {
+        $_SESSION['error'] = "Permintaan Dinas Luar ini berada di luar cabang yang Anda supervisi.";
+        header("Location: $redirect_url");
+        exit;
+    }
+}
 
 if ($data['keterangan'] !== 'Pending Dinas') {
     $_SESSION['error'] = "Status absensi bukan Pending Dinas, tidak dapat diproses.";
