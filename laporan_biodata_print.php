@@ -142,7 +142,7 @@ while ($row = $result->fetch_assoc()) {
                     <!-- Header Kop Laporan -->
                     <div class="flex items-center justify-between border-b-2 border-slate-800 pb-6 mb-8">
                         <div>
-                            <img src="assets/images/logo.png" alt="Logo" class="h-12 object-contain" onerror="this.style.display='none'">
+                            <img src="/assets/images/logo.png" alt="Logo" class="h-12 object-contain" onerror="this.style.display='none'">
                         </div>
                         <div class="text-right">
                             <h1 class="text-xl font-black text-slate-800 uppercase tracking-widest">BIODATA KARYAWAN</h1>

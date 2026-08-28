@@ -239,7 +239,7 @@ $csrf_token = generateCSRFToken();
         <!-- Top Left Logo -->
         <div class="absolute top-6 left-6 sm:top-10 sm:left-10 z-20 flex items-center gap-3 sm:gap-3.5">
             <div class="bg-white/90 backdrop-blur-md p-2 sm:p-2.5 rounded-2xl inline-flex shadow-lg border border-white/20">
-                 <img src="assets/images/logo.png" alt="Javag Logo" class="h-8 sm:h-10 w-auto" onerror="this.style.display='none'">
+                 <img src="/assets/images/logo.png" alt="Javag Logo" class="h-8 sm:h-10 w-auto" onerror="this.style.display='none'">
             </div>
             <div class="flex flex-col justify-center -space-y-0.5">
                 <h2 class="text-xl sm:text-2xl font-bold text-white tracking-tight leading-none">

@@ -213,7 +213,7 @@ $is_admin_for_notif = true;
         <!-- Top Left Logo -->
         <div class="h-20 flex items-center gap-3 px-5 border-b border-[#1e293b] shrink-0 bg-slate-950">
             <div class="bg-white p-1.5 rounded-xl shadow-lg border border-white/10">
-                <img src="assets/images/logo.png" alt="Javag Logo" class="h-8 w-auto" onerror="this.style.display='none'">
+                <img src="/assets/images/logo.png" alt="Javag Logo" class="h-8 w-auto" onerror="this.style.display='none'">
             </div>
             <div class="flex flex-col justify-center space-y-0.5 logo-text-container">
                 <h2 class="text-2xl font-bold tracking-tight text-white leading-none">

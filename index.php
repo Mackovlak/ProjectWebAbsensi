@@ -55,8 +55,8 @@
     <!-- Header / Navbar -->
     <header class="relative z-20 w-full py-6 px-8 sm:px-12 flex items-center justify-between">
         <div class="flex items-center gap-3 bg-white px-3 py-2 rounded-xl">
-            <img src="assets/images/hp.png" alt="HP Logo" class="h-10 sm:h-12 w-auto" onerror="this.style.display='none'">
-            <img src="assets/images/logo.png" alt="Javag Logo" class="h-10 sm:h-12 w-auto" onerror="this.style.display='none'">
+            <img src="/assets/images/hp.png" alt="HP Logo" class="h-10 sm:h-12 w-auto" onerror="this.style.display='none'">
+            <img src="/assets/images/logo.png" alt="Javag Logo" class="h-10 sm:h-12 w-auto" onerror="this.style.display='none'">
         </div>
     </header>
 

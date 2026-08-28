@@ -98,7 +98,7 @@ if ($tipe === 'statistik_karyawan' && !empty($user_id)) {
     <div id="report-container" class="max-w-6xl mx-auto bg-white p-4 sm:p-8 rounded-lg shadow-sm border border-gray-200">
         <!-- Header Laporan -->
         <div class="text-center mb-8 border-b-2 border-gray-800 pb-4">
-            <img src="assets/images/logo.png" alt="" class="h-16 mx-auto mb-2" onerror="this.style.display='none'">
+            <img src="/assets/images/logo.png" alt="" class="h-16 mx-auto mb-2" onerror="this.style.display='none'">
             <h1 class="text-2xl font-bold uppercase tracking-widest text-gray-900">Laporan <?php echo $title; ?></h1>
             <?php if ($tipe === 'statistik_karyawan'): ?>
             <p class="text-gray-600 mt-1">Nama Karyawan: <strong><?php echo htmlspecialchars($karyawan_name); ?></strong></p>

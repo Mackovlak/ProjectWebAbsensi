@@ -338,7 +338,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
         <div class="absen-container">
             <div class="logo-container">
                 <div class="logo-img-wrapper">
-                    <img src="assets/images/logo.png" alt="Javag Logo" onerror="this.style.display='none'">
+                    <img src="/assets/images/logo.png" alt="Javag Logo" onerror="this.style.display='none'">
                 </div>
                 <div class="logo-text-wrapper">
                     <div class="logo-title">Absen<span>Kita</span></div>
@@ -420,7 +420,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
         <div class="absen-container">
             <div class="logo-container">
                 <div class="logo-img-wrapper">
-                    <img src="assets/images/logo.png" alt="Javag Logo" onerror="this.style.display='none'">
+                    <img src="/assets/images/logo.png" alt="Javag Logo" onerror="this.style.display='none'">
                 </div>
                 <div class="logo-text-wrapper">
                     <div class="logo-title">Absen<span>Kita</span></div>
@@ -454,7 +454,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
         <div class="absen-container">
             <div class="logo-container">
                 <div class="logo-img-wrapper">
-                    <img src="assets/images/logo.png" alt="Javag Logo" onerror="this.style.display='none'">
+                    <img src="/assets/images/logo.png" alt="Javag Logo" onerror="this.style.display='none'">
                 </div>
                 <div class="logo-text-wrapper">
                     <div class="logo-title">Absen<span>Kita</span></div>
@@ -546,7 +546,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
         <div class="absen-container">
             <div class="logo-container">
                 <div class="logo-img-wrapper">
-                    <img src="assets/images/logo.png" alt="Javag Logo" onerror="this.style.display='none'">
+                    <img src="/assets/images/logo.png" alt="Javag Logo" onerror="this.style.display='none'">
                 </div>
                 <div class="logo-text-wrapper">
                     <div class="logo-title">Absen<span>Kita</span></div>
