@@ -48,14 +48,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Data identitas dan cakupan cabang wajib berasal dari data karyawan aktif.
     $stmt_karyawan = $conn->prepare("SELECT k.nama_karyawan, k.jenis_kelamin, k.id_cabang
                                      FROM karyawan k
-                                     LEFT JOIN users u ON u.id_karyawan = k.id_karyawan AND u.role = 'supervisor'
+                                     LEFT JOIN users u ON u.id_karyawan = k.id_karyawan
                                      WHERE k.id_karyawan = ? AND k.status = 'aktif' AND u.id IS NULL");
     $stmt_karyawan->bind_param('s', $id_karyawan);
     $stmt_karyawan->execute();
     $data_karyawan = $stmt_karyawan->get_result()->fetch_assoc();
     $stmt_karyawan->close();
     if (!$data_karyawan || empty($data_karyawan['id_cabang'])) {
-        echo json_encode(['success' => false, 'message' => 'Karyawan tidak tersedia, sudah memiliki akun Supervisor, atau belum memiliki cabang.']);
+        echo json_encode(['success' => false, 'message' => 'Karyawan tidak tersedia, sudah ditautkan ke akun lain, atau belum memiliki cabang.']);
         exit();
     }
     $nama = $data_karyawan['nama_karyawan'];
@@ -88,7 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $res_karyawan = $conn->query("SELECT k.id_karyawan, k.nama_karyawan, c.nama_cabang
                               FROM karyawan k
                               LEFT JOIN cabang c ON c.id = k.id_cabang
-                              LEFT JOIN users u ON u.id_karyawan = k.id_karyawan AND u.role = 'supervisor'
+                              LEFT JOIN users u ON u.id_karyawan = k.id_karyawan
                               WHERE k.status = 'aktif' AND u.id IS NULL
                               ORDER BY k.nama_karyawan ASC");
 ?>

@@ -100,6 +100,35 @@ try {
     die("Database connection error: " . $e->getMessage());
 }
 
+// Akun yang dinonaktifkan harus kehilangan akses pada request berikutnya,
+// bukan baru setelah sesi/cookie berakhir.
+if (!empty($_SESSION['user_id'])) {
+    $session_user_id = (int)$_SESSION['user_id'];
+    $stmt_session_user = $conn->prepare("SELECT is_active FROM users WHERE id = ? LIMIT 1");
+    // Tetap kompatibel selama migrasi belum dijalankan: prepare() akan false
+    // bila kolom is_active belum tersedia.
+    if ($stmt_session_user) {
+        $stmt_session_user->bind_param('i', $session_user_id);
+        $stmt_session_user->execute();
+        $session_user = $stmt_session_user->get_result()->fetch_assoc();
+        $stmt_session_user->close();
+
+        if (!$session_user || !(bool)$session_user['is_active']) {
+            $_SESSION = [];
+            if (ini_get('session.use_cookies')) {
+                $cookie = session_get_cookie_params();
+                setcookie(session_name(), '', time() - 42000, $cookie['path'], $cookie['domain'], $cookie['secure'], $cookie['httponly']);
+            }
+            session_destroy();
+
+            if (basename($_SERVER['PHP_SELF'] ?? '') !== 'login.php') {
+                header('Location: login.php');
+                exit();
+            }
+        }
+    }
+}
+
 // Error reporting settings - MATIKAN saat production
 if ($isLocalhost) {
     error_reporting(E_ALL);

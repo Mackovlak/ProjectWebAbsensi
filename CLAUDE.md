@@ -67,7 +67,7 @@ It also pulls in `izin_functions.php` (leave-request domain logic) and `kalender
 - All DB writes/reads with user input use mysqli prepared statements (`$conn->prepare` + `bind_param`); a few older reads combine `real_escape_string` with prepared statements defensively.
 - All state-changing POST forms include and verify a `csrf_token` from `generateCSRFToken()`/`verifyCSRFToken()`.
 - `.htaccess` denies direct web access to `config.php`, itself, and files with sensitive extensions (`.sql`, `.log`, `.ini`, `.conf`, `.bak`, etc.), and sets basic security headers.
-- Login (`login.php`) implements session-based rate limiting (5 attempts / 15 min lockout), regenerates the session ID on success, and looks up by `username` first, falling back to `id_karyawan` (preferring a `staff`-role account if an employee has multiple accounts).
+- Login (`login.php`) implements session-based rate limiting (5 attempts / 15 min lockout), regenerates the session ID on success, and looks up by `username` first, falling back to `id_karyawan`. User management now enforces a one-to-one employee/account link via `uniq_users_id_karyawan`; `users.is_active` disables login and invalidates an existing session on its next request.
 - Employee soft-delete (`nonaktifkan_karyawan` in `master_process.php`) deletes the linked `users` login row (so the account can't log in) but keeps the `karyawan` row with `status = 'nonaktif'`; attendance/payroll history is never deleted when an employee record is removed, by explicit design.
 
 ## Key tables referenced in code (no schema file exists — inferred from queries)
