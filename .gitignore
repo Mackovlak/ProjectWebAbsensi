@@ -1,3 +1,5 @@
 .env
 /assets/uploads
 /assets/images/foto_karyawan
+/assets/vendor
+assets/composer.lock

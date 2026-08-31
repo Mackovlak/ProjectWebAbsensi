@@ -3,7 +3,7 @@ require 'config.php';
 include 'admin_header.php';
 
 // Ambil semua data pengguna dengan informasi tambahan
-$sql_users = "SELECT u.id, u.username, u.role, u.id_karyawan, 
+$sql_users = "SELECT u.id, u.username, u.role, u.is_active, u.id_karyawan,
                  k.nama_karyawan, u.face_descriptor, u.face_registered_at, u.face_reset_allowed,
                  c.nama_cabang AS cabang_supervisi
                  FROM users u 
@@ -13,25 +13,31 @@ $sql_users = "SELECT u.id, u.username, u.role, u.id_karyawan,
 
 $result_users = $conn->query($sql_users);
 
-// Ambil data karyawan yang BELUM memiliki akun
+// Ambil data karyawan yang BELUM ditautkan ke akun mana pun
 $sql_karyawan_tanpa_akun = "SELECT k.id, k.nama_karyawan, k.id_karyawan 
                             FROM karyawan k 
-                            LEFT JOIN users u ON k.id_karyawan = u.id_karyawan AND u.role = 'staff'
+                            LEFT JOIN users u ON k.id_karyawan = u.id_karyawan
                             WHERE u.id IS NULL AND k.status = 'aktif'
                             ORDER BY k.nama_karyawan ASC";
 $res_karyawan = $conn->query($sql_karyawan_tanpa_akun);
 
+// Semua karyawan aktif untuk koreksi tautan akun. Status pemakaian tetap
+// ditampilkan agar pilihan yang sudah dipakai akun lain dapat dinonaktifkan.
+$sql_karyawan_edit = "SELECT k.id_karyawan, k.nama_karyawan, k.id_cabang,
+                             GROUP_CONCAT(u.id ORDER BY u.id) AS linked_user_ids,
+                             GROUP_CONCAT(u.username ORDER BY u.id SEPARATOR ', ') AS linked_usernames
+                      FROM karyawan k
+                      LEFT JOIN users u ON u.id_karyawan = k.id_karyawan
+                      WHERE k.status = 'aktif'
+                      GROUP BY k.id_karyawan, k.nama_karyawan, k.id_cabang
+                      ORDER BY k.nama_karyawan ASC";
+$res_karyawan_edit = $conn->query($sql_karyawan_edit);
+$karyawan_edit_options = [];
+while ($karyawan_edit = $res_karyawan_edit->fetch_assoc()) {
+    $karyawan_edit_options[] = $karyawan_edit;
+}
+
 $current_user_id = $_SESSION['user_id'];
-
-// Dapatkan role user yang sedang login
-$sql_current_role = "SELECT role FROM users WHERE id = '$current_user_id'";
-$result_current_role = $conn->query($sql_current_role);
-$current_user_role = $result_current_role->fetch_assoc()['role'];
-
-// Hitung jumlah admin
-$sql_admin_count = "SELECT COUNT(*) as total_admin FROM users WHERE role = 'admin'";
-$res_admin_count = $conn->query($sql_admin_count);
-$admin_count = $res_admin_count->fetch_assoc()['total_admin'];
 ?>
 
 <!-- Top Action Bar -->
@@ -45,13 +51,6 @@ $admin_count = $res_admin_count->fetch_assoc()['total_admin'];
         <button onclick="openModal('modal-tambah-staff')" class="flex items-center justify-center gap-2 px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl transition-colors font-medium text-sm shadow-sm shadow-brand-500/30 w-full sm:w-auto whitespace-nowrap">
             <i class="fa-solid fa-user-plus"></i> Buat Akun Staff
         </button>
-        
-        <?php
-        // Cek apakah sudah ada owner
-        $sql_owner_count = "SELECT COUNT(*) as total_owner FROM users WHERE role = 'owner'";
-        $res_owner_count = $conn->query($sql_owner_count);
-        $owner_count = $res_owner_count->fetch_assoc()['total_owner'];
-        ?>
         
         <button onclick="openModal('modal-tambah-admin')" class="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors font-medium text-sm shadow-sm shadow-blue-500/30 w-full sm:w-auto whitespace-nowrap">
             <i class="fa-solid fa-user-shield"></i> Buat Akun Admin
@@ -104,7 +103,7 @@ $admin_count = $res_admin_count->fetch_assoc()['total_admin'];
                     <th class="px-6 py-4 font-semibold w-16 text-center">No</th>
                     <th class="px-6 py-4 font-semibold">Username</th>
                     <th class="px-6 py-4 font-semibold">Nama Karyawan</th>
-                    <th class="px-6 py-4 font-semibold text-center">Status</th>
+                    <th class="px-6 py-4 font-semibold text-center">Role / Akun</th>
                     <th class="px-6 py-4 font-semibold text-center">Face Status</th>
                     <th class="px-6 py-4 font-semibold text-right">Aksi</th>
                 </tr>
@@ -132,6 +131,9 @@ $admin_count = $res_admin_count->fetch_assoc()['total_admin'];
                             ?>
                             <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold border <?php echo $roleClass; ?> search-target uppercase tracking-wide">
                                 <?php echo htmlspecialchars($row['role']); ?>
+                            </span>
+                            <span class="block mt-1 text-[11px] font-semibold search-target <?php echo $row['is_active'] ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'; ?>">
+                                <i class="fa-solid <?php echo $row['is_active'] ? 'fa-circle-check' : 'fa-circle-pause'; ?> mr-1"></i><?php echo $row['is_active'] ? 'Aktif' : 'Nonaktif'; ?>
                             </span>
                             <?php if ($row['role'] == 'supervisor'): ?>
                                 <span class="block text-[11px] text-slate-400 mt-1 search-target">
@@ -169,10 +171,23 @@ $admin_count = $res_admin_count->fetch_assoc()['total_admin'];
                         <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                             <?php 
                             $is_own_account = ($row['id'] == $current_user_id);
-                            $is_last_admin = ($row['role'] == 'admin' && $admin_count <= 1);
-                            $is_other_admin = ($row['role'] == 'admin' && !$is_own_account && $current_user_role == 'admin');
                             ?>
                             <div class="flex items-center justify-end gap-2">
+                                <?php
+                                $edit_user_payload = htmlspecialchars(json_encode([
+                                    'id' => (int)$row['id'],
+                                    'username' => $row['username'],
+                                    'role' => $row['role'],
+                                    'is_active' => (int)$row['is_active'],
+                                    'id_karyawan' => $row['id_karyawan'],
+                                    'is_own_account' => $is_own_account,
+                                    'can_change_password' => $row['role'] !== 'admin' || $is_own_account,
+                                ], JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
+                                ?>
+
+                                <button type="button" data-user="<?php echo $edit_user_payload; ?>" onclick="openUserManagementEditModal(this)" class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors" title="Edit User">
+                                    <i class="fa-solid fa-user-pen"></i>
+                                </button>
                                 
                                 <?php if ($row['role'] == 'staff'): ?>
                                     <?php if ($has_face && !$reset_allowed): ?>
@@ -190,16 +205,9 @@ $admin_count = $res_admin_count->fetch_assoc()['total_admin'];
                                 <?php endif; ?>
 
                                 <?php if ($row['role'] == 'staff'): ?>
-                                    <button onclick="openEditUserModal('<?php echo $row['id']; ?>', '<?php echo htmlspecialchars(addslashes($row['username'])); ?>')" class="p-2 text-fuchsia-600 hover:bg-fuchsia-50 rounded-lg dark:text-fuchsia-400 dark:hover:bg-fuchsia-900/30 transition-colors" title="Ganti Password">
-                                        <i class="fa-solid fa-key"></i>
-                                    </button>
                                     <a href="master_process.php?hapus_user=<?php echo $row['id']; ?>" onclick="event.preventDefault(); handleDeleteUserAction(this.href, 'Hapus Akun Staff?', 'Yakin hapus akun staff ini?');" class="p-2 text-red-600 hover:bg-red-50 rounded-lg dark:text-red-400 dark:hover:bg-red-900/30 transition-colors" title="Hapus Staff">
                                         <i class="fa-solid fa-trash-can"></i>
                                     </a>
-                                <?php elseif ($row['role'] == 'owner'): ?>
-                                    <button onclick="openEditUserModal('<?php echo $row['id']; ?>', '<?php echo htmlspecialchars(addslashes($row['username'])); ?>')" class="p-2 text-fuchsia-600 hover:bg-fuchsia-50 rounded-lg dark:text-fuchsia-400 dark:hover:bg-fuchsia-900/30 transition-colors" title="Ganti Password Owner">
-                                        <i class="fa-solid fa-key"></i>
-                                    </button>
                                 <?php endif; ?>
                             </div>
                         </td>
@@ -312,8 +320,7 @@ $admin_count = $res_admin_count->fetch_assoc()['total_admin'];
             </div>
             <div class="p-6">
                 <?php
-                $supervisor_secret_salt = getSupervisorSecretSalt($conn);
-                $current_supervisor_token = substr(strtoupper(md5(date('Y-m-d H') . $supervisor_secret_salt)), 0, 6);
+                $current_supervisor_token = generateRegistrationToken('supervisor');
                 $protocol = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http');
                 $host = $_SERVER['HTTP_HOST'];
                 $dir = dirname($_SERVER['PHP_SELF']);
@@ -387,8 +394,9 @@ $admin_count = $res_admin_count->fetch_assoc()['total_admin'];
             </div>
             <div class="p-6">
                 <?php
-                $secret_salt = "DINIA_OWNER_SECRET_2026";
-                $current_owner_token = substr(strtoupper(md5(date('Y-m-d H') . $secret_salt)), 0, 6);
+                // $secret_salt = "DINIA_OWNER_SECRET_2026";
+                // $current_owner_token = substr(strtoupper(md5(date('Y-m-d H') . $secret_salt)), 0, 6);
+                $current_owner_token = generateRegistrationToken('owner');
                 $protocol = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http");
                 $host = $_SERVER['HTTP_HOST'];
                 $dir = dirname($_SERVER['PHP_SELF']);
@@ -481,8 +489,9 @@ $admin_count = $res_admin_count->fetch_assoc()['total_admin'];
             </div>
             <div class="p-6">
                 <?php
-                $admin_secret_salt = "DINIA_ADMIN_SECRET_2026";
-                $current_admin_token = substr(strtoupper(md5(date('Y-m-d H') . $admin_secret_salt)), 0, 6);
+                // $admin_secret_salt = "DINIA_ADMIN_SECRET_2026";
+                // $current_admin_token = substr(strtoupper(md5(date('Y-m-d H') . $admin_secret_salt)), 0, 6);
+                $current_admin_token = generateRegistrationToken('admin');
                 $admin_reg_link = $protocol . "://" . $host . $dir . "/daftar_admin.php";
                 ?>
                 <div class="bg-blue-50 dark:bg-blue-900/30 p-4 rounded-xl border border-blue-100 dark:border-blue-800/50 mb-5 text-sm text-blue-700 dark:text-blue-300">
@@ -559,13 +568,13 @@ $admin_count = $res_admin_count->fetch_assoc()['total_admin'];
     </div>
 </div>
 
-<!-- Modal Edit Password User -->
-<div id="modal-edit-user" class="fixed inset-0 z-50 hidden">
+<!-- Modal Edit User -->
+<div id="modal-edit-user" class="fixed inset-0 z-50 hidden overflow-y-auto">
     <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onclick="closeModal('modal-edit-user')"></div>
     <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-        <div class="relative bg-white dark:bg-slate-800 rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-md w-full border border-slate-200 dark:border-slate-700">
+        <div class="relative bg-white dark:bg-slate-800 rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-lg w-full border border-slate-200 dark:border-slate-700">
             <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
-                <h3 class="text-lg font-bold text-slate-800 dark:text-white">Ganti Password</h3>
+                <h3 class="text-lg font-bold text-slate-800 dark:text-white">Edit User</h3>
                 <button onclick="closeModal('modal-edit-user')" class="text-slate-400 hover:text-slate-500 dark:hover:text-slate-300">
                     <i class="fa-solid fa-xmark text-xl"></i>
                 </button>
@@ -573,25 +582,59 @@ $admin_count = $res_admin_count->fetch_assoc()['total_admin'];
             <form action="master_process.php" method="POST" id="form-edit-user">
                 <input type="hidden" name="edit_user" value="1">
                 <input type="hidden" name="id_user" id="edit-id-user">
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(generateCSRFToken()); ?>">
                 <div class="px-6 py-5 space-y-4">
                     <div>
                         <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Username</label>
-                        <input type="text" id="edit-username-user" readonly class="w-full px-4 py-2.5 bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-500 dark:text-slate-400 text-sm focus:outline-none cursor-not-allowed">
+                        <input type="text" id="edit-username-user" name="username" readonly class="w-full px-4 py-2.5 bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-500 dark:text-slate-400 text-sm focus:outline-none cursor-not-allowed">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Password Baru <span class="text-red-500">*</span></label>
+                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Role</label>
+                        <select id="edit-role-user" name="role" required onchange="updateEditUserRequirements()" class="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 transition-colors">
+                            <option value="admin">Admin</option>
+                            <option value="owner">Owner</option>
+                            <option value="supervisor">Supervisor</option>
+                            <option value="staff">Staff</option>
+                        </select>
+                        <p id="edit-role-lock-note" class="hidden text-xs text-amber-600 dark:text-amber-400 mt-1">Role akun Anda sendiri tidak dapat diubah.</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Status Akun</label>
+                        <select id="edit-active-user" name="is_active" required onchange="updateEditUserRequirements()" class="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 transition-colors">
+                            <option value="1">Aktif</option>
+                            <option value="0">Nonaktif</option>
+                        </select>
+                        <p id="edit-active-lock-note" class="hidden text-xs text-amber-600 dark:text-amber-400 mt-1">Akun Anda sendiri tidak dapat dinonaktifkan.</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Karyawan <span id="edit-karyawan-required" class="text-red-500">*</span></label>
+                        <select id="edit-karyawan-user" name="id_karyawan" onchange="updateEditUserRequirements()" class="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 transition-colors">
+                            <option value="">Tidak ditautkan</option>
+                            <?php foreach ($karyawan_edit_options as $karyawan_option): ?>
+                                <option value="<?php echo htmlspecialchars($karyawan_option['id_karyawan']); ?>"
+                                        data-linked-user-ids="<?php echo htmlspecialchars($karyawan_option['linked_user_ids'] ?? ''); ?>"
+                                        data-linked-usernames="<?php echo htmlspecialchars($karyawan_option['linked_usernames'] ?? ''); ?>">
+                                    <?php echo htmlspecialchars($karyawan_option['nama_karyawan'] . ' (' . $karyawan_option['id_karyawan'] . ')'); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <p id="edit-karyawan-help" class="text-xs text-slate-500 mt-1">Staff dan Supervisor wajib ditautkan ke satu karyawan aktif.</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Password Baru <span class="text-slate-400">(opsional)</span></label>
                         <div class="relative">
-                            <input type="password" id="edit-password-user" name="password" required minlength="6" class="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 transition-colors pr-10">
+                            <input type="password" id="edit-password-user" name="password" minlength="8" class="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 transition-colors pr-10">
                             <button type="button" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-brand-500 transition-colors" onclick="togglePasswordVisibility('edit-password-user', this)">
                                 <i class="fa-regular fa-eye-slash"></i>
                             </button>
                         </div>
-                        <p class="text-xs text-slate-500 mt-1">Minimal 6 karakter.</p>
+                        <p class="text-xs text-slate-500 mt-1">Kosongkan bila tidak diubah. Minimal 8 karakter, berisi huruf dan angka.</p>
+                        <p id="edit-password-lock-note" class="hidden text-xs text-amber-600 dark:text-amber-400 mt-1">Password admin lain tidak dapat diubah. Turunkan rolenya terlebih dahulu bila koreksi password diperlukan.</p>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Konfirmasi Password <span class="text-red-500">*</span></label>
+                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Konfirmasi Password <span class="text-slate-400">(bila diubah)</span></label>
                         <div class="relative">
-                            <input type="password" id="edit-password-user-confirm" required minlength="6" class="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 transition-colors pr-10">
+                            <input type="password" id="edit-password-user-confirm" minlength="8" class="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 transition-colors pr-10">
                             <button type="button" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-brand-500 transition-colors" onclick="togglePasswordVisibility('edit-password-user-confirm', this)">
                                 <i class="fa-regular fa-eye-slash"></i>
                             </button>
@@ -1073,6 +1116,26 @@ function handleFormAjax(formId, processText, confirmText) {
                     });
                     return;
                 }
+                if (pwd && (!/[A-Za-z]/.test(pwd) || !/[0-9]/.test(pwd))) {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Validasi Gagal',
+                        text: 'Password baru harus berisi huruf dan angka.',
+                        customClass: { popup: 'rounded-3xl' }
+                    });
+                    return;
+                }
+                const role = document.getElementById('edit-role-user').value;
+                const idKaryawan = document.getElementById('edit-karyawan-user').value;
+                if ((role === 'staff' || role === 'supervisor') && !idKaryawan) {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Validasi Gagal',
+                        text: 'Role Staff dan Supervisor wajib ditautkan ke karyawan aktif.',
+                        customClass: { popup: 'rounded-3xl' }
+                    });
+                    return;
+                }
             }
             
             if (typeof Swal !== 'undefined') {
@@ -1149,7 +1212,7 @@ function handleFormAjax(formId, processText, confirmText) {
 document.addEventListener('DOMContentLoaded', function() {
     handleFormAjax('formTambahStaff', 'Membuat akun staff...', 'Apakah Anda yakin ingin menyimpan akun staff ini?');
     handleFormAjax('formTambahOwner', 'Membuat akun owner...', 'Apakah Anda yakin ingin membuat akun owner ini?');
-    handleFormAjax('form-edit-user', 'Menyimpan password...', 'Apakah Anda yakin ingin mengganti password user ini?');
+    handleFormAjax('form-edit-user', 'Menyimpan perubahan user...', 'Periksa kembali perubahan role dan tautan karyawan. Lanjutkan?');
 });
 
 // Search
@@ -1319,6 +1382,75 @@ function togglePasswordVisibility(inputId, btn) {
         icon.classList.add('fa-eye-slash');
         icon.classList.remove('text-brand-500');
     }
+}
+
+let editUserOriginal = null;
+
+function openUserManagementEditModal(button) {
+    const user = JSON.parse(button.dataset.user);
+    editUserOriginal = user;
+
+    document.getElementById('edit-id-user').value = user.id;
+    document.getElementById('edit-username-user').value = user.username;
+    document.getElementById('edit-role-user').value = user.role;
+    document.getElementById('edit-active-user').value = String(user.is_active);
+    document.getElementById('edit-password-user').value = '';
+    document.getElementById('edit-password-user-confirm').value = '';
+    document.getElementById('edit-password-user').disabled = !user.can_change_password;
+    document.getElementById('edit-password-user-confirm').disabled = !user.can_change_password;
+    document.getElementById('edit-password-lock-note').classList.toggle('hidden', user.can_change_password);
+
+    const roleSelect = document.getElementById('edit-role-user');
+    const karyawanSelect = document.getElementById('edit-karyawan-user');
+    const activeSelect = document.getElementById('edit-active-user');
+    const lockNote = document.getElementById('edit-role-lock-note');
+    roleSelect.setAttribute('aria-disabled', user.is_own_account ? 'true' : 'false');
+    roleSelect.classList.toggle('cursor-not-allowed', user.is_own_account);
+    lockNote.classList.toggle('hidden', !user.is_own_account);
+    activeSelect.setAttribute('aria-disabled', user.is_own_account ? 'true' : 'false');
+    activeSelect.classList.toggle('cursor-not-allowed', user.is_own_account);
+    document.getElementById('edit-active-lock-note').classList.toggle('hidden', !user.is_own_account);
+
+    Array.from(karyawanSelect.options).forEach(option => {
+        if (!option.value) return;
+        const linkedIds = (option.dataset.linkedUserIds || '').split(',').filter(Boolean);
+        const usedByOtherUser = linkedIds.some(id => Number(id) !== Number(user.id));
+        option.disabled = usedByOtherUser;
+        const baseLabel = option.textContent.replace(/ \u2014 sudah dipakai:.*$/, '');
+        option.textContent = usedByOtherUser
+            ? baseLabel + ' \u2014 sudah dipakai: ' + option.dataset.linkedUsernames
+            : baseLabel;
+    });
+
+    karyawanSelect.value = user.id_karyawan || '';
+    if (karyawanSelect.value !== (user.id_karyawan || '')) {
+        // Data lama dapat berisi tautan ganda. Jangan menyamarkan konflik itu:
+        // admin harus memilih tautan kosong/valid sebelum menyimpan.
+        karyawanSelect.value = '';
+    }
+    karyawanSelect.setAttribute('aria-disabled', user.is_own_account ? 'true' : 'false');
+    karyawanSelect.classList.toggle('cursor-not-allowed', user.is_own_account);
+
+    updateEditUserRequirements();
+    openModal('modal-edit-user');
+}
+
+function updateEditUserRequirements() {
+    const roleSelect = document.getElementById('edit-role-user');
+    const karyawanSelect = document.getElementById('edit-karyawan-user');
+    const activeSelect = document.getElementById('edit-active-user');
+    if (editUserOriginal && editUserOriginal.is_own_account && roleSelect.value !== editUserOriginal.role) {
+        roleSelect.value = editUserOriginal.role;
+    }
+    if (editUserOriginal && editUserOriginal.is_own_account && karyawanSelect.value !== (editUserOriginal.id_karyawan || '')) {
+        karyawanSelect.value = editUserOriginal.id_karyawan || '';
+    }
+    if (editUserOriginal && editUserOriginal.is_own_account && activeSelect.value !== String(editUserOriginal.is_active)) {
+        activeSelect.value = String(editUserOriginal.is_active);
+    }
+    const requiresKaryawan = roleSelect.value === 'staff' || roleSelect.value === 'supervisor';
+    karyawanSelect.required = requiresKaryawan;
+    document.getElementById('edit-karyawan-required').classList.toggle('hidden', !requiresKaryawan);
 }
 
 // Modal Pilih Karyawan Logic

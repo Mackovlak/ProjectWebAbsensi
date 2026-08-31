@@ -53,9 +53,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && $_SESSION['login_attempts'] < $max_a
         $password = $_POST['password'];
         
         // Coba cari berdasarkan username (exact match)
-        $sql = "SELECT u.id, u.nama, u.username, u.password, u.role, u.id_karyawan, u.jenis_kelamin, u.foto_profil, k.status as status_karyawan 
-                FROM users u 
-                LEFT JOIN karyawan k ON u.id_karyawan = k.id_karyawan 
+        $sql = "SELECT u.id, u.nama, u.username, u.password, u.role, u.is_active, u.id_karyawan, u.jenis_kelamin, u.foto_profil, k.status as status_karyawan
+                FROM users u
+                LEFT JOIN karyawan k ON u.id_karyawan = k.id_karyawan
                 WHERE u.username = ?";
         $stmt = $conn->prepare($sql);
         $stmt->bind_param("s", $username);
@@ -65,9 +65,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && $_SESSION['login_attempts'] < $max_a
         if ($result->num_rows == 0) {
             // Jika tidak ditemukan, coba cari berdasarkan id_karyawan
             // Prioritaskan role 'staff' jika Karyawan memiliki lebih dari 1 akun (misal Admin & Staff)
-            $sql2 = "SELECT u.id, u.nama, u.username, u.password, u.role, u.id_karyawan, u.jenis_kelamin, u.foto_profil, k.status as status_karyawan 
-                    FROM users u 
-                    LEFT JOIN karyawan k ON u.id_karyawan = k.id_karyawan 
+            $sql2 = "SELECT u.id, u.nama, u.username, u.password, u.role, u.is_active, u.id_karyawan, u.jenis_kelamin, u.foto_profil, k.status as status_karyawan
+                    FROM users u
+                    LEFT JOIN karyawan k ON u.id_karyawan = k.id_karyawan
                     WHERE u.id_karyawan = ?
                     ORDER BY CASE WHEN u.role = 'staff' THEN 1 ELSE 2 END LIMIT 1";
             $stmt2 = $conn->prepare($sql2);
@@ -79,8 +79,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && $_SESSION['login_attempts'] < $max_a
         if ($result->num_rows == 1) {
             $user = $result->fetch_assoc();
             
+            if (!(bool)$user['is_active']) {
+                $_SESSION['login_attempts']++;
+                $_SESSION['last_attempt_time'] = time();
+                $error = "Akses ditolak! Akun Anda telah dinonaktifkan oleh administrator.";
             // Validasi Status Karyawan jika akun terikat pada ID Karyawan
-            if (!empty($user['id_karyawan']) && $user['status_karyawan'] !== 'aktif') {
+            } else if (!empty($user['id_karyawan']) && $user['status_karyawan'] !== 'aktif') {
                 $_SESSION['login_attempts']++;
                 $_SESSION['last_attempt_time'] = time();
                 $error = "Akses ditolak! Akun Anda dinonaktifkan (Status Karyawan: Tidak Aktif / Resign).";
@@ -235,7 +239,7 @@ $csrf_token = generateCSRFToken();
         <!-- Top Left Logo -->
         <div class="absolute top-6 left-6 sm:top-10 sm:left-10 z-20 flex items-center gap-3 sm:gap-3.5">
             <div class="bg-white/90 backdrop-blur-md p-2 sm:p-2.5 rounded-2xl inline-flex shadow-lg border border-white/20">
-                 <img src="assets/images/logo.png" alt="Javag Logo" class="h-8 sm:h-10 w-auto" onerror="this.style.display='none'">
+                 <img src="/assets/images/logo.png" alt="Javag Logo" class="h-8 sm:h-10 w-auto" onerror="this.style.display='none'">
             </div>
             <div class="flex flex-col justify-center -space-y-0.5">
                 <h2 class="text-xl sm:text-2xl font-bold text-white tracking-tight leading-none">

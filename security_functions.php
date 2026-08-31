@@ -1,4 +1,7 @@
 <?php
+require __DIR__ . '/assets/vendor/autoload.php';
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
+$dotenv->load();
 /**
  * Security Helper Functions
  * Include this file in config.php
@@ -21,6 +24,62 @@ function validatePassword($password) {
     return $errors;
 }
 
+//function get Registration Salt Key
+function getRegistrationKey(string $role): string {
+    $allowedRoles = ['admin', 'owner', 'supervisor'];
+
+    if (!in_array($role, $allowedRoles, true)){
+        throw new InvalidArgumentException('Role Registrasi tidak valid');
+    }
+
+    $masterKey = $_ENV["REGISTRATION_MASTER_KEY"];
+    if($masterKey === false || strlen($masterKey) < 32){
+        throw new RuntimeException(
+            'REGISTRATION_MASTER_KEY belum dikonfigurasi dengan aman. (Minimal 32 Character)'
+        );
+    }
+    return hash_hkdf(
+        'sha256',
+        $masterKey,
+        32,
+        'project-web-absensi:registration:' . $role
+    );
+}
+
+function generateRegistrationToken(
+    string $role,
+    ?int $timestamp = null
+): string {
+    $timestamp ??=time();
+
+    //15 minutes change
+    $timeSlot = intdiv($timestamp, 900);
+    $roleKey = getRegistrationKey($role);
+
+    $hash = hash_hmac(
+        'sha256',
+        $role . '|' . $timeSlot,
+        $roleKey
+    );
+
+    return strtoupper(substr($hash, 0, 6));
+}
+
+function verifyRegistrationToken(
+    string $role,
+    string $submittedToken 
+): bool {
+    $submittedToken = strtoupper(trim($submittedToken));
+    //current and previous 15-minutes window
+    foreach([time(), time()-900] as $timestamp){
+        $expectedToken = generateRegistrationToken($role, $timestamp);
+
+        if(hash_equals($expectedToken, $submittedToken)){
+            return true;
+        }
+    }
+    return false;
+}
 // Function untuk rate limiting
 function checkRateLimit($action, $limit_seconds = 30) {
     $session_key = 'rate_limit_' . $action;

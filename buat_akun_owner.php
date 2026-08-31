@@ -1,7 +1,7 @@
 <?php
 require 'config.php';
 
-$secret_salt = "DINIA_OWNER_SECRET_2026";
+// $secret_salt = "DINIA_OWNER_SECRET_2026";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     header('Content-Type: application/json');
@@ -14,8 +14,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $kode_rahasia = strtoupper(trim($_POST['kode_rahasia'] ?? ''));
     
     // Dynamic Token Calculation
-    $current_token = substr(strtoupper(md5(date('Y-m-d H') . $secret_salt)), 0, 6);
-    $previous_token = substr(strtoupper(md5(date('Y-m-d H', strtotime('-1 hour')) . $secret_salt)), 0, 6);
+    // $current_token = substr(strtoupper(md5(date('Y-m-d H') . $secret_salt)), 0, 6);
+    // $previous_token = substr(strtoupper(md5(date('Y-m-d H', strtotime('-1 hour')) . $secret_salt)), 0, 6);
     
     if (empty($nama) || empty($username) || empty($password) || empty($jenis_kelamin) || empty($kode_rahasia)) {
         echo json_encode(['success' => false, 'message' => 'Semua field wajib diisi.']);
@@ -38,9 +38,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
     
     // Validate Secret Token
-    if ($kode_rahasia !== $current_token && $kode_rahasia !== $previous_token) {
-        echo json_encode(['success' => false, 'message' => 'Kode Rahasia tidak valid atau sudah kedaluwarsa.']);
-        exit();
+    // if ($kode_rahasia !== $current_token && $kode_rahasia !== $previous_token) {
+    //     echo json_encode(['success' => false, 'message' => 'Kode Rahasia tidak valid atau sudah kedaluwarsa.']);
+    //     exit();
+    // }
+    if(!verifyRegistrationToken('owner', $kode_rahasia)){
+        echo json_encode([
+            'success' => false,
+            'message' => 'Kode rahasia tidak valid atau sudah kedaluwarsa.'
+        ]);
+        exit();   
     }
     
     // Cek username

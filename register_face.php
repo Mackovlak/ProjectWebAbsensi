@@ -1,13 +1,33 @@
 <?php
 require 'config.php';
-requireStaff();
+requireLogin();
 
-$id_karyawan = $_SESSION['id_karyawan'];
+$role = $_SESSION['role'] ?? '';
+$attendance_roles = ['staff', 'supervisor', 'admin'];
+if (!in_array($role, $attendance_roles, true)) {
+    $_SESSION['error_message'] = 'Akses registrasi wajah hanya tersedia untuk Karyawan, Supervisor, dan Admin.';
+    redirect(dashboardUntukRole($role));
+}
+
+$dashboard_url = dashboardUntukRole($role);
+$csrf_token = generateCSRFToken();
+
+$stmt_account = $conn->prepare("SELECT id_karyawan FROM users WHERE id = ? AND role = ?");
+$stmt_account->bind_param("is", $_SESSION['user_id'], $role);
+$stmt_account->execute();
+$account_data = $stmt_account->get_result()->fetch_assoc();
+$stmt_account->close();
+$id_karyawan = $account_data['id_karyawan'] ?? '';
+
+if ($id_karyawan === '') {
+    $_SESSION['error_message'] = 'Akun Anda belum tertaut ke data karyawan, sehingga belum dapat mendaftarkan wajah untuk absensi.';
+    redirect($dashboard_url);
+}
 
 // SECURITY: Check face reset permission (WITH FALLBACK)
 try {
-    $stmt = $conn->prepare("SELECT face_descriptor, face_registered_at, face_reset_allowed FROM users WHERE id_karyawan = ?");
-    $stmt->bind_param("s", $id_karyawan);
+    $stmt = $conn->prepare("SELECT face_descriptor, face_registered_at, face_reset_allowed FROM users WHERE id = ? AND id_karyawan = ?");
+    $stmt->bind_param("is", $_SESSION['user_id'], $id_karyawan);
     $stmt->execute();
     $result = $stmt->get_result();
     $user_data = $result->fetch_assoc();
@@ -17,8 +37,8 @@ try {
     $izin_reset = isset($user_data['face_reset_allowed']) ? ($user_data['face_reset_allowed'] == 1) : true;
     $can_register = !$sudah_registrasi || ($sudah_registrasi && $izin_reset);
 } catch (Exception $e) {
-    $stmt = $conn->prepare("SELECT face_descriptor, face_registered_at FROM users WHERE id_karyawan = ?");
-    $stmt->bind_param("s", $id_karyawan);
+    $stmt = $conn->prepare("SELECT face_descriptor, face_registered_at FROM users WHERE id = ? AND id_karyawan = ?");
+    $stmt->bind_param("is", $_SESSION['user_id'], $id_karyawan);
     $stmt->execute();
     $result = $stmt->get_result();
     $user_data = $result->fetch_assoc();
@@ -253,7 +273,7 @@ try {
                     </button>
                 <?php endif; ?>
 
-                <a href="staff_dashboard.php" class="w-full py-3.5 px-4 rounded-xl font-bold text-slate-700 dark:text-slate-300 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 transition-colors flex items-center justify-center gap-2 block text-center">
+                <a href="<?php echo htmlspecialchars($dashboard_url); ?>" class="w-full py-3.5 px-4 rounded-xl font-bold text-slate-700 dark:text-slate-300 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 transition-colors flex items-center justify-center gap-2 block text-center">
                     <i class="fas fa-arrow-left"></i> Kembali 
                 </a>
             </div>
@@ -380,6 +400,7 @@ try {
 
                 const formData = new FormData();
                 formData.append('descriptors', JSON.stringify(capturedDescriptors));
+                formData.append('csrf_token', <?php echo json_encode($csrf_token); ?>);
 
                 const response = await fetch('process_face_register.php', {
                     method: 'POST',
@@ -394,7 +415,7 @@ try {
                     
                     alert('✅ Wajah berhasil didaftarkan!\n\nAnda sekarang dapat menggunakan face recognition untuk absensi.');
                     setTimeout(() => {
-                        window.location.href = 'staff_dashboard.php';
+                        window.location.href = <?php echo json_encode($dashboard_url); ?>;
                     }, 1500);
                 } else {
                     throw new Error(data.message || 'Gagal menyimpan data');

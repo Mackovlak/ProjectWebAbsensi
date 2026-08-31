@@ -1,10 +1,20 @@
 <?php
 require 'config.php';
-requireStaff();
+requireLogin();
 
 header('Content-Type: application/json; charset=utf-8');
 
 try {
+    $role = $_SESSION['role'] ?? '';
+    if (!in_array($role, ['staff', 'supervisor', 'admin'], true)) {
+        throw new Exception('Akses registrasi wajah tidak diizinkan untuk role ini.');
+    }
+
+    $csrf_token = $_POST['csrf_token'] ?? '';
+    if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $csrf_token)) {
+        throw new Exception('Sesi formulir tidak valid. Muat ulang halaman dan coba lagi.');
+    }
+
     // Rate limiting
     $rate_check = checkRateLimit('face_register', 30);
     if (!$rate_check['allowed']) {
@@ -15,7 +25,18 @@ try {
         exit;
     }
 
-    $id_karyawan = $_SESSION['id_karyawan'];
+    // Resolve the employee identity from the authenticated account instead of
+    // trusting a posted value or a possibly stale session value.
+    $account_stmt = $conn->prepare("SELECT id_karyawan FROM users WHERE id = ? AND role = ?");
+    $account_stmt->bind_param("is", $_SESSION['user_id'], $role);
+    $account_stmt->execute();
+    $account_data = $account_stmt->get_result()->fetch_assoc();
+    $account_stmt->close();
+    $id_karyawan = $account_data['id_karyawan'] ?? '';
+
+    if ($id_karyawan === '') {
+        throw new Exception('Akun belum tertaut ke data karyawan. Hubungi administrator.');
+    }
     
     if (!isset($_POST['descriptors']) || empty($_POST['descriptors'])) {
         throw new Exception('Data wajah tidak ditemukan');
@@ -40,15 +61,19 @@ try {
 
     try {
         // SECURITY: Check permission before allowing registration
-        $check_stmt = $conn->prepare("SELECT face_descriptor, face_reset_allowed FROM users WHERE id_karyawan = ?");
-        $check_stmt->bind_param("s", $id_karyawan);
+        $check_stmt = $conn->prepare("SELECT face_descriptor, face_reset_allowed FROM users WHERE id = ? AND id_karyawan = ?");
+        $check_stmt->bind_param("is", $_SESSION['user_id'], $id_karyawan);
         $check_stmt->execute();
         $check_result = $check_stmt->get_result();
         $check_data = $check_result->fetch_assoc();
         $check_stmt->close();
 
+        if (!$check_data) {
+            throw new Exception('Data akun karyawan tidak ditemukan.');
+        }
+
         $has_face = !empty($check_data['face_descriptor']);
-        $reset_allowed = ($check_data['face_reset_allowed'] == 1);
+        $reset_allowed = (($check_data['face_reset_allowed'] ?? 0) == 1);
 
         // Prevent registration if already registered and reset not allowed
         if ($has_face && !$reset_allowed) {

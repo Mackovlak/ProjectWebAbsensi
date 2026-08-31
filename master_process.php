@@ -784,13 +784,13 @@ if (isset($_POST['tambah_supervisor'])) {
     } else {
         $stmt_karyawan = $conn->prepare("SELECT k.nama_karyawan, k.jenis_kelamin, k.id_cabang
                                          FROM karyawan k
-                                         LEFT JOIN users u ON u.id_karyawan = k.id_karyawan AND u.role = 'supervisor'
+                                         LEFT JOIN users u ON u.id_karyawan = k.id_karyawan
                                          WHERE k.id_karyawan = ? AND k.status = 'aktif' AND u.id IS NULL");
         $stmt_karyawan->bind_param("s", $id_karyawan);
         $stmt_karyawan->execute();
         $data_karyawan = $stmt_karyawan->get_result()->fetch_assoc();
         if (!$data_karyawan || empty($data_karyawan['id_cabang'])) {
-            $error_msg = "Karyawan tidak tersedia, sudah memiliki akun Supervisor, atau belum memiliki cabang.";
+            $error_msg = "Karyawan tidak tersedia, sudah ditautkan ke akun lain, atau belum memiliki cabang.";
         }
         $stmt_karyawan->close();
 
@@ -845,52 +845,178 @@ if (isset($_POST['tambah_supervisor'])) {
     exit();
 }
 
-// Edit Password User
+// Edit User: username, role, tautan karyawan, dan password opsional.
 if (isset($_POST['edit_user'])) {
-    $id_user = intval($_POST['id_user']);
-    $password = $_POST['password'];
+    verifyCSRFToken($_POST['csrf_token'] ?? '');
+
+    $id_user = intval($_POST['id_user'] ?? 0);
+    $username = trim($_POST['username'] ?? '');
+    $new_role = trim($_POST['role'] ?? '');
+    $new_is_active_raw = (string)($_POST['is_active'] ?? '');
+    $new_is_active = $new_is_active_raw === '1' ? 1 : 0;
+    $new_id_karyawan = trim($_POST['id_karyawan'] ?? '');
+    $password = $_POST['password'] ?? '';
     $current_user_id = $_SESSION['user_id'];
-    
-    // Cek apakah user yang akan diedit ada
-    $stmt_check = $conn->prepare("SELECT role FROM users WHERE id = ?");
-    $stmt_check->bind_param("i", $id_user);
-    $stmt_check->execute();
-    $res_check = $stmt_check->get_result();
-    
-    if ($res_check->num_rows == 0) {
-        $_SESSION['error_message'] = "User tidak ditemukan.";
-    } else {
-        $user_data = $res_check->fetch_assoc();
-        
-        // Admin tidak bisa edit password admin lain (kecuali diri sendiri)
-        if ($user_data['role'] == 'admin' && $id_user != $current_user_id) {
-            $_SESSION['error_message'] = "Anda tidak dapat mengubah password admin lain.";
-        } else if (strlen($password) < 6) {
-            $_SESSION['error_message'] = "Password minimal 6 karakter.";
-        } else {
-            $hashed_password = password_hash($password, PASSWORD_DEFAULT);
-            $stmt_update = $conn->prepare("UPDATE users SET password = ? WHERE id = ?");
-            $stmt_update->bind_param("si", $hashed_password, $id_user);
-            
-            if ($stmt_update->execute()) {
-                if (isset($_POST['is_ajax'])) {
-                    echo json_encode(['status' => 'success', 'message' => 'Password berhasil diperbarui!']);
-                    exit();
-                }
-                $_SESSION['success_message'] = "Password berhasil diperbarui!";
-            } else {
-                if (isset($_POST['is_ajax'])) {
-                    echo json_encode(['status' => 'error', 'message' => 'Gagal memperbarui password.']);
-                    exit();
-                }
-                $_SESSION['error_message'] = "Gagal memperbarui password.";
+
+    $allowed_roles = ['admin', 'owner', 'supervisor', 'staff'];
+    $error_msg = null;
+
+    if ($id_user <= 0) {
+        $error_msg = "User tidak valid.";
+    } elseif (strlen($username) < 4 || strlen($username) > 30 || !preg_match('/^[A-Za-z0-9._-]+$/', $username)) {
+        $error_msg = "Username harus 4-30 karakter dan hanya boleh berisi huruf, angka, titik, garis bawah, atau tanda hubung.";
+    } elseif (!in_array($new_role, $allowed_roles, true)) {
+        $error_msg = "Role user tidak valid.";
+    } elseif (!in_array($new_is_active_raw, ['0', '1'], true)) {
+        $error_msg = "Status akun tidak valid.";
+    } elseif ($password !== '' && (strlen($password) < 8 || !preg_match('/[A-Za-z]/', $password) || !preg_match('/[0-9]/', $password))) {
+        $error_msg = "Password baru minimal 8 karakter dan harus berisi huruf serta angka.";
+    }
+
+    if (!$error_msg) {
+        try {
+            $conn->begin_transaction();
+
+            // Kunci user target agar pemeriksaan admin terakhir dan perubahan data atomik.
+            $stmt_check = $conn->prepare("SELECT id, nama, username, role, is_active, jenis_kelamin, id_karyawan
+                                          FROM users WHERE id = ? FOR UPDATE");
+            $stmt_check->bind_param("i", $id_user);
+            $stmt_check->execute();
+            $user_data = $stmt_check->get_result()->fetch_assoc();
+            $stmt_check->close();
+
+            if (!$user_data) {
+                throw new RuntimeException("User tidak ditemukan.");
             }
+
+            if ($username !== $user_data['username']) {
+                throw new RuntimeException("Username bersifat read-only dan tidak dapat diubah dari form ini.");
+            }
+
+            if ($user_data['role'] === 'admin' && $id_user !== (int)$current_user_id && $password !== '') {
+                throw new RuntimeException("Anda tidak dapat mengubah password admin lain. Turunkan rolenya terlebih dahulu.");
+            }
+
+            $old_id_karyawan = $user_data['id_karyawan'] ?? '';
+            if ($id_user === (int)$current_user_id
+                && ($new_role !== $user_data['role']
+                    || $new_id_karyawan !== $old_id_karyawan
+                    || $new_is_active !== (int)$user_data['is_active'])) {
+                throw new RuntimeException("Anda tidak dapat mengubah role, status, atau tautan karyawan akun sendiri.");
+            }
+
+            if ($user_data['role'] === 'admin' && (int)$user_data['is_active'] === 1
+                && ($new_role !== 'admin' || $new_is_active !== 1)) {
+                $result_admins = $conn->query("SELECT id FROM users WHERE role = 'admin' AND is_active = 1 FOR UPDATE");
+                if ($result_admins->num_rows <= 1) {
+                    throw new RuntimeException("Admin aktif terakhir tidak dapat diturunkan rolenya atau dinonaktifkan.");
+                }
+            }
+
+            $stmt_username = $conn->prepare("SELECT id FROM users WHERE username = ? AND id <> ? LIMIT 1");
+            $stmt_username->bind_param("si", $username, $id_user);
+            $stmt_username->execute();
+            if ($stmt_username->get_result()->num_rows > 0) {
+                throw new RuntimeException("Username sudah digunakan oleh user lain.");
+            }
+            $stmt_username->close();
+
+            $new_nama = $user_data['nama'];
+            $new_jenis_kelamin = $user_data['jenis_kelamin'];
+            $new_id_cabang = null;
+            $id_karyawan_db = null;
+
+            if ($new_id_karyawan !== '') {
+                // Mengunci baris karyawan mencegah dua edit bersamaan menautkan
+                // karyawan yang sama ke dua akun berbeda.
+                $stmt_karyawan = $conn->prepare("SELECT nama_karyawan, jenis_kelamin, id_cabang
+                                                 FROM karyawan
+                                                 WHERE id_karyawan = ? AND status = 'aktif'
+                                                 FOR UPDATE");
+                $stmt_karyawan->bind_param("s", $new_id_karyawan);
+                $stmt_karyawan->execute();
+                $data_karyawan = $stmt_karyawan->get_result()->fetch_assoc();
+                $stmt_karyawan->close();
+
+                if (!$data_karyawan) {
+                    throw new RuntimeException("Karyawan tidak ditemukan atau sudah nonaktif.");
+                }
+
+                $stmt_link = $conn->prepare("SELECT username FROM users WHERE id_karyawan = ? AND id <> ? LIMIT 1");
+                $stmt_link->bind_param("si", $new_id_karyawan, $id_user);
+                $stmt_link->execute();
+                $linked_user = $stmt_link->get_result()->fetch_assoc();
+                $stmt_link->close();
+                if ($linked_user) {
+                    throw new RuntimeException("Karyawan tersebut sudah ditautkan ke user '{$linked_user['username']}'.");
+                }
+
+                if ($new_role === 'supervisor' && empty($data_karyawan['id_cabang'])) {
+                    throw new RuntimeException("Supervisor wajib ditautkan ke karyawan yang memiliki cabang.");
+                }
+
+                $id_karyawan_db = $new_id_karyawan;
+                $new_nama = $data_karyawan['nama_karyawan'];
+                $new_jenis_kelamin = in_array($data_karyawan['jenis_kelamin'], ['L', 'P'], true)
+                    ? $data_karyawan['jenis_kelamin']
+                    : 'L';
+                $new_id_cabang = $new_role === 'supervisor' ? (int)$data_karyawan['id_cabang'] : null;
+            } elseif ($new_role === 'staff' || $new_role === 'supervisor') {
+                throw new RuntimeException("Role Staff dan Supervisor wajib ditautkan ke satu karyawan aktif.");
+            }
+
+            if ($password !== '') {
+                $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+                $stmt_update = $conn->prepare("UPDATE users
+                                              SET nama = ?, username = ?, role = ?, jenis_kelamin = ?,
+                                                  is_active = ?, id_karyawan = ?, id_cabang = ?, password = ?
+                                              WHERE id = ?");
+                $stmt_update->bind_param("ssssisisi", $new_nama, $username, $new_role, $new_jenis_kelamin,
+                    $new_is_active, $id_karyawan_db, $new_id_cabang, $hashed_password, $id_user);
+            } else {
+                $stmt_update = $conn->prepare("UPDATE users
+                                              SET nama = ?, username = ?, role = ?, jenis_kelamin = ?,
+                                                  is_active = ?, id_karyawan = ?, id_cabang = ?
+                                              WHERE id = ?");
+                $stmt_update->bind_param("ssssisii", $new_nama, $username, $new_role, $new_jenis_kelamin,
+                    $new_is_active, $id_karyawan_db, $new_id_cabang, $id_user);
+            }
+            $stmt_update->execute();
+            $stmt_update->close();
+
+            $old_link_label = $old_id_karyawan !== '' ? $old_id_karyawan : 'NULL';
+            $new_link_label = $new_id_karyawan !== '' ? $new_id_karyawan : 'NULL';
+            logActivity($conn, 'edit_user',
+                "Edit user #{$id_user} {$user_data['username']} -> {$username}; role {$user_data['role']} -> {$new_role}; status "
+                . ((int)$user_data['is_active'] === 1 ? 'aktif' : 'nonaktif') . ' -> ' . ($new_is_active === 1 ? 'aktif' : 'nonaktif')
+                . "; karyawan {$old_link_label} -> {$new_link_label}; password " . ($password !== '' ? 'diubah' : 'tetap'),
+                $_SESSION['user_id']);
+
+            $conn->commit();
+            $_SESSION['success_message'] = "User '{$username}' berhasil diperbarui.";
+        } catch (mysqli_sql_exception $e) {
+            $conn->rollback();
+            $error_msg = "Gagal memperbarui user karena terjadi kesalahan database.";
+        } catch (Throwable $e) {
+            $conn->rollback();
+            $error_msg = $e->getMessage();
         }
     }
+
+    if ($error_msg) {
+        $_SESSION['error_message'] = $error_msg;
+    }
+
     if (isset($_POST['is_ajax']) && isset($_SESSION['error_message'])) {
         $msg = $_SESSION['error_message'];
         unset($_SESSION['error_message']);
         echo json_encode(['status' => 'error', 'message' => $msg]);
+        exit();
+    }
+    if (isset($_POST['is_ajax']) && isset($_SESSION['success_message'])) {
+        $msg = $_SESSION['success_message'];
+        unset($_SESSION['success_message']);
+        echo json_encode(['status' => 'success', 'message' => $msg]);
         exit();
     }
     header("Location: setting_users.php");

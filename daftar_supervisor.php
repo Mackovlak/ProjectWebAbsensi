@@ -1,7 +1,8 @@
 <?php
 require 'config.php';
 
-$secret_salt = getSupervisorSecretSalt($conn);
+// Salt Changed to Main Salt
+// $secret_salt = getSupervisorSecretSalt($conn);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     header('Content-Type: application/json');
@@ -12,8 +13,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $confirm_password = $_POST['confirm_password'] ?? '';
     $kode_rahasia = strtoupper(trim($_POST['kode_rahasia'] ?? ''));
 
-    $current_token = substr(strtoupper(md5(date('Y-m-d H') . $secret_salt)), 0, 6);
-    $previous_token = substr(strtoupper(md5(date('Y-m-d H', strtotime('-1 hour')) . $secret_salt)), 0, 6);
+    
+    // $current_token = substr(strtoupper(md5(date('Y-m-d H') . $secret_salt)), 0, 6);
+    // $previous_token = substr(strtoupper(md5(date('Y-m-d H', strtotime('-1 hour')) . $secret_salt)), 0, 6);
 
     if ($id_karyawan === '' || $username === '' || $password === '' || $confirm_password === '' || $kode_rahasia === '') {
         echo json_encode(['success' => false, 'message' => 'Semua field wajib diisi.']);
@@ -31,22 +33,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         echo json_encode(['success' => false, 'message' => 'Password dan konfirmasi password tidak sama.']);
         exit();
     }
-    if (!hash_equals($current_token, $kode_rahasia) && !hash_equals($previous_token, $kode_rahasia)) {
-        echo json_encode(['success' => false, 'message' => 'Kode Rahasia tidak valid atau sudah kedaluwarsa.']);
-        exit();
+    // if (!hash_equals($current_token, $kode_rahasia) && !hash_equals($previous_token, $kode_rahasia)) {
+    //     echo json_encode(['success' => false, 'message' => 'Kode Rahasia tidak valid atau sudah kedaluwarsa.']);
+    //     exit();
+    // }
+    if(!verifyRegistrationToken('supervisor', $kode_rahasia)){
+        echo json_encode([
+            'success' => false,
+            'message' => 'Kode rahasia tidak valid atau sudah kedaluwarsa.'
+        ]);
+        exit();   
     }
 
     // Data identitas dan cakupan cabang wajib berasal dari data karyawan aktif.
     $stmt_karyawan = $conn->prepare("SELECT k.nama_karyawan, k.jenis_kelamin, k.id_cabang
                                      FROM karyawan k
-                                     LEFT JOIN users u ON u.id_karyawan = k.id_karyawan AND u.role = 'supervisor'
+                                     LEFT JOIN users u ON u.id_karyawan = k.id_karyawan
                                      WHERE k.id_karyawan = ? AND k.status = 'aktif' AND u.id IS NULL");
     $stmt_karyawan->bind_param('s', $id_karyawan);
     $stmt_karyawan->execute();
     $data_karyawan = $stmt_karyawan->get_result()->fetch_assoc();
     $stmt_karyawan->close();
     if (!$data_karyawan || empty($data_karyawan['id_cabang'])) {
-        echo json_encode(['success' => false, 'message' => 'Karyawan tidak tersedia, sudah memiliki akun Supervisor, atau belum memiliki cabang.']);
+        echo json_encode(['success' => false, 'message' => 'Karyawan tidak tersedia, sudah ditautkan ke akun lain, atau belum memiliki cabang.']);
         exit();
     }
     $nama = $data_karyawan['nama_karyawan'];
@@ -79,7 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $res_karyawan = $conn->query("SELECT k.id_karyawan, k.nama_karyawan, c.nama_cabang
                               FROM karyawan k
                               LEFT JOIN cabang c ON c.id = k.id_cabang
-                              LEFT JOIN users u ON u.id_karyawan = k.id_karyawan AND u.role = 'supervisor'
+                              LEFT JOIN users u ON u.id_karyawan = k.id_karyawan
                               WHERE k.status = 'aktif' AND u.id IS NULL
                               ORDER BY k.nama_karyawan ASC");
 ?>

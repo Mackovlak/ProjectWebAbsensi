@@ -106,14 +106,6 @@ window.openEditKaryawanModal = function(id, idKaryawan, nama, jenisKelamin, idJa
     openModal('modal-edit');
 }
 
-// --- Fungsi untuk Modal Edit User ---
-window.openEditUserModal = function(id, username) {
-    document.getElementById('edit-id-user').value = id;
-    document.getElementById('edit-username-user').value = username;
-    document.getElementById('edit-password-user').value = '';
-    openModal('modal-edit-user');
-}
-
 // Menutup modal jika klik di luar area modal content atau pencet tombol Escape
 window.onclick = function(event) {
     let modals = document.querySelectorAll('[id^="modal-"]');

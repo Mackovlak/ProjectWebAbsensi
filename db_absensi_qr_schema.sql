@@ -394,6 +394,7 @@ CREATE TABLE `users` (
   `username` varchar(30) COLLATE utf8mb4_general_ci NOT NULL,
   `password` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
   `role` enum('admin','staff','owner') COLLATE utf8mb4_general_ci NOT NULL DEFAULT 'staff',
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
   `jenis_kelamin` enum('L','P') COLLATE utf8mb4_general_ci DEFAULT 'L',
   `id_karyawan` varchar(20) COLLATE utf8mb4_general_ci DEFAULT NULL,
   `face_descriptor` text COLLATE utf8mb4_general_ci COMMENT 'JSON array untuk face recognition descriptor',
@@ -406,6 +407,8 @@ CREATE TABLE `users` (
   `foto_profil` varchar(100) COLLATE utf8mb4_general_ci DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `username` (`username`),
+  UNIQUE KEY `uniq_users_id_karyawan` (`id_karyawan`),
+  KEY `idx_users_active` (`is_active`),
   KEY `idx_face_reset` (`face_reset_allowed`)
 ) ENGINE=InnoDB AUTO_INCREMENT=125 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;

@@ -151,7 +151,7 @@ Rather than each management page having its own save/delete script, almost all A
 
 | Table | Purpose |
 |---|---|
-| `users` | Login accounts. `role` = admin/owner/staff, `id_karyawan` FK (nullable for admin/owner), `face_descriptor`/`face_registered_at`/`face_reset_allowed`, `foto_profil`, `ttd_path` (signature), `stempel_path` (owner's company stamp), `wa_token` (Fonnte API token, stored per-user), `no_whatsapp` on the employee side is actually on `karyawan`. |
+| `users` | Login accounts. `role` = admin/owner/supervisor/staff, `is_active` controls account access, and `id_karyawan` is nullable but unique (one employee per account). Also stores `face_descriptor`/`face_registered_at`/`face_reset_allowed`, `foto_profil`, `ttd_path` (signature), `stempel_path` (owner's company stamp), and `wa_token` (Fonnte API token). |
 | `karyawan` | Employee master data. Public-facing `id_karyawan` is an 11-digit code (`YYYYMMDDXXX`). `id_jabatan`, `id_cabang` FKs, `status` (aktif/nonaktif), `tanggal_resign`, `jatah_cuti` (annual leave quota, default 12), payroll default rates (`rate_transport`, `rate_overtime`, `rate_insentif_minggu`, `gaji_pokok`, `rate_keterlambatan`), `no_whatsapp`. |
 | `cabang` | Branches. `latitude`/`longitude`/`radius_meter` power the check-in geofence. |
 | `jabatan` | Positions, each with a default `tunjangan_jabatan` allowance and `overtime_sabtu` (1 = this position can be assigned Saturday overtime). |
@@ -293,8 +293,10 @@ Rather than each management page having its own save/delete script, almost all A
 |---|---|
 | `check_db.php` | Dumps `SHOW TABLES` — quick DB sanity check, not part of any tooling pipeline. |
 | `update_db.php` | Example of the pattern used for ad-hoc idempotent schema migrations (checks a column exists, `ALTER TABLE` if not). There is no formal migration system. |
+| `update_db_user_management.php` | **Required once for existing installations after deploying user-management editing.** Adds `users.is_active` and the unique employee/account constraint. Stops safely if duplicate employee links must be corrected first; idempotent. |
 | `update_db_kalender.php` | **Run once after `update_db_izin.php`.** Creates `hari_libur`, seeds 2026 Indonesian national holidays (lunar dates flagged `perlu_verifikasi` — verify against the official SKB), seeds the `hari_kerja`/`hari_overtime` settings (Mon–Fri work, Sat overtime), and adds `jabatan.overtime_sabtu`. Idempotent. |
 | `update_db_izin.php` | **Run once after deploying the leave-request feature.** Creates `pengajuan_izin`, adds `supervisor` to the `users.role` enum, `users.id_cabang`, `karyawan.jatah_cuti`, `absensi.id_pengajuan`, and `Izin` to the `absensi.keterangan` enum. Idempotent — safe to re-run. |
+| `update_db_user_management.php` | **Required once for existing installations after deploying user-management editing.** Adds `users.is_active` and the unique employee/account constraint. Stops safely if duplicate employee links must be corrected first; idempotent. |
 
 ---
 
