@@ -2,6 +2,12 @@
 require 'config.php';
 requireAdmin();
 
+// Kolom ini dulu hardcode ke hari Minggu (DAYOFWEEK = 1). Sekarang ikut
+// hari lembur yang benar-benar dikonfigurasi (system_settings.hari_overtime,
+// default Sabtu) - lihat kalender_functions.php.
+$mysql_dow_overtime = daftarHariOvertimeMysqlDow($conn);
+$label_hari_overtime = labelHariOvertime($conn);
+
 // Ambil daftar cabang untuk dropdown
 $cabang_list = [];
 $res_cabang = $conn->query("SELECT id, nama_cabang FROM cabang ORDER BY nama_cabang ASC");
@@ -96,17 +102,17 @@ if ($id_cabang > 0) {
             ELSE 0
         END) as total_overtime,
         
-        -- PERBAIKAN 1: TAMBAH KOLOM MINGGU (Sunday = DAYOFWEEK = 1)
-        COUNT(DISTINCT CASE 
-            WHEN a.keterangan = 'Hadir' 
-            AND DAYOFWEEK(a.tanggal) = 1 
-            THEN a.id 
-        END) as count_minggu_raw,
-        
-        -- Count Sunday half-day (< 350 minutes)
-        COUNT(DISTINCT CASE 
+        -- Hari lembur yang dikonfigurasi (system_settings.hari_overtime, default Sabtu)
+        COUNT(DISTINCT CASE
             WHEN a.keterangan = 'Hadir'
-            AND DAYOFWEEK(a.tanggal) = 1
+            AND DAYOFWEEK(a.tanggal) IN ($mysql_dow_overtime)
+            THEN a.id
+        END) as count_minggu_raw,
+
+        -- Count hari lembur half-day (< 350 minutes)
+        COUNT(DISTINCT CASE
+            WHEN a.keterangan = 'Hadir'
+            AND DAYOFWEEK(a.tanggal) IN ($mysql_dow_overtime)
             AND (
                 (a.jam_pulang IS NOT NULL AND a.jam_pulang != '00:00:00' AND TIMESTAMPDIFF(MINUTE, a.jam_masuk, a.jam_pulang) < 330)
                 OR ((a.jam_pulang IS NULL OR a.jam_pulang = '00:00:00') AND a.tanggal < CURDATE())
@@ -196,7 +202,7 @@ require 'admin_header.php';
                         <th class="px-4 py-4 font-bold text-center">Terlambat</th>
                         <th class="px-4 py-4 font-bold text-center">Setengah Hari</th>
                         <th class="px-4 py-4 font-bold text-center">Overtime</th>
-                        <th class="px-4 py-4 font-bold text-center">Ahad</th>
+                        <th class="px-4 py-4 font-bold text-center"><?php echo htmlspecialchars($label_hari_overtime); ?></th>
                         <th class="px-4 py-4 font-bold text-center">Dinas Luar</th>
                         <th class="px-4 py-4 font-bold text-center">OFF</th>
                         <th class="px-4 py-4 font-bold text-center">Sakit</th>

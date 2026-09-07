@@ -283,7 +283,7 @@ $no = 1;
                 <?php if ($slip['insentif_ahad_total'] > 0): ?>
                 <tr>
                     <td class="text-center"><?php echo $no++; ?></td>
-                    <td class="pl-2 uppercase">INSENTIF HARI AHAD</td>
+                    <td class="pl-2 uppercase">INSENTIF HARI <?php echo htmlspecialchars(strtoupper(labelHariOvertime($conn))); ?></td>
                     <td class="px-2"><div class="flex-rp"><span>Rp</span> <span><?php echo ribuan($slip['insentif_ahad_nominal']); ?></span></div></td>
                     <td class="text-center">X</td>
                     <td class="text-center"><?php echo $slip['insentif_ahad_hari']; ?></td>

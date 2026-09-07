@@ -611,4 +611,5 @@ immediately.
 | Camera or GPS prompt never appears | Not actually on HTTPS, or on an `www.`/bare-domain mismatch vs. the cert's SANs. |
 | Uploads fail / "Nonaktifkan" photo actions error | `assets/uploads/` not owned by `www-data`, or `client_max_body_size`/`upload_max_filesize`/`post_max_size` too small (§8/§10). |
 | Face-reset admin actions fail every time | Missing `face_admin_logs` table — see §5. |
+| `Class "ZipArchive" not found` on slip gaji / report Excel export | `php-zip` extension not installed. §3's install line already includes `php8.1-zip` for a fresh server; if this VPS was provisioned before the Excel-export feature existed, run `sudo apt install -y php8.1-zip && sudo systemctl restart php8.1-fpm`. |
 | WhatsApp reminders never send | No `wa_token` saved on any `users` row, or the Fonnte account/token is invalid — test manually per §14 step 8. |
