@@ -12,11 +12,15 @@ There are four roles: `admin`, `owner`, `supervisor`, `staff`. Pages are prefixe
 
 This is a classic LAMP-style app with no CLI build/test/lint tooling in the repo. Run it with a local PHP/MySQL stack (e.g. XAMPP/Laragon/`php -S`) pointed at this directory as the document root, with a MySQL database named `db_absensi.kry` (see `config.php`). There are no automated tests, linters, or build commands — verify changes by exercising the relevant page in a browser against a real database.
 
-Useful one-off DB scripts (run directly via browser or `php <file>.php`, not part of any tooling pipeline):
-- `check_db.php` — dumps `SHOW TABLES` for the connected database.
-- `update_db.php` — example of the pattern used for ad-hoc idempotent schema migrations (check column exists via `SHOW COLUMNS`, `ALTER TABLE` if missing). There is no formal migration system; new schema changes are typically added as similar one-off scripts or applied directly to the DB.
-- `update_db_kalender.php` — migration for the calendar feature (creates `hari_libur`, seeds 2026 Indonesian national holidays **flagged for SKB verification**, seeds `system_settings` keys `hari_kerja`/`hari_overtime`, adds `jabatan.overtime_sabtu`). Must be run once, after `update_db_izin.php`.
-- `update_db_izin.php` — migration for the leave-request feature (creates `pengajuan_izin`, extends the `users.role` and `absensi.keterangan` enums, adds `users.id_cabang`, `karyawan.jatah_cuti`, `absensi.id_pengajuan`). Must be run once on any existing database before the feature works.
+`check_db.php` dumps `SHOW TABLES` for the connected database (run directly via browser or CLI, not part of any tooling pipeline).
+
+### Database migrations
+
+Schema changes go through a small tracked migration system (`migrate.php` + `migrations/` + `migration_helpers.php`) — see **`MIGRATIONS.md`** for the full guide (how to write one, how to run one safely, production checklist). Quick summary:
+- Each `migrations/NNN_description.php` file returns `['name' => ..., 'up' => function($conn, MigrationLog $log) { ... }]`; write it idempotent (check `kolomAda()`/`tabelAda()`/`enumMengandung()` from `migration_helpers.php` before `ALTER`/`CREATE`), matching the existing files.
+- `migrate.php` applies pending migrations **in filename order** and records each one in `schema_migrations` so it never re-runs — no more guessing "did I already run this on this database?" It stops at the first failure without recording it (earlier successes in the same run stay recorded), since MySQL DDL auto-commits and can't be transactionally rolled back.
+- Web access is `requireAdmin()`-gated and always shows a status/preview before doing anything — nothing changes on a GET request. CLI: `php migrate.php status` to preview, `php migrate.php migrate --yes` to apply.
+- The older `update_db_*.php` one-off scripts this replaced are gone; their content now lives in `migrations/001`–`006`.
 
 ## Architecture
 

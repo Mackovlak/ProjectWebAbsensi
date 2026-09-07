@@ -14,7 +14,7 @@ This document explains **how the whole system fits together** and then gives a *
 - **Face recognition**: 100% client-side, via `face-api.js` (loaded from a CDN) — the browser computes a numeric "face descriptor" and confidence score and sends only those numbers to the server; there is no server-side ML.
 - **"PDF" exports**: there is no PDF library. "Print" pages are plain HTML styled for the browser's print dialog, and "Excel" exports are actually CSV files with a UTF-8 BOM.
 - **WhatsApp notifications**: via the third-party **Fonnte** API (`https://api.fonnte.com/send`), using a per-installation `wa_token` stored on a `users` row.
-- **No test suite, linter, or migration tool.** Schema changes are applied by hand or via small one-off scripts like `update_db.php`.
+- **No test suite or linter.** Schema changes go through a small tracked migration system (`migrate.php` + `migrations/`) — see `MIGRATIONS.md`.
 
 ---
 
@@ -292,11 +292,7 @@ Rather than each management page having its own save/delete script, almost all A
 | File | Purpose |
 |---|---|
 | `check_db.php` | Dumps `SHOW TABLES` — quick DB sanity check, not part of any tooling pipeline. |
-| `update_db.php` | Example of the pattern used for ad-hoc idempotent schema migrations (checks a column exists, `ALTER TABLE` if not). There is no formal migration system. |
-| `update_db_user_management.php` | **Required once for existing installations after deploying user-management editing.** Adds `users.is_active` and the unique employee/account constraint. Stops safely if duplicate employee links must be corrected first; idempotent. |
-| `update_db_kalender.php` | **Run once after `update_db_izin.php`.** Creates `hari_libur`, seeds 2026 Indonesian national holidays (lunar dates flagged `perlu_verifikasi` — verify against the official SKB), seeds the `hari_kerja`/`hari_overtime` settings (Mon–Fri work, Sat overtime), and adds `jabatan.overtime_sabtu`. Idempotent. |
-| `update_db_izin.php` | **Run once after deploying the leave-request feature.** Creates `pengajuan_izin`, adds `supervisor` to the `users.role` enum, `users.id_cabang`, `karyawan.jatah_cuti`, `absensi.id_pengajuan`, and `Izin` to the `absensi.keterangan` enum. Idempotent — safe to re-run. |
-| `update_db_user_management.php` | **Required once for existing installations after deploying user-management editing.** Adds `users.is_active` and the unique employee/account constraint. Stops safely if duplicate employee links must be corrected first; idempotent. |
+| `migrate.php` | Runs pending schema migrations from `migrations/`, tracked in a `schema_migrations` table so each runs exactly once, in order. `requireAdmin()`-gated on the web; `php migrate.php status` / `migrate --yes` via CLI. See `MIGRATIONS.md`. |
 
 ---
 

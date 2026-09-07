@@ -713,6 +713,74 @@ if (isset($_POST['hapus_hari_libur'])) {
     exit();
 }
 
+// Handler Generate Hari Libur Otomatis (dari pratinjau kalender math di
+// data_hari_libur.php / hari_libur_generator.php). Hanya baris yang
+// dicentang admin di pratinjau yang benar-benar disimpan - checkbox yang
+// tidak dicentang (mis. tanggal yang sudah terdaftar) tidak pernah masuk
+// $_POST['pilih'], jadi indeksnya otomatis terlewati di bawah.
+if (isset($_POST['generate_hari_libur'])) {
+    verifyCSRFToken($_POST['csrf_token'] ?? '');
+
+    $tahun_redirect = intval($_POST['tahun'] ?? date('Y'));
+    $pilih = $_POST['pilih'] ?? [];
+    $tanggal_arr = $_POST['tanggal'] ?? [];
+    $nama_arr = $_POST['nama'] ?? [];
+    $jenis_arr = $_POST['jenis'] ?? [];
+    $verifikasi_arr = $_POST['verifikasi'] ?? [];
+
+    if (empty($pilih)) {
+        $_SESSION['error_message'] = "❌ Tidak ada hari libur yang dipilih untuk disimpan.";
+        header("Location: data_hari_libur.php?tahun={$tahun_redirect}");
+        exit();
+    }
+
+    // PENTING: uniq_libur_tanggal_cabang (tanggal, id_cabang) TIDAK mencegah
+    // duplikat di sini - MySQL menganggap NULL selalu berbeda dari NULL lain
+    // di unique key, dan hari libur nasional selalu id_cabang NULL. Jadi
+    // INSERT IGNORE saja tidak cukup; cek manual tanggal yang sudah ada dulu.
+    $stmt_cek = $conn->prepare("SELECT tanggal FROM hari_libur WHERE id_cabang IS NULL AND tanggal = ?");
+    $stmt_insert = $conn->prepare("INSERT INTO hari_libur (tanggal, nama, jenis, id_cabang, perlu_verifikasi, created_by)
+                                   VALUES (?, ?, ?, NULL, ?, ?)");
+    $tersimpan = 0;
+    foreach (array_keys($pilih) as $idx) {
+        $tanggal = sanitizeInput($tanggal_arr[$idx] ?? '');
+        $nama = sanitizeInput($nama_arr[$idx] ?? '');
+        $jenis = in_array($jenis_arr[$idx] ?? '', ['Nasional', 'Cuti Bersama', 'Perusahaan'], true)
+            ? $jenis_arr[$idx] : 'Nasional';
+        $perlu_verifikasi = !empty($verifikasi_arr[$idx]) ? 1 : 0;
+
+        $cek = DateTime::createFromFormat('Y-m-d', $tanggal);
+        if (!$cek || $cek->format('Y-m-d') !== $tanggal || $nama === '') {
+            continue; // baris rusak/dimanipulasi - lewati diam-diam, bukan gagal total
+        }
+
+        $stmt_cek->bind_param("s", $tanggal);
+        $stmt_cek->execute();
+        if ($stmt_cek->get_result()->num_rows > 0) {
+            continue; // sudah ada (mis. submit ganda) - lewati, bukan duplikat
+        }
+
+        $stmt_insert->bind_param("sssii", $tanggal, $nama, $jenis, $perlu_verifikasi, $_SESSION['user_id']);
+        if ($stmt_insert->execute() && $conn->affected_rows > 0) {
+            $tersimpan++;
+        }
+    }
+    $stmt_cek->close();
+    $stmt_insert->close();
+
+    if ($tersimpan > 0) {
+        $_SESSION['success_message'] = "✅ {$tersimpan} hari libur berhasil di-generate untuk tahun {$tahun_redirect}. "
+            . "Cocokkan yang bertanda \"Perlu Verifikasi\" dengan SKB 3 Menteri resmi.";
+        logActivity($conn, 'generate_hari_libur',
+            "Generate {$tersimpan} hari libur otomatis untuk tahun {$tahun_redirect}", $_SESSION['user_id']);
+    } else {
+        $_SESSION['error_message'] = "❌ Tidak ada hari libur baru yang ditambahkan (mungkin semua tanggal terpilih sudah terdaftar).";
+    }
+
+    header("Location: data_hari_libur.php?tahun={$tahun_redirect}");
+    exit();
+}
+
 // Handler Simpan Pengaturan Hari Kerja / Hari Lembur
 if (isset($_POST['simpan_hari_kerja'])) {
     verifyCSRFToken($_POST['csrf_token'] ?? '');

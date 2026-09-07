@@ -95,7 +95,8 @@ $total_notif = count($notif_dinas) + count($notif_pulang_cepat) + count($notif_i
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="view-transition" content="same-origin">
     <title>Dashboard Admin - Absensi Javag</title>
-    
+    <link rel="icon" type="image/png" href="/assets/images/logo.png">
+
     <!-- Tailwind CSS via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     
