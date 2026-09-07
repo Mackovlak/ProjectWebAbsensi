@@ -71,6 +71,21 @@ while ($row = $res_dinas->fetch_assoc()) {
 }
 $stmt_dinas->close();
 
+$notif_pulang_cepat = [];
+$stmt_pc = $conn->prepare("SELECT a.id, a.tanggal, a.alasan_pulang_cepat, k.nama_karyawan
+                           FROM absensi a
+                           JOIN karyawan k ON a.id_karyawan = k.id_karyawan
+                           WHERE a.izin_pulang_cepat = 'Pending' AND a.tanggal = CURDATE() AND k.id_cabang = ?
+                           ORDER BY a.tanggal DESC
+                           LIMIT 20");
+$stmt_pc->bind_param("i", $cabang_supervisor);
+$stmt_pc->execute();
+$res_pc = $stmt_pc->get_result();
+while ($row = $res_pc->fetch_assoc()) {
+    $notif_pulang_cepat[] = $row;
+}
+$stmt_pc->close();
+
 $notif_izin_info = [];
 $stmt_izin_info = $conn->prepare("SELECT a.id, a.tanggal, a.keterangan, a.alasan, k.nama_karyawan
                                   FROM absensi a
@@ -88,7 +103,7 @@ while ($row = $res_izin_info->fetch_assoc()) {
 }
 $stmt_izin_info->close();
 
-$actionable_notif_count = count($notif_pengajuan) + count($notif_dinas);
+$actionable_notif_count = count($notif_pengajuan) + count($notif_dinas) + count($notif_pulang_cepat);
 $total_notif = $actionable_notif_count + count($notif_izin_info);
 // ------------------------------
 ?>
@@ -401,36 +416,36 @@ $total_notif = $actionable_notif_count + count($notif_izin_info);
                                 </a>
                                 <?php endforeach; endif; ?>
 
+                                <!-- Loop Pending Dinas: preview saja, aksi ACC/Tolak dilakukan di Kelola Pengajuan Izin -->
                                 <?php if (count($notif_dinas) > 0): ?>
                                 <div class="px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border-y border-slate-100 dark:border-slate-700/50 sticky top-0 z-10 backdrop-blur-sm">
                                     <p class="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Pending Dinas Luar</p>
                                 </div>
                                 <?php foreach ($notif_dinas as $nd): ?>
-                                <div class="p-4 border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
-                                    <div class="flex items-start justify-between gap-3">
-                                        <div class="flex-1 min-w-0">
-                                            <p class="text-sm font-bold text-slate-800 dark:text-white truncate"><?php echo htmlspecialchars($nd['nama_karyawan']); ?></p>
-                                            <p class="text-xs text-slate-600 dark:text-slate-300 mt-1 line-clamp-2"><?php echo htmlspecialchars($nd['alasan'] ?? '-'); ?></p>
-                                            <p class="text-[10px] font-medium text-slate-400 mt-2"><i class="fa-regular fa-calendar mr-1"></i><?php echo date('d M Y', strtotime($nd['tanggal'])); ?></p>
-                                        </div>
-                                        <div class="flex flex-col gap-1.5 shrink-0 w-20">
-                                            <form action="proses_persetujuan_dinas.php" method="POST" class="w-full">
-                                                <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token'] ?? ''; ?>">
-                                                <input type="hidden" name="id_absensi" value="<?php echo (int)$nd['id']; ?>">
-                                                <input type="hidden" name="action" value="acc">
-                                                <input type="hidden" name="redirect_url" value="<?php echo basename($_SERVER['PHP_SELF']); ?>">
-                                                <button type="submit" class="w-full px-2 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50 rounded-lg text-xs font-bold transition-colors">ACC</button>
-                                            </form>
-                                            <form action="proses_persetujuan_dinas.php" method="POST" class="w-full">
-                                                <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token'] ?? ''; ?>">
-                                                <input type="hidden" name="id_absensi" value="<?php echo (int)$nd['id']; ?>">
-                                                <input type="hidden" name="action" value="tolak">
-                                                <input type="hidden" name="redirect_url" value="<?php echo basename($_SERVER['PHP_SELF']); ?>">
-                                                <button type="submit" class="w-full px-2 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-500 hover:text-white dark:bg-rose-500/10 dark:text-rose-400 border border-rose-200 dark:border-rose-800/50 rounded-lg text-xs font-bold transition-colors">Tolak</button>
-                                            </form>
-                                        </div>
+                                <a href="kelola_pengajuan_izin.php" class="block p-4 border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                                    <div class="flex items-center justify-between gap-2 mb-1">
+                                        <p class="text-sm font-bold text-slate-800 dark:text-white truncate"><?php echo htmlspecialchars($nd['nama_karyawan']); ?></p>
+                                        <span class="text-[10px] px-2 py-0.5 rounded-full border font-bold shrink-0 bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400 border-sky-200 dark:border-sky-800/50">Dinas Luar</span>
                                     </div>
+                                    <p class="text-xs text-slate-600 dark:text-slate-300 line-clamp-2"><?php echo htmlspecialchars($nd['alasan'] ?? '-'); ?></p>
+                                    <p class="text-[10px] font-medium text-slate-400 mt-2"><i class="fa-regular fa-calendar mr-1"></i><?php echo date('d M Y', strtotime($nd['tanggal'])); ?></p>
+                                </a>
+                                <?php endforeach; endif; ?>
+
+                                <!-- Loop Pending Pulang Cepat: preview saja, aksi ACC/Tolak dilakukan di Kelola Pengajuan Izin -->
+                                <?php if (count($notif_pulang_cepat) > 0): ?>
+                                <div class="px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border-y border-slate-100 dark:border-slate-700/50 sticky top-0 z-10 backdrop-blur-sm">
+                                    <p class="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Pending Izin Pulang Cepat</p>
                                 </div>
+                                <?php foreach ($notif_pulang_cepat as $npc): ?>
+                                <a href="kelola_pengajuan_izin.php" class="block p-4 border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                                    <div class="flex items-center justify-between gap-2 mb-1">
+                                        <p class="text-sm font-bold text-slate-800 dark:text-white truncate"><?php echo htmlspecialchars($npc['nama_karyawan']); ?></p>
+                                        <span class="text-[10px] px-2 py-0.5 rounded-full border font-bold shrink-0 bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800/50">Pulang Cepat</span>
+                                    </div>
+                                    <p class="text-xs text-slate-600 dark:text-slate-300 line-clamp-2"><?php echo htmlspecialchars($npc['alasan_pulang_cepat'] ?? '-'); ?></p>
+                                    <p class="text-[10px] font-medium text-slate-400 mt-2"><i class="fa-regular fa-calendar mr-1"></i><?php echo date('d M Y', strtotime($npc['tanggal'])); ?></p>
+                                </a>
                                 <?php endforeach; endif; ?>
 
                                 <?php if (count($notif_izin_info) > 0): ?>

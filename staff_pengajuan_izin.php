@@ -120,6 +120,10 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
                 <span><b>Dinas Luar</b> tidak memotong kuota, dan membebaskan validasi lokasi saat absen.</span>
             </li>
             <li class="flex gap-2.5">
+                <i class="ph-duotone ph-heart text-pink-500 text-lg shrink-0"></i>
+                <span><b>Menikah, Menikahkan Anak, Melahirkan,</b> dan <b>Duka Cita</b> adalah cuti khusus &mdash; tidak memotong kuota tahunan, lama pengajuan diserahkan ke persetujuan atasan.</span>
+            </li>
+            <li class="flex gap-2.5">
                 <i class="ph-duotone ph-calendar-x text-slate-400 text-lg shrink-0"></i>
                 <span>Hanya hari kerja (<b><?php echo labelHariKerja($conn); ?></b>) yang dihitung. Hari lembur, akhir pekan, dan hari libur nasional tidak memotong kuota.</span>
             </li>
@@ -147,6 +151,10 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
                     <option value="Izin">Izin Keperluan Pribadi</option>
                     <option value="Sakit">Sakit</option>
                     <option value="Dinas Luar">Dinas Luar (Tugas Kantor)</option>
+                    <option value="Menikah">Menikah (Cuti Khusus)</option>
+                    <option value="Menikahkan Anak">Menikahkan Anak (Cuti Khusus)</option>
+                    <option value="Melahirkan">Cuti Melahirkan (Cuti Khusus)</option>
+                    <option value="Duka Cita">Duka Cita / Keluarga Meninggal (Cuti Khusus)</option>
                 </select>
                 <p class="text-xs text-slate-400 mt-1.5" id="info-jenis">Memotong kuota tahunan Anda.</p>
             </div>
@@ -299,11 +307,20 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
     const tanggalLibur = <?php echo json_encode($libur_js); ?>;
 
     const keteranganJenis = {
-        'Cuti':       'Memotong kuota tahunan Anda.',
-        'Izin':       'Memotong kuota tahunan Anda.',
-        'Sakit':      'Boleh diajukan mundur maksimal 14 hari. Lampirkan surat dokter agar TIDAK memotong kuota tahunan Anda.',
-        'Dinas Luar': 'Tidak memotong kuota. Setelah disetujui, absen di lokasi tugas tidak akan ditolak sistem.'
+        'Cuti':             'Memotong kuota tahunan Anda.',
+        'Izin':             'Memotong kuota tahunan Anda.',
+        'Sakit':            'Boleh diajukan mundur maksimal 14 hari. Lampirkan surat dokter agar TIDAK memotong kuota tahunan Anda.',
+        'Dinas Luar':       'Tidak memotong kuota. Setelah disetujui, absen di lokasi tugas tidak akan ditolak sistem.',
+        'Menikah':          'Cuti khusus, tidak memotong kuota tahunan. Lama pengajuan mengikuti persetujuan atasan.',
+        'Menikahkan Anak':  'Cuti khusus, tidak memotong kuota tahunan. Lama pengajuan mengikuti persetujuan atasan.',
+        'Melahirkan':       'Cuti khusus, tidak memotong kuota tahunan. Lama pengajuan mengikuti persetujuan atasan.',
+        'Duka Cita':        'Cuti khusus, tidak memotong kuota tahunan. Lama pengajuan mengikuti persetujuan atasan.'
     };
+
+    // Diturunkan langsung dari IZIN_JENIS_VALID / IZIN_JENIS_POTONG_KUOTA di
+    // izin_functions.php, bukan didaftar ulang manual, supaya tidak pernah
+    // desync dari aturan kuota sisi server.
+    const jenisQuotaExempt = <?php echo json_encode(array_values(array_diff(IZIN_JENIS_VALID, IZIN_JENIS_POTONG_KUOTA))); ?>;
 
     const infoLampiranDefault = infoLampiranEl.textContent;
 
@@ -363,7 +380,7 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
 
         const adaLampiran = lampiranEl.files && lampiranEl.files.length > 0;
         const sakitDenganBukti = jenisEl.value === 'Sakit' && adaLampiran;
-        const potong = jenisEl.value !== 'Dinas Luar' && !sakitDenganBukti;
+        const potong = !jenisQuotaExempt.includes(jenisEl.value) && !sakitDenganBukti;
         let teks = `<b>${total} hari kalender</b>, perkiraan <b>${efektif} hari kerja</b>`;
         teks += dilewati > 0
             ? ` (${dilewati} hari dilewati: akhir pekan/hari lembur/libur nasional).`
@@ -377,7 +394,7 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
         } else if (sakitDenganBukti) {
             teks += ' Sakit dengan lampiran tidak memotong kuota.';
         } else {
-            teks += ' Dinas Luar tidak memotong kuota.';
+            teks += ` ${jenisEl.value} tidak memotong kuota (cuti khusus).`;
         }
 
         if (efektif === 0) {

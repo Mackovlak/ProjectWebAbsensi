@@ -34,14 +34,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     // VALIDASI INPUT
     // ========================================
     
-    // 1. Validasi keterangan hanya boleh OFF, Sakit, atau Cuti
-    $allowed_keterangan = ['OFF', 'Sakit', 'Cuti'];
+    // 1. Validasi keterangan sesuai opsi yang ditawarkan form (harus tetap
+    // sinkron dengan <select> "Tambah Absensi Manual" di histori_absensi.php)
+    $allowed_keterangan = array_merge(['OFF', 'Sakit', 'Cuti', 'Dinas Luar'], IZIN_JENIS_KHUSUS);
+    $allowed_keterangan_label = implode(', ', $allowed_keterangan);
     if (!in_array($keterangan, $allowed_keterangan)) {
         if (isset($_POST['is_ajax'])) {
-            echo json_encode(['status' => 'error', 'message' => "❌ Keterangan tidak valid. Hanya boleh OFF, Sakit, atau Cuti."]);
+            echo json_encode(['status' => 'error', 'message' => "❌ Keterangan tidak valid. Hanya boleh {$allowed_keterangan_label}."]);
             exit();
         }
-        $_SESSION['error_message'] = "❌ Keterangan tidak valid. Hanya boleh OFF, Sakit, atau Cuti.";
+        $_SESSION['error_message'] = "❌ Keterangan tidak valid. Hanya boleh {$allowed_keterangan_label}.";
         header("Location: histori_absensi.php?cabang=" . $redirect_cabang);
         exit();
     }

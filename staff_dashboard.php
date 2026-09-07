@@ -78,8 +78,21 @@ $csrf_token = generateCSRFToken();
     </div>
 </div>
 
-<!-- Kalender Pribadi -->
-<div class="mb-6 sm:mb-8">
+<!-- Absen & Kalender Pribadi -->
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 sm:mb-8">
+    <a href="absen.php?id=<?php echo urlencode($id_karyawan_staff); ?>" class="flex items-center justify-between gap-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 hover:-translate-y-0.5 hover:shadow-md transition-all group">
+        <div class="flex items-center gap-4 min-w-0">
+            <div class="w-12 h-12 shrink-0 rounded-xl bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center">
+                <i class="ph-duotone ph-fingerprint text-2xl text-brand-600 dark:text-brand-400"></i>
+            </div>
+            <div class="min-w-0">
+                <h3 class="font-bold text-slate-800 dark:text-white">Absen Sekarang</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400 truncate">Check-in / check-out kehadiran hari ini.</p>
+            </div>
+        </div>
+        <i class="ph-bold ph-arrow-right text-slate-400 group-hover:translate-x-1 transition-transform shrink-0"></i>
+    </a>
+
     <a href="staff_kalender.php" class="flex items-center justify-between gap-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 hover:-translate-y-0.5 hover:shadow-md transition-all group">
         <div class="flex items-center gap-4 min-w-0">
             <div class="w-12 h-12 shrink-0 rounded-xl bg-fuchsia-50 dark:bg-fuchsia-900/30 flex items-center justify-center">
@@ -200,7 +213,7 @@ $csrf_token = generateCSRFToken();
                     </div>
                 </div>
                 
-                <?php if (in_array($row['keterangan'], ['Sakit', 'Cuti', 'Pending Dinas', 'Dinas Luar'])): ?>
+                <?php if (in_array($row['keterangan'], ['Sakit', 'Cuti', 'Pending Dinas', 'Dinas Luar', 'Menikah', 'Menikahkan Anak', 'Melahirkan', 'Duka Cita'])): ?>
                 <div class="mt-3 pl-2">
                     <button type="button" onclick="openDetailAlasanModal(this)" data-alasan="<?php echo htmlspecialchars($row['alasan'] ?? ''); ?>" data-foto="<?php echo htmlspecialchars($row['foto_bukti'] ?? ''); ?>" class="w-full inline-flex justify-center items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors dark:bg-slate-700/50 dark:text-slate-300 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600 shadow-sm">
                         <i class="fa-solid fa-file-lines"></i> Lihat Detail
@@ -338,7 +351,7 @@ $csrf_token = generateCSRFToken();
                                 <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border <?php echo $ket_class; ?> uppercase tracking-wide shadow-sm">
                                     <i class="fa-solid <?php echo $ket_icon; ?>"></i> <?php echo htmlspecialchars($row['keterangan']); ?>
                                 </span>
-                                <?php if (in_array($row['keterangan'], ['Sakit', 'Cuti', 'Pending Dinas', 'Dinas Luar'])): ?>
+                                <?php if (in_array($row['keterangan'], ['Sakit', 'Cuti', 'Pending Dinas', 'Dinas Luar', 'Menikah', 'Menikahkan Anak', 'Melahirkan', 'Duka Cita'])): ?>
                                     <div class="mt-2">
                                         <button type="button" onclick="openDetailAlasanModal(this)" data-alasan="<?php echo htmlspecialchars($row['alasan'] ?? ''); ?>" data-foto="<?php echo htmlspecialchars($row['foto_bukti'] ?? ''); ?>" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 transition-colors dark:bg-slate-700/50 dark:text-slate-300 dark:border-slate-600 dark:hover:bg-slate-600 shadow-sm">
                                             <i class="fa-solid fa-file-lines"></i> Detail

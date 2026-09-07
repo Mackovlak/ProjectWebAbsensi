@@ -111,6 +111,55 @@ if ($cabang_reviewer !== null && $cabang_reviewer > 0) {
     $stmt_c->close();
     $nama_cabang_reviewer = $row_c['nama_cabang'] ?? null;
 }
+
+// ---------- Hari Ini: Pending Dinas & Pending Pulang Cepat (kiosk absen.php) ----------
+// Berbeda dari pengajuan_izin (satu baris = satu rentang tanggal), keduanya
+// hidup di tabel absensi karena lahir dari kiosk sameday - jadi wajib
+// query terpisah. Disatukan di sini supaya tidak perlu buka notifikasi
+// header untuk tahu ada permintaan hari-H yang menunggu.
+$sql_dinas_ht = "SELECT a.id, a.tanggal, a.alasan, a.foto_bukti, a.waktu_alasan,
+                         k.nama_karyawan, k.id_karyawan, c.nama_cabang
+                  FROM absensi a
+                  JOIN karyawan k ON a.id_karyawan = k.id_karyawan
+                  LEFT JOIN cabang c ON k.id_cabang = c.id
+                  WHERE a.keterangan = 'Pending Dinas' AND a.tanggal = CURDATE()";
+$params_dinas_ht = [];
+$types_dinas_ht = '';
+if ($cabang_reviewer !== null) {
+    $sql_dinas_ht .= " AND k.id_cabang = ?";
+    $params_dinas_ht[] = $cabang_reviewer;
+    $types_dinas_ht .= 'i';
+}
+$sql_dinas_ht .= " ORDER BY a.tanggal DESC";
+$stmt_dinas_ht = $conn->prepare($sql_dinas_ht);
+if (!empty($params_dinas_ht)) {
+    $stmt_dinas_ht->bind_param($types_dinas_ht, ...$params_dinas_ht);
+}
+$stmt_dinas_ht->execute();
+$daftar_dinas_ht = $stmt_dinas_ht->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt_dinas_ht->close();
+
+$sql_pulang_cepat_ht = "SELECT a.id, a.tanggal, a.alasan_pulang_cepat, a.jam_masuk,
+                                k.nama_karyawan, k.id_karyawan, c.nama_cabang
+                         FROM absensi a
+                         JOIN karyawan k ON a.id_karyawan = k.id_karyawan
+                         LEFT JOIN cabang c ON k.id_cabang = c.id
+                         WHERE a.izin_pulang_cepat = 'Pending' AND a.tanggal = CURDATE()";
+$params_pc_ht = [];
+$types_pc_ht = '';
+if ($cabang_reviewer !== null) {
+    $sql_pulang_cepat_ht .= " AND k.id_cabang = ?";
+    $params_pc_ht[] = $cabang_reviewer;
+    $types_pc_ht .= 'i';
+}
+$sql_pulang_cepat_ht .= " ORDER BY a.tanggal DESC";
+$stmt_pc_ht = $conn->prepare($sql_pulang_cepat_ht);
+if (!empty($params_pc_ht)) {
+    $stmt_pc_ht->bind_param($types_pc_ht, ...$params_pc_ht);
+}
+$stmt_pc_ht->execute();
+$daftar_pulang_cepat_ht = $stmt_pc_ht->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt_pc_ht->close();
 ?>
 
 <div class="mb-8">
@@ -129,6 +178,98 @@ if ($cabang_reviewer !== null && $cabang_reviewer > 0) {
 </div>
 
 <?php include 'alert_messages.php'; ?>
+
+<?php if (!empty($daftar_dinas_ht) || !empty($daftar_pulang_cepat_ht)): ?>
+<!-- Hari Ini: Dinas Luar & Pulang Cepat dadakan (kiosk absen.php) -->
+<div class="mb-8">
+    <div class="flex items-center gap-2 mb-3">
+        <i class="ph-duotone ph-lightning text-xl text-amber-500"></i>
+        <h2 class="font-bold text-slate-800 dark:text-white">Permintaan Hari Ini (Kiosk Absen)</h2>
+        <span class="text-xs text-slate-400">&mdash; dinas luar & pulang cepat dadakan, terpisah dari pengajuan izin rentang tanggal</span>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <?php foreach ($daftar_dinas_ht as $nd): ?>
+            <div class="bg-white dark:bg-slate-800 rounded-2xl border border-sky-200 dark:border-sky-800/50 shadow-sm p-5">
+                <div class="flex items-start justify-between gap-3 mb-2">
+                    <div class="min-w-0">
+                        <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold border uppercase tracking-wide bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-900/30 dark:text-sky-400 dark:border-sky-800/50">
+                            <i class="ph-bold ph-briefcase"></i> Dinas Luar (Dadakan)
+                        </span>
+                        <h3 class="text-base font-bold text-slate-800 dark:text-white mt-1.5"><?php echo safe_output($nd['nama_karyawan']); ?></h3>
+                        <p class="text-xs text-slate-400">
+                            <?php echo safe_output($nd['id_karyawan']); ?>
+                            <?php if (!empty($nd['nama_cabang'])): ?> &middot; <?php echo safe_output($nd['nama_cabang']); ?><?php endif; ?>
+                            &middot; <?php echo date('d/m/Y', strtotime($nd['tanggal'])); ?>
+                        </p>
+                    </div>
+                </div>
+                <p class="text-sm text-slate-600 dark:text-slate-300 mb-2"><?php echo safe_output($nd['alasan'] ?? '-'); ?></p>
+                <?php if (!empty($nd['foto_bukti'])): ?>
+                    <a href="assets/uploads/absensi/<?php echo urlencode($nd['foto_bukti']); ?>" target="_blank"
+                       class="inline-flex items-center gap-1.5 text-xs font-semibold text-sky-600 dark:text-sky-400 hover:underline mb-3">
+                        <i class="ph-bold ph-paperclip"></i> Lihat foto bukti
+                    </a><br>
+                <?php endif; ?>
+                <?php if ($boleh_review): ?>
+                    <div class="flex gap-2 mt-2">
+                        <form action="proses_persetujuan_dinas.php" method="POST">
+                            <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+                            <input type="hidden" name="id_absensi" value="<?php echo (int)$nd['id']; ?>">
+                            <input type="hidden" name="action" value="acc">
+                            <input type="hidden" name="redirect_url" value="kelola_pengajuan_izin.php">
+                            <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition"><i class="ph-bold ph-check"></i> Setujui</button>
+                        </form>
+                        <form action="proses_persetujuan_dinas.php" method="POST">
+                            <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+                            <input type="hidden" name="id_absensi" value="<?php echo (int)$nd['id']; ?>">
+                            <input type="hidden" name="action" value="tolak">
+                            <input type="hidden" name="redirect_url" value="kelola_pengajuan_izin.php">
+                            <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white dark:bg-slate-700 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800/50 text-sm font-semibold hover:bg-rose-50 dark:hover:bg-rose-900/30 transition"><i class="ph-bold ph-x"></i> Tolak</button>
+                        </form>
+                    </div>
+                <?php endif; ?>
+            </div>
+        <?php endforeach; ?>
+
+        <?php foreach ($daftar_pulang_cepat_ht as $pc): ?>
+            <div class="bg-white dark:bg-slate-800 rounded-2xl border border-amber-200 dark:border-amber-800/50 shadow-sm p-5">
+                <div class="flex items-start justify-between gap-3 mb-2">
+                    <div class="min-w-0">
+                        <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold border uppercase tracking-wide bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800/50">
+                            <i class="ph-bold ph-clock"></i> Izin Pulang Cepat
+                        </span>
+                        <h3 class="text-base font-bold text-slate-800 dark:text-white mt-1.5"><?php echo safe_output($pc['nama_karyawan']); ?></h3>
+                        <p class="text-xs text-slate-400">
+                            <?php echo safe_output($pc['id_karyawan']); ?>
+                            <?php if (!empty($pc['nama_cabang'])): ?> &middot; <?php echo safe_output($pc['nama_cabang']); ?><?php endif; ?>
+                            &middot; Masuk <?php echo !empty($pc['jam_masuk']) ? date('H:i', strtotime($pc['jam_masuk'])) : '-'; ?>
+                        </p>
+                    </div>
+                </div>
+                <p class="text-sm text-slate-600 dark:text-slate-300 mb-3"><?php echo safe_output($pc['alasan_pulang_cepat'] ?? '-'); ?></p>
+                <?php if ($boleh_review): ?>
+                    <div class="flex gap-2 mt-2">
+                        <form action="proses_persetujuan_pulang_cepat.php" method="POST">
+                            <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+                            <input type="hidden" name="id_absensi" value="<?php echo (int)$pc['id']; ?>">
+                            <input type="hidden" name="action" value="acc">
+                            <input type="hidden" name="redirect_url" value="kelola_pengajuan_izin.php">
+                            <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition"><i class="ph-bold ph-check"></i> Setujui</button>
+                        </form>
+                        <form action="proses_persetujuan_pulang_cepat.php" method="POST">
+                            <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+                            <input type="hidden" name="id_absensi" value="<?php echo (int)$pc['id']; ?>">
+                            <input type="hidden" name="action" value="tolak">
+                            <input type="hidden" name="redirect_url" value="kelola_pengajuan_izin.php">
+                            <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white dark:bg-slate-700 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800/50 text-sm font-semibold hover:bg-rose-50 dark:hover:bg-rose-900/30 transition"><i class="ph-bold ph-x"></i> Tolak</button>
+                        </form>
+                    </div>
+                <?php endif; ?>
+            </div>
+        <?php endforeach; ?>
+    </div>
+</div>
+<?php endif; ?>
 
 <!-- Statistik -->
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
