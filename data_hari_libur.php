@@ -8,6 +8,7 @@
  */
 
 require 'config.php';
+require 'hari_libur_generator.php';
 include 'admin_header.php';
 
 $csrf_token = generateCSRFToken();
@@ -15,6 +16,33 @@ $csrf_token = generateCSRFToken();
 $tahun_aktif = isset($_GET['tahun']) ? intval($_GET['tahun']) : (int)date('Y');
 if ($tahun_aktif < 2020 || $tahun_aktif > (int)date('Y') + 5) {
     $tahun_aktif = (int)date('Y');
+}
+
+// ---------- Pratinjau Generate Otomatis ----------
+// Dihitung dari kalender math (hari_libur_generator.php), bukan diinsert
+// langsung - admin harus meninjau & pilih dulu (terutama tanggal Hijriah
+// yang perlu_verifikasi) sebelum benar-benar tersimpan lewat master_process.php.
+$tahun_preview = null;
+$preview_nasional = [];
+$preview_cuti = [];
+$tanggal_sudah_ada = [];
+if (isset($_GET['preview_tahun'])) {
+    $tahun_preview = intval($_GET['preview_tahun']);
+    if ($tahun_preview < 2020 || $tahun_preview > (int)date('Y') + 5) {
+        $tahun_preview = null;
+    } else {
+        $preview_nasional = hlGenerateNationalHolidays($tahun_preview);
+        $preview_cuti = hlGetCutiBersama($tahun_preview);
+
+        $stmt_ada = $conn->prepare("SELECT tanggal FROM hari_libur WHERE YEAR(tanggal) = ?");
+        $stmt_ada->bind_param("i", $tahun_preview);
+        $stmt_ada->execute();
+        $res_ada = $stmt_ada->get_result();
+        while ($r = $res_ada->fetch_assoc()) {
+            $tanggal_sudah_ada[$r['tanggal']] = true;
+        }
+        $stmt_ada->close();
+    }
 }
 
 // Daftar hari libur tahun terpilih
@@ -57,12 +85,174 @@ foreach ($daftar_libur as $l) {
             Tanggal di sini otomatis muncul di kalender semua pengguna dan tidak memotong kuota cuti karyawan.
         </p>
     </div>
-    <button onclick="openModal('modal-tambah-libur')" class="flex items-center justify-center gap-2 px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl transition-colors font-medium text-sm shadow-sm shadow-brand-500/30 w-full sm:w-auto whitespace-nowrap">
-        <i class="fa-solid fa-calendar-plus"></i> Tambah Hari Libur
-    </button>
+    <div class="flex items-center gap-2 w-full sm:w-auto">
+        <button onclick="openModal('modal-generate-libur')" class="flex items-center justify-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-xl transition-colors font-medium text-sm w-full sm:w-auto whitespace-nowrap">
+            <i class="fa-solid fa-wand-magic-sparkles text-fuchsia-500"></i> Generate Otomatis
+        </button>
+        <button onclick="openModal('modal-tambah-libur')" class="flex items-center justify-center gap-2 px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl transition-colors font-medium text-sm shadow-sm shadow-brand-500/30 w-full sm:w-auto whitespace-nowrap">
+            <i class="fa-solid fa-calendar-plus"></i> Tambah Hari Libur
+        </button>
+    </div>
+</div>
+
+<!-- Modal Generate Otomatis (pilih tahun) -->
+<div id="modal-generate-libur" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onclick="closeModal('modal-generate-libur')"></div>
+    <div class="flex items-center justify-center min-h-screen px-4 text-center sm:p-0">
+        <div class="relative bg-white dark:bg-slate-800 rounded-2xl text-left overflow-hidden shadow-xl sm:max-w-sm w-full border border-slate-200 dark:border-slate-700">
+            <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
+                <h3 class="text-lg font-bold text-slate-800 dark:text-white">Generate Hari Libur Otomatis</h3>
+                <button onclick="closeModal('modal-generate-libur')" class="text-slate-400 hover:text-slate-500 dark:hover:text-slate-300">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <form method="GET" class="px-6 py-5 space-y-4">
+                <p class="text-sm text-slate-500 dark:text-slate-400">
+                    Dihitung dari rumus kalender (Masehi/Kristen/Hijriah/lunisolar) untuk tahun manapun -
+                    hasilnya pratinjau dulu, tidak langsung tersimpan.
+                </p>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Tahun</label>
+                    <input type="number" name="preview_tahun" required min="2020" max="<?php echo (int)date('Y') + 5; ?>"
+                           value="<?php echo $tahun_preview ?? ($tahun_aktif ?: (int)date('Y')); ?>"
+                           class="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 transition-colors">
+                </div>
+                <button type="submit" class="w-full px-6 py-2.5 bg-fuchsia-600 hover:bg-fuchsia-700 text-white rounded-xl shadow-sm shadow-fuchsia-500/30 transition-colors text-sm font-semibold">
+                    Buat Pratinjau
+                </button>
+            </form>
+        </div>
+    </div>
 </div>
 
 <?php include 'alert_messages.php'; ?>
+
+<?php if ($tahun_preview !== null): ?>
+<div class="bg-white dark:bg-slate-800 rounded-2xl border border-fuchsia-200 dark:border-fuchsia-800/50 shadow-sm mb-8 overflow-hidden">
+    <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center gap-3 bg-fuchsia-50/50 dark:bg-fuchsia-900/10">
+        <i class="fa-solid fa-wand-magic-sparkles text-xl text-fuchsia-600 dark:text-fuchsia-400"></i>
+        <h3 class="font-bold text-slate-800 dark:text-white">Pratinjau Hari Libur Nasional <?php echo $tahun_preview; ?></h3>
+    </div>
+
+    <div class="px-6 py-4 text-sm text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-700/60">
+        Dihitung dari rumus kalender, belum tersimpan. Tanggal Masehi &amp; Kristen (Paskah dkk.) selalu tepat.
+        Tanggal Hijriah adalah <b>perkiraan tabular (±0-1 hari)</b> - Kemenag menetapkan lewat rukyat (lihat bulan),
+        jadi tetap cocokkan dengan SKB 3 Menteri resmi sebelum dipakai untuk penggajian.
+    </div>
+
+    <form action="master_process.php" method="POST">
+        <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+        <input type="hidden" name="generate_hari_libur" value="1">
+        <input type="hidden" name="tahun" value="<?php echo $tahun_preview; ?>">
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm min-w-[640px]">
+                <thead>
+                    <tr class="text-left text-[11px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-200 dark:border-slate-700">
+                        <th class="px-4 py-3 w-10"></th>
+                        <th class="px-4 py-3">Tanggal</th>
+                        <th class="px-4 py-3">Keterangan</th>
+                        <th class="px-4 py-3">Sumber</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 dark:divide-slate-700/60">
+                    <?php $idx = 0; foreach ($preview_nasional as $h): ?>
+                        <?php if ($h['missing']): ?>
+                            <tr>
+                                <td colspan="4" class="px-4 py-3 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-xs">
+                                    <i class="fa-solid fa-triangle-exclamation"></i>
+                                    <b><?php echo safe_output($h['nama']); ?></b> belum ada data untuk <?php echo $tahun_preview; ?> -
+                                    tambahkan manual begitu tanggalnya diumumkan resmi (PHDI/Kemenag/WALUBI).
+                                </td>
+                            </tr>
+                            <?php continue; ?>
+                        <?php endif; ?>
+                        <?php $sudah_ada = isset($tanggal_sudah_ada[$h['tanggal']]); ?>
+                        <tr class="<?php echo $sudah_ada ? 'opacity-50' : ''; ?>">
+                            <td class="px-4 py-3">
+                                <input type="checkbox" name="pilih[<?php echo $idx; ?>]" value="1"
+                                       <?php echo $sudah_ada ? 'disabled' : 'checked'; ?>
+                                       class="w-4 h-4 rounded border-slate-300 text-fuchsia-600 focus:ring-fuchsia-500 cursor-pointer">
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap font-semibold text-slate-700 dark:text-slate-200">
+                                <?php echo date('j M Y', strtotime($h['tanggal'])); ?>
+                            </td>
+                            <td class="px-4 py-3 text-slate-700 dark:text-slate-200">
+                                <?php echo safe_output($h['nama']); ?>
+                                <?php if ($sudah_ada): ?>
+                                    <span class="text-xs text-slate-400">(sudah terdaftar)</span>
+                                <?php endif; ?>
+                            </td>
+                            <td class="px-4 py-3">
+                                <?php if ($h['perlu_verifikasi']): ?>
+                                    <span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800/50">
+                                        <i class="fa-solid fa-triangle-exclamation"></i> Perlu Verifikasi
+                                    </span>
+                                <?php else: ?>
+                                    <span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800/50">
+                                        <i class="fa-solid fa-check"></i> Pasti
+                                    </span>
+                                <?php endif; ?>
+                            </td>
+                            <input type="hidden" name="tanggal[<?php echo $idx; ?>]" value="<?php echo $h['tanggal']; ?>">
+                            <input type="hidden" name="nama[<?php echo $idx; ?>]" value="<?php echo safe_output($h['nama']); ?>">
+                            <input type="hidden" name="jenis[<?php echo $idx; ?>]" value="Nasional">
+                            <input type="hidden" name="verifikasi[<?php echo $idx; ?>]" value="<?php echo $h['perlu_verifikasi']; ?>">
+                        </tr>
+                        <?php $idx++; ?>
+                    <?php endforeach; ?>
+
+                    <?php if (empty($preview_cuti)): ?>
+                        <tr>
+                            <td colspan="4" class="px-4 py-3 bg-slate-50 dark:bg-slate-900/30 text-slate-400 text-xs">
+                                Belum ada data cuti bersama untuk <?php echo $tahun_preview; ?> - itu murni kebijakan
+                                pemerintah (SKB 3 Menteri), diumumkan 3-4 bulan sebelum tahun berjalan. Tambahkan manual
+                                lewat tombol "Tambah Hari Libur" begitu terbit.
+                            </td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($preview_cuti as $c): ?>
+                            <?php $sudah_ada = isset($tanggal_sudah_ada[$c['tanggal']]); ?>
+                            <tr class="<?php echo $sudah_ada ? 'opacity-50' : ''; ?>">
+                                <td class="px-4 py-3">
+                                    <input type="checkbox" name="pilih[<?php echo $idx; ?>]" value="1"
+                                           <?php echo $sudah_ada ? 'disabled' : 'checked'; ?>
+                                           class="w-4 h-4 rounded border-slate-300 text-fuchsia-600 focus:ring-fuchsia-500 cursor-pointer">
+                                </td>
+                                <td class="px-4 py-3 whitespace-nowrap font-semibold text-slate-700 dark:text-slate-200">
+                                    <?php echo date('j M Y', strtotime($c['tanggal'])); ?>
+                                </td>
+                                <td class="px-4 py-3 text-slate-700 dark:text-slate-200">
+                                    <?php echo safe_output($c['nama']); ?>
+                                    <?php if ($sudah_ada): ?>
+                                        <span class="text-xs text-slate-400">(sudah terdaftar)</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-800/50">
+                                        Cuti Bersama (SKB)
+                                    </span>
+                                </td>
+                                <input type="hidden" name="tanggal[<?php echo $idx; ?>]" value="<?php echo $c['tanggal']; ?>">
+                                <input type="hidden" name="nama[<?php echo $idx; ?>]" value="<?php echo safe_output($c['nama']); ?>">
+                                <input type="hidden" name="jenis[<?php echo $idx; ?>]" value="Cuti Bersama">
+                                <input type="hidden" name="verifikasi[<?php echo $idx; ?>]" value="0">
+                            </tr>
+                            <?php $idx++; ?>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="px-6 py-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 flex justify-end">
+            <button type="submit" class="px-6 py-2.5 bg-fuchsia-600 hover:bg-fuchsia-700 text-white rounded-xl shadow-sm shadow-fuchsia-500/30 transition-colors text-sm font-semibold">
+                <i class="fa-solid fa-floppy-disk"></i> Simpan Terpilih ke Hari Libur
+            </button>
+        </div>
+    </form>
+</div>
+<?php endif; ?>
 
 <?php if ($jumlah_verifikasi > 0): ?>
 <div class="mb-6 px-5 py-4 rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50">

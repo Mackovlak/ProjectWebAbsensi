@@ -28,6 +28,12 @@ if ($result_cabang->num_rows == 0) {
 $data_karyawan = $result_cabang->fetch_assoc();
 $id_cabang = $data_karyawan['id_cabang'];
 $nama_karyawan = $data_karyawan['nama_karyawan'];
+
+// Dulu hardcode ke hari Minggu (DAYOFWEEK = 1); sekarang ikut hari lembur
+// yang benar-benar dikonfigurasi (system_settings.hari_overtime, default
+// Sabtu) - lihat kalender_functions.php.
+$mysql_dow_overtime = daftarHariOvertimeMysqlDow($conn);
+$label_hari_overtime = labelHariOvertime($conn);
 $nama_cabang = $data_karyawan['nama_cabang'];
 $stmt_cabang->close();
 
@@ -89,15 +95,15 @@ $sql_statistik = "SELECT
         ELSE 0
     END) as total_overtime,
     
-    COUNT(DISTINCT CASE 
-        WHEN a.keterangan = 'Hadir' 
-        AND DAYOFWEEK(a.tanggal) = 1 
-        THEN a.id 
-    END) as count_minggu_raw,
-    
-    COUNT(DISTINCT CASE 
+    COUNT(DISTINCT CASE
         WHEN a.keterangan = 'Hadir'
-        AND DAYOFWEEK(a.tanggal) = 1
+        AND DAYOFWEEK(a.tanggal) IN ($mysql_dow_overtime)
+        THEN a.id
+    END) as count_minggu_raw,
+
+    COUNT(DISTINCT CASE
+        WHEN a.keterangan = 'Hadir'
+        AND DAYOFWEEK(a.tanggal) IN ($mysql_dow_overtime)
         AND (
             (a.jam_pulang IS NOT NULL AND a.jam_pulang != '00:00:00' AND TIMESTAMPDIFF(MINUTE, a.jam_masuk, a.jam_pulang) < 330)
             OR ((a.jam_pulang IS NULL OR a.jam_pulang = '00:00:00') AND a.tanggal < CURDATE())
@@ -299,7 +305,7 @@ $csrf_token = generateCSRFToken();
             <div class="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 dark:bg-orange-900/40 dark:text-orange-400 flex items-center justify-center mb-3 shadow-sm">
                 <i class="fa-solid fa-calendar-day text-lg"></i>
             </div>
-            <p class="text-slate-500 dark:text-slate-400 text-xs sm:text-sm font-semibold uppercase tracking-wide mb-1">Minggu</p>
+            <p class="text-slate-500 dark:text-slate-400 text-xs sm:text-sm font-semibold uppercase tracking-wide mb-1"><?php echo htmlspecialchars($label_hari_overtime); ?></p>
             <h3 class="text-2xl sm:text-3xl font-bold text-slate-800 dark:text-white"><?php echo $stats['total_minggu'] ?? 0; ?></h3>
         </div>
     </div>
@@ -377,7 +383,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <?php echo $stats['total_alpha'] ?? 0; ?>
     ];
     
-    const labels = ['Hadir', 'Stngh. Hari', 'Over Time', 'Minggu', 'OFF', 'Sakit', 'Cuti', 'Dinas Luar', 'Alpha'];
+    const labels = ['Hadir', 'Stngh. Hari', 'Over Time', <?php echo json_encode($label_hari_overtime); ?>, 'OFF', 'Sakit', 'Cuti', 'Dinas Luar', 'Alpha'];
     const colors = ['#d946ef', '#f59e0b', '#a855f7', '#eab308', '#64748b', '#ec4899', '#06b6d4', '#6366f1', '#ef4444'];
     
     const totalData = chartData.reduce((a, b) => a + b, 0);

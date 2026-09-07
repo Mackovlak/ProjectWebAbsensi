@@ -9,6 +9,12 @@ if (!isset($_GET['cabang']) || !is_numeric($_GET['cabang'])) {
 
 $id_cabang = intval($_GET['cabang']);
 
+// Dulu hardcode ke hari Minggu (DAYOFWEEK = 1); sekarang ikut hari lembur
+// yang benar-benar dikonfigurasi (system_settings.hari_overtime, default
+// Sabtu) - lihat kalender_functions.php.
+$mysql_dow_overtime = daftarHariOvertimeMysqlDow($conn);
+$label_hari_overtime = labelHariOvertime($conn);
+
 // Ambil nama cabang SEBELUM digunakan
 $stmt = $conn->prepare("SELECT nama_cabang FROM cabang WHERE id = ?");
 $stmt->bind_param("i", $id_cabang);
@@ -76,15 +82,15 @@ $sql_statistik = "SELECT
         ELSE 0
     END) as total_overtime,
     
-    COUNT(DISTINCT CASE 
-        WHEN a.keterangan = 'Hadir' 
-        AND DAYOFWEEK(a.tanggal) = 1 
-        THEN a.id 
-    END) as count_minggu_raw,
-    
-    COUNT(DISTINCT CASE 
+    COUNT(DISTINCT CASE
         WHEN a.keterangan = 'Hadir'
-        AND DAYOFWEEK(a.tanggal) = 1
+        AND DAYOFWEEK(a.tanggal) IN ($mysql_dow_overtime)
+        THEN a.id
+    END) as count_minggu_raw,
+
+    COUNT(DISTINCT CASE
+        WHEN a.keterangan = 'Hadir'
+        AND DAYOFWEEK(a.tanggal) IN ($mysql_dow_overtime)
         AND (
             (a.jam_pulang IS NOT NULL AND a.jam_pulang != '00:00:00' AND TIMESTAMPDIFF(MINUTE, a.jam_masuk, a.jam_pulang) < 330)
             OR ((a.jam_pulang IS NULL OR a.jam_pulang = '00:00:00') AND a.tanggal < CURDATE())
@@ -328,7 +334,7 @@ table.dataTable.order-column.stripe tbody tr.even > .sorting_1 {
             </div>
         </div>
         <h3 class="text-3xl font-extrabold text-slate-800 dark:text-white relative z-10"><?php echo $total_minggu; ?></h3>
-        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 relative z-10 font-medium">Hadir Ahad/Minggu</p>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 relative z-10 font-medium">Hadir Hari <?php echo htmlspecialchars($label_hari_overtime); ?></p>
     </div>
     
     <!-- OFF -->
@@ -357,7 +363,7 @@ table.dataTable.order-column.stripe tbody tr.even > .sorting_1 {
                     <th class="px-4 py-4 font-bold text-center border-b">Terlambat</th>
                     <th class="px-4 py-4 font-bold text-center border-b">1/2 Hari</th>
                     <th class="px-4 py-4 font-bold text-center border-b">Overtime</th>
-                    <th class="px-4 py-4 font-bold text-center bg-amber-50/50 dark:bg-amber-900/10 text-amber-600 border-b">Minggu</th>
+                    <th class="px-4 py-4 font-bold text-center bg-amber-50/50 dark:bg-amber-900/10 text-amber-600 border-b"><?php echo htmlspecialchars($label_hari_overtime); ?></th>
                     <th class="px-4 py-4 font-bold text-center border-b">OFF</th>
                     <th class="px-4 py-4 font-bold text-center border-b">Sakit</th>
                     <th class="px-4 py-4 font-bold text-center border-b">Cuti</th>

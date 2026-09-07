@@ -36,6 +36,13 @@ if (!$karyawan) {
 $bulan = isset($_GET['bulan']) ? (int)$_GET['bulan'] : date('n');
 $tahun = isset($_GET['tahun']) ? (int)$_GET['tahun'] : date('Y');
 
+// Dulu "Insentif Ahad" hardcode ke hari Minggu (DAYOFWEEK = 1). Sekarang
+// perusahaan pindah hari lembur ke Sabtu (system_settings.hari_overtime),
+// jadi hitungan & labelnya ikut hari yang benar-benar dikonfigurasi -
+// bukan diganti jadi hardcode "Sabtu" yang baru.
+$mysql_dow_overtime = daftarHariOvertimeMysqlDow($conn);
+$label_hari_overtime = labelHariOvertime($conn);
+
 // Get attendance data via raw SQL (menggantikan stored procedure untuk kompatibilitas hosting)
 $sql_absensi = "SELECT 
     COUNT(DISTINCT CASE WHEN a.keterangan IN ('Hadir', 'Dinas Luar') THEN a.id END) as total_hadir_raw,
@@ -58,9 +65,9 @@ $sql_absensi = "SELECT
             CASE WHEN (TIME_TO_SEC(a.jam_pulang) - TIME_TO_SEC((SELECT jk.jam_pulang FROM jam_kerja jk WHERE jk.id_cabang = k.id_cabang ORDER BY ABS(TIMESTAMPDIFF(MINUTE, a.jam_masuk, jk.jam_masuk_akhir)) ASC LIMIT 1))) < 2100 THEN 0.5 ELSE 1 END
         ELSE 0 
     END) as total_overtime,
-    COUNT(DISTINCT CASE WHEN a.keterangan IN ('Hadir', 'Dinas Luar') AND DAYOFWEEK(a.tanggal) = 1 THEN a.id END) as total_ahad_full_raw,
-    COUNT(DISTINCT CASE 
-        WHEN a.keterangan IN ('Hadir', 'Dinas Luar') AND DAYOFWEEK(a.tanggal) = 1
+    COUNT(DISTINCT CASE WHEN a.keterangan IN ('Hadir', 'Dinas Luar') AND DAYOFWEEK(a.tanggal) IN ($mysql_dow_overtime) THEN a.id END) as total_ahad_full_raw,
+    COUNT(DISTINCT CASE
+        WHEN a.keterangan IN ('Hadir', 'Dinas Luar') AND DAYOFWEEK(a.tanggal) IN ($mysql_dow_overtime)
         AND (
             (a.jam_pulang IS NOT NULL AND a.jam_pulang != '00:00:00' AND TIMESTAMPDIFF(MINUTE, a.jam_masuk, a.jam_pulang) < 330)
             OR ((a.jam_pulang IS NULL OR a.jam_pulang = '00:00:00') AND a.tanggal < CURDATE())
@@ -267,7 +274,7 @@ require 'admin_header.php';
                         <p class="font-bold text-rose-600 dark:text-rose-400"><span><?php echo $absensi['total_terlambat'] ?? 0; ?></span> Kali</p>
                     </div>
                     <div class="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-100 dark:border-slate-700/50 text-center">
-                        <p class="text-xs text-slate-500 dark:text-slate-400 uppercase mb-1">Hari Minggu</p>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 uppercase mb-1">Hari <?php echo htmlspecialchars($label_hari_overtime); ?></p>
                         <p class="font-bold text-fuchsia-600 dark:text-fuchsia-400"><span><?php echo ($absensi["total_ahad_full"]??0) + (($absensi["total_ahad_setengah"]??0)*0.5); ?></span> Hari</p>
                     </div>
                     <div class="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-100 dark:border-slate-700/50 text-center">
@@ -423,10 +430,10 @@ require 'admin_header.php';
                         </div>
                     </div>
 
-                    <!-- Hari Ahad (Otomatis Absen) -->
+                    <!-- Insentif Hari Lembur (Otomatis Absen) - dulu hardcode "Ahad"/Minggu, sekarang ikut system_settings.hari_overtime -->
                     <div class="flex items-start gap-4">
                         <div class="w-1/3">
-                            <p class="text-sm font-semibold text-slate-700 dark:text-slate-300">Insentif Minggu</p>
+                            <p class="text-sm font-semibold text-slate-700 dark:text-slate-300">Insentif Hari <?php echo htmlspecialchars($label_hari_overtime); ?></p>
                             <p class="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1"><i class="fa-solid fa-link"></i> Auto x Hari (<?php echo ($absensi["total_ahad_full"]??0) + (($absensi["total_ahad_setengah"]??0)*0.5); ?>)</p>
                         </div>
                         <div class="w-2/3 flex items-center gap-1.5">

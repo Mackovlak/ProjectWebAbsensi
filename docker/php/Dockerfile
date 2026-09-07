@@ -1,7 +1,14 @@
 FROM php:8.2-apache
 
-RUN docker-php-ext-install mysqli \
-    && a2enmod rewrite headers
+# libzip-dev is a build-time dependency of the zip extension (needed by
+# xlsx_writer.php's use of ZipArchive to generate real .xlsx exports) - it
+# also pulls in the runtime libzip shared library the compiled extension
+# links against, so it's kept rather than purged after install.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libzip-dev \
+    && docker-php-ext-install mysqli zip \
+    && a2enmod rewrite headers \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY docker/php/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
 COPY docker/apache/000-default.conf /etc/apache2/sites-available/000-default.conf

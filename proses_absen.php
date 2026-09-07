@@ -223,6 +223,19 @@ try {
     }
     // =======================================================================
 
+    // OFF & Alpha tidak lagi bisa diajukan sendiri lewat kiosk - keduanya
+    // butuh keputusan Admin (OFF lewat hari libur/entri manual, Alpha lewat
+    // entri manual histori_absensi.php), bukan tombol self-service tanpa
+    // alasan/persetujuan. Guard sisi server, bukan sekadar sembunyikan tombol.
+    // Cuti khusus (Menikah dkk) juga harus lewat pengajuan_izin resmi
+    // (staff_pengajuan_izin.php) supaya direview, bukan diinsert langsung
+    // dari kiosk yang sessionless/tanpa autentikasi kuat.
+    if (!$is_absen_pulang && !$is_dinas_luar && !$izin_dinas_hari_ini && in_array($keterangan_param, array_merge(['OFF', 'Alpha'], IZIN_JENIS_KHUSUS), true)) {
+        $stmt_check->close();
+        outputJSON(['success' => false, 'message' => 'Opsi ini sudah tidak tersedia untuk pengajuan mandiri. Gunakan menu Pengajuan Izin, atau hubungi Admin.']);
+    }
+    // =======================================================================
+
     if ($is_absen_pulang) {
         // ============== PROSES ABSEN PULANG ==============
         $data_absen = $result_check->fetch_assoc();
@@ -233,7 +246,7 @@ try {
         }
 
         // VALIDASI LOKASI untuk absen pulang (hanya jika keterangan aslinya adalah Hadir)
-        $stmt_get_ket = $conn->prepare("SELECT keterangan FROM absensi WHERE id = ?");
+        $stmt_get_ket = $conn->prepare("SELECT keterangan, izin_pulang_cepat FROM absensi WHERE id = ?");
         $stmt_get_ket->bind_param("i", $data_absen['id']);
         $stmt_get_ket->execute();
         $ket_data = $stmt_get_ket->get_result()->fetch_assoc();
@@ -297,6 +310,19 @@ try {
                 $target_jam_pulang = $result_jam_pulang->fetch_assoc()['jam_pulang'];
                 if ($waktu > $target_jam_pulang) {
                     $is_overtime_request = true;
+                } elseif ($waktu < $target_jam_pulang && $ket_data['izin_pulang_cepat'] !== 'Disetujui') {
+                    // Pulang lebih awal dari jam pulang shift wajib punya izin
+                    // pulang cepat yang sudah Disetujui Admin/Supervisor.
+                    $stmt_jam_pulang->close();
+                    $stmt_check->close();
+                    $pesan_pulang_cepat = $ket_data['izin_pulang_cepat'] === 'Pending'
+                        ? 'Pengajuan izin pulang cepat Anda masih menunggu persetujuan. Silakan tunggu, atau absen pulang pada jam pulang normal.'
+                        : 'Anda mencoba pulang sebelum jam pulang. Ajukan izin pulang cepat terlebih dahulu lewat menu "Izin Pulang Cepat" pada halaman ini.';
+                    outputJSON([
+                        'success' => false,
+                        'message' => $pesan_pulang_cepat,
+                        'type' => 'pulang_cepat_required'
+                    ]);
                 }
             }
             $stmt_jam_pulang->close();

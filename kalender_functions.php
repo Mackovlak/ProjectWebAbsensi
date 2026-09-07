@@ -111,11 +111,10 @@ function isHariOvertime($conn, $tanggal) {
 }
 
 /**
- * Teks ringkas kebijakan hari kerja, untuk ditampilkan di UI.
+ * Format daftar nomor hari ISO jadi teks ringkas untuk UI.
  * Contoh: "Senin - Jumat" atau "Senin, Rabu, Jumat".
  */
-function labelHariKerja($conn) {
-    $hari = getHariKerja($conn);
+function formatLabelDaftarHari($hari) {
     $nama = array_map(function ($n) { return KALENDER_NAMA_HARI[$n]; }, $hari);
 
     // Deteksi rentang berurutan supaya tampil "Senin - Jumat"
@@ -127,6 +126,36 @@ function labelHariKerja($conn) {
         return $nama[0] . ' - ' . $nama[count($nama) - 1];
     }
     return implode(', ', $nama);
+}
+
+/**
+ * Teks ringkas kebijakan hari kerja, untuk ditampilkan di UI.
+ * Contoh: "Senin - Jumat" atau "Senin, Rabu, Jumat".
+ */
+function labelHariKerja($conn) {
+    return formatLabelDaftarHari(getHariKerja($conn));
+}
+
+/**
+ * Teks ringkas hari lembur (mis. "Sabtu"), untuk dipakai di label/kolom
+ * laporan yang dulu hardcode "Ahad"/"Minggu" - supaya ikut berubah otomatis
+ * kalau pengaturan hari_overtime diubah, bukan sekadar ganti satu hardcode
+ * dengan hardcode lain.
+ */
+function labelHariOvertime($conn) {
+    return formatLabelDaftarHari(getHariOvertime($conn));
+}
+
+/**
+ * Daftar nomor hari lembur (ISO) dikonversi ke penomoran DAYOFWEEK() MySQL
+ * (1=Minggu...7=Sabtu), siap dipakai dalam klausa "DAYOFWEEK(tanggal) IN (...)".
+ * Nilai bersumber dari parseDaftarHari (tervalidasi 1-7), aman diinterpolasi
+ * langsung ke SQL tanpa parameter binding.
+ */
+function daftarHariOvertimeMysqlDow($conn) {
+    return implode(',', array_map(function ($iso) {
+        return ($iso % 7) + 1;
+    }, getHariOvertime($conn)));
 }
 
 /**

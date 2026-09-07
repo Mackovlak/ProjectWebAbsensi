@@ -291,6 +291,7 @@ if ($result_best) {
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const chartData = <?php echo json_encode($chart_data); ?>;

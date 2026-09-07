@@ -47,8 +47,9 @@ $status_pulang = null;
 $conn->query("DELETE FROM absensi WHERE keterangan = 'Pending Dinas' AND TIMESTAMPDIFF(HOUR, waktu_alasan, NOW()) >= 4");
 
 $stmt_check = $conn->prepare(
-    "SELECT a.id, a.jam_masuk, a.jam_pulang, a.keterangan, a.status_masuk, k.id_cabang, a.alasan, a.foto_bukti, a.waktu_alasan
-     FROM absensi a 
+    "SELECT a.id, a.jam_masuk, a.jam_pulang, a.keterangan, a.status_masuk, k.id_cabang, a.alasan, a.foto_bukti, a.waktu_alasan,
+            a.izin_pulang_cepat, a.alasan_pulang_cepat
+     FROM absensi a
      JOIN karyawan k ON a.id_karyawan = k.id_karyawan
      WHERE a.id_karyawan = ? AND a.tanggal = ?"
 );
@@ -391,11 +392,10 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
             <form id="form-absen">
                 <button type="button" class="btn btn-hadir" onclick="submitAbsen('Hadir')"><i class="fas fa-check-circle"></i> HADIR</button>
                 <div class="action-grid">
-                    <button type="button" class="btn btn-off" onclick="submitAbsenWithConfirm('OFF', 'Apakah Anda yakin hari ini sedang OFF?')"><i class="fas fa-calendar-times"></i> OFF</button>
                     <button type="button" class="btn btn-sakit" onclick="submitAbsenWithConfirm('Sakit', 'Apakah Anda yakin hari ini izin SAKIT?')"><i class="fas fa-heartbeat"></i> SAKIT</button>
                     <button type="button" class="btn btn-cuti" onclick="submitAbsenWithConfirm('Cuti', 'Apakah Anda yakin hari ini izin CUTI?')"><i class="fas fa-calendar-check"></i> CUTI</button>
-                    <button type="button" class="btn btn-alpha" onclick="submitAbsenWithConfirm('Alpha', 'Pilih ALPHA jika Anda absen tanpa keterangan. Yakin?')"><i class="fas fa-times-circle"></i> ALPHA</button>
                 </div>
+                <p style="margin-top: 10px; font-size: 11px; color: #94a3b8; text-align: center;">OFF & Alpha tidak lagi bisa diajukan sendiri &mdash; hubungi Admin bila diperlukan.</p>
             </form>
             
             <?php if (!empty($username_karyawan)): ?>
@@ -495,7 +495,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                 <span><?php echo htmlspecialchars($absen_hari_ini['keterangan']); ?></span>
             </div>
             <?php 
-                if (in_array($absen_hari_ini['keterangan'], ['Sakit', 'Cuti', 'Pending Dinas', 'Dinas Luar'])):
+                if (in_array($absen_hari_ini['keterangan'], ['Sakit', 'Cuti', 'Pending Dinas', 'Dinas Luar', 'Menikah', 'Menikahkan Anak', 'Melahirkan', 'Duka Cita'])):
                     $btn_text = in_array($absen_hari_ini['keterangan'], ['Pending Dinas', 'Dinas Luar']) ? "Lihat / Edit Detail Dinas" : "Lihat / Edit Alasan";
             ?>
             <button type="button" class="btn btn-secondary" onclick="openEditAlasanModal()" style="background: #3b82f6; border-color: #3b82f6; margin-bottom: 20px;">
@@ -522,6 +522,30 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                     <i class="fas fa-sign-out-alt"></i> Absen Pulang
                 </button>
             </form>
+
+            <?php if (!$disable_pulang): ?>
+                <?php if ($absen_hari_ini['izin_pulang_cepat'] === 'Pending'): ?>
+                    <div class="info-disabled" style="background-color: #fff3cd; border-color: #ffeeba; color: #856404; margin-top: 12px;">
+                        <i class="fas fa-hourglass-half"></i>
+                        <div><strong>Menunggu Persetujuan Pulang Cepat</strong><br>Anda tetap bisa absen pulang seperti biasa pada jam pulang normal.</div>
+                    </div>
+                <?php elseif ($absen_hari_ini['izin_pulang_cepat'] === 'Disetujui'): ?>
+                    <div class="info-disabled" style="background-color: #d1fae5; border-color: #6ee7b7; color: #065f46; margin-top: 12px;">
+                        <i class="fas fa-check-circle"></i>
+                        <div><strong>Izin Pulang Cepat Disetujui</strong><br>Anda boleh absen pulang lebih awal hari ini.</div>
+                    </div>
+                <?php elseif ($absen_hari_ini['izin_pulang_cepat'] === 'Ditolak'): ?>
+                    <div class="info-disabled" style="background-color: #fee2e2; border-color: #fecaca; color: #991b1b; margin-top: 12px;">
+                        <i class="fas fa-times-circle"></i>
+                        <div><strong>Izin Pulang Cepat Ditolak</strong><br>Silakan absen pulang pada jam pulang normal.</div>
+                    </div>
+                <?php else: ?>
+                    <button type="button" onclick="bukaModalPulangCepat()" class="btn-retry" style="background: #f59e0b; margin-top: 12px; color: white; box-shadow: 0 4px 0 #b45309; border-color: #b45309;">
+                        <i class="fas fa-clock"></i> Izin Pulang Cepat
+                    </button>
+                <?php endif; ?>
+            <?php endif; ?>
+
             <?php if (!empty($username_karyawan)): ?>
             <div style="margin-top: 25px; border-top: 1px dashed #cbd5e1; padding-top: 20px;">
                 <a href="login.php?username=<?php echo urlencode($username_karyawan); ?>" class="btn" style="background: #f1f5f9; color: #3b82f6; border: 2px solid #e2e8f0; font-weight: 600; text-decoration: none; box-shadow: none;">
@@ -535,7 +559,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                 </button>
             </div>
             <?php endif; ?>
-            
+
             <?php if (!$disable_pulang): ?>
             <div id="status-lokasi"><i class="fas fa-map-marker-alt"></i> <span>Mendeteksi lokasi...</span></div>
             <?php endif; ?>
@@ -575,7 +599,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
             </div>
             <?php endif; ?>
             <?php 
-                if (in_array($absen_hari_ini['keterangan'], ['Sakit', 'Cuti', 'Pending Dinas', 'Dinas Luar'])):
+                if (in_array($absen_hari_ini['keterangan'], ['Sakit', 'Cuti', 'Pending Dinas', 'Dinas Luar', 'Menikah', 'Menikahkan Anak', 'Melahirkan', 'Duka Cita'])):
                     $btn_text = in_array($absen_hari_ini['keterangan'], ['Pending Dinas', 'Dinas Luar']) ? "Lihat / Edit Detail Dinas" : "Lihat / Edit Alasan";
             ?>
             <button type="button" class="btn btn-secondary" onclick="openEditAlasanModal()" style="background: #3b82f6; border-color: #3b82f6; margin-top: 10px;">
@@ -751,6 +775,25 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                 <div style="display: flex; gap: 10px;">
                     <button type="button" class="btn" style="background: #f1f5f9; color: #475569;" onclick="document.getElementById('modal-dinas-luar').style.display='none'">Batal</button>
                     <button type="submit" id="btn-submit-dinas" class="btn" style="background: #4f46e5; color: white;"><i class="fas fa-paper-plane"></i> Minta Persetujuan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Izin Pulang Cepat -->
+    <div id="modal-pulang-cepat" class="face-overlay" style="align-items: center; z-index: 10001;">
+        <div class="face-verification-box" style="text-align: left; padding: 25px; border-radius: 20px; width: 90%; max-width: 400px; max-height: 90vh; overflow-y: auto;">
+            <h2 style="margin-bottom: 5px;"><i class="fas fa-clock text-brand-500"></i> Izin Pulang Cepat</h2>
+            <p style="font-size: 13px; margin-bottom: 20px;">Anda akan pulang sebelum jam pulang shift. Isi alasan di bawah untuk meminta persetujuan Admin/Supervisor. Ini tidak memotong kuota cuti tahunan Anda.</p>
+
+            <form id="form-pulang-cepat" onsubmit="event.preventDefault(); submitPulangCepatForm();">
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #333;">Alasan <span style="color: red;">*</span></label>
+                    <textarea id="pulang-cepat-alasan-text" required minlength="5" rows="3" style="width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #ccc; font-family: inherit; font-size: 14px; outline: none;" placeholder="Contoh: Ada urusan keluarga mendadak"></textarea>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button type="button" class="btn" style="background: #f1f5f9; color: #475569;" onclick="document.getElementById('modal-pulang-cepat').style.display='none'">Batal</button>
+                    <button type="submit" id="btn-submit-pulang-cepat" class="btn" style="background: #f59e0b; color: white;"><i class="fas fa-paper-plane"></i> Minta Persetujuan</button>
                 </div>
             </form>
         </div>
@@ -986,6 +1029,53 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                 btnSubmit.innerHTML = originalText;
                 btnSubmit.disabled = false;
             });
+        }
+
+        function bukaModalPulangCepat() {
+            document.getElementById('modal-pulang-cepat').style.display = 'flex';
+        }
+
+        function submitPulangCepatForm() {
+            const alasan = document.getElementById('pulang-cepat-alasan-text').value;
+
+            if (alasan.trim().length < 5) {
+                Swal.fire('Peringatan', 'Alasan wajib diisi minimal 5 karakter!', 'warning');
+                return;
+            }
+
+            const btnSubmit = document.getElementById('btn-submit-pulang-cepat');
+            const originalText = btnSubmit.innerHTML;
+            btnSubmit.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Memproses...';
+            btnSubmit.disabled = true;
+
+            const formData = new FormData();
+            formData.append('id_karyawan', document.getElementById('global-id-karyawan').value);
+            formData.append('alasan', alasan);
+
+            fetch('proses_pulang_cepat.php', { method: 'POST', body: formData })
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('modal-pulang-cepat').style.display = 'none';
+                    if (data.success) {
+                        Swal.fire({
+                            icon: 'success',
+                            title: data.title || 'Berhasil',
+                            html: data.message,
+                            timer: 3500,
+                            timerProgressBar: true,
+                            showConfirmButton: false
+                        }).then(() => location.reload());
+                    } else {
+                        Swal.fire('Gagal', data.message, 'error');
+                    }
+                })
+                .catch(() => {
+                    Swal.fire('Gagal', 'Terjadi kesalahan koneksi. Silakan coba lagi.', 'error');
+                })
+                .finally(() => {
+                    btnSubmit.innerHTML = originalText;
+                    btnSubmit.disabled = false;
+                });
         }
 
         function submitAlasanForm() {
@@ -1291,6 +1381,14 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                         // Hilangkan loader, tampilkan modal overtime
                         mainContainer.innerHTML = '';
                         document.getElementById('modal-input-overtime').style.display = 'flex';
+                    } else if (data.type === 'pulang_cepat_required') {
+                        mainContainer.innerHTML = '';
+                        Swal.fire({
+                            icon: 'warning',
+                            title: 'Belum Waktunya Pulang',
+                            text: data.message,
+                            confirmButtonText: 'OK'
+                        }).then(() => location.reload());
                     } else {
                         mainContainer.innerHTML = `
                             <div class="error-container">
@@ -1354,7 +1452,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
         });
 
         // Edit Alasan Logic
-        <?php if ($absen_hari_ini && in_array($absen_hari_ini['keterangan'], ['Sakit', 'Cuti', 'Pending Dinas', 'Dinas Luar'])): ?>
+        <?php if ($absen_hari_ini && in_array($absen_hari_ini['keterangan'], ['Sakit', 'Cuti', 'Pending Dinas', 'Dinas Luar', 'Menikah', 'Menikahkan Anak', 'Melahirkan', 'Duka Cita'])): ?>
         const alasanData = {
             alasan: <?php echo json_encode($absen_hari_ini['alasan'] ?? ''); ?>,
             foto_bukti: <?php echo json_encode($absen_hari_ini['foto_bukti'] ?? ''); ?>,

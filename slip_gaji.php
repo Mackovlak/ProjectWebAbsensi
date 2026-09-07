@@ -5,6 +5,7 @@
  */
 require 'config.php';
 requireAdmin();
+$csrf_token = generateCSRFToken();
 
 // Ambil semua cabang untuk dropdown filter
 $query_cabang = "SELECT id, nama_cabang FROM cabang ORDER BY nama_cabang ASC";
@@ -20,7 +21,10 @@ $tahun = isset($_GET['tahun']) ? (int)$_GET['tahun'] : date('Y');
 
 // Ambil semua karyawan beserta status slip gaji bulan terpilih
 $query_karyawan = "SELECT k.id_karyawan, k.nama_karyawan, j.nama_jabatan, c.nama_cabang,
-                          s.id as id_slip, s.status_admin_acc, s.status_owner_acc
+                          s.id as id_slip, s.status_admin_acc, s.status_owner_acc,
+                          s.gaji_pokok, s.tunjangan_cs, s.akomodasi, s.transport_total,
+                          s.overtime_total, s.insentif_ahad_total, s.keterlambatan_total,
+                          s.total_penghasilan, s.total_potongan, s.digenapkan, s.gaji_bersih
                    FROM karyawan k
                    LEFT JOIN jabatan j ON k.id_jabatan = j.id
                    LEFT JOIN cabang c ON k.id_cabang = c.id
@@ -32,6 +36,21 @@ $stmt_k = $conn->prepare($query_karyawan);
 $stmt_k->bind_param("ii", $bulan, $tahun);
 $stmt_k->execute();
 $result_karyawan = $stmt_k->get_result();
+
+// Baris mentah untuk export Excel (hanya yang sudah punya slip - baris tanpa
+// id_slip belum ada datanya untuk diekspor). Query dijalankan terpisah karena
+// $result_karyawan sudah di-consume oleh loop tabel di bawah.
+$dataForExport = [];
+$stmt_export = $conn->prepare($query_karyawan);
+$stmt_export->bind_param("ii", $bulan, $tahun);
+$stmt_export->execute();
+$res_export = $stmt_export->get_result();
+while ($erow = $res_export->fetch_assoc()) {
+    if (!empty($erow['id_slip'])) {
+        $dataForExport[] = $erow;
+    }
+}
+$stmt_export->close();
 
 require 'admin_header.php';
 ?>
@@ -101,6 +120,9 @@ require 'admin_header.php';
             <div class="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 w-full sm:w-auto justify-between sm:justify-end">
                 <button id="btnAccTerpilih" onclick="accBulk()" class="hidden items-center gap-2 px-4 py-2 bg-brand-600 text-white hover:bg-brand-700 rounded-xl transition-colors shadow-sm font-medium mr-2">
                     <i class="fa-solid fa-check-double"></i> ACC Terpilih (<span id="countTerpilih">0</span>)
+                </button>
+                <button onclick="exportSlipExcel()" class="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-colors font-medium mr-2" <?php echo empty($dataForExport) ? 'disabled title="Tidak ada data untuk diekspor" style="opacity:.5;cursor:not-allowed;"' : ''; ?>>
+                    <i class="fa-solid fa-file-excel"></i> Export Excel
                 </button>
                 <span>Tampilkan</span>
                 <select id="entriesSelect" onchange="changeEntries()" class="border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 px-2 py-1 outline-none focus:ring-2 focus:ring-brand-500 transition-colors">
@@ -223,9 +245,25 @@ require 'admin_header.php';
 
 </div>
 
+<!-- Hidden Form untuk Export -->
+<form id="exportSlipForm" method="POST" action="export_slip_gaji_list.php" style="display: none;">
+    <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+    <input type="hidden" name="data" id="exportSlipData">
+    <input type="hidden" name="bulan" value="<?php echo $bulan; ?>">
+    <input type="hidden" name="tahun" value="<?php echo $tahun; ?>">
+</form>
+
 <script>
 let currentPage = 1;
 let entriesPerPage = 5;
+
+const exportSlipDataArray = <?php echo json_encode($dataForExport); ?>;
+
+function exportSlipExcel() {
+    if (!exportSlipDataArray.length) return;
+    document.getElementById('exportSlipData').value = JSON.stringify(exportSlipDataArray);
+    document.getElementById('exportSlipForm').submit();
+}
 
 function accSlip(id) {
     Swal.fire({

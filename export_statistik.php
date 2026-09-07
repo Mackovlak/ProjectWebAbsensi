@@ -6,6 +6,10 @@ if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['admin', 'owne
     die("Akses ditolak. Anda tidak memiliki izin untuk mengakses halaman ini.");
 }
 
+// Dulu hardcode "Minggu"/"Ahad"; sekarang ikut hari lembur yang dikonfigurasi
+// (system_settings.hari_overtime, default Sabtu).
+$label_hari_overtime = labelHariOvertime($conn);
+
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     // Verify CSRF token
     if (isset($_POST['csrf_token'])) {
@@ -45,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         fputcsv($output, [''], ';');
         
         // PERBAIKAN: Menambahkan kolom 'Setengah Hari', 'Overtime', dan 'Minggu'
-        fputcsv($output, ['No', 'Nama Karyawan', 'Total Hadir', 'Tepat Waktu', 'Terlambat', 'Setengah Hari', 'Overtime', 'Minggu', 'OFF', 'Sakit', 'Cuti', 'Alpha'], ';');
+        fputcsv($output, ['No', 'Nama Karyawan', 'Total Hadir', 'Tepat Waktu', 'Terlambat', 'Setengah Hari', 'Overtime', $label_hari_overtime, 'OFF', 'Sakit', 'Cuti', 'Alpha'], ';');
         
         if (!empty($data)) {
             foreach ($data as $row) {
@@ -281,7 +285,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                             <th>Terlambat</th>
                             <th>Setengah Hari</th>
                             <th>Overtime</th>
-                            <th>Ahad</th>
+                            <th><?php echo htmlspecialchars($label_hari_overtime); ?></th>
                         </tr>
                     </thead>
                     <tbody>

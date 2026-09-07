@@ -5,7 +5,7 @@ This is a local **testing/dev** setup, not a production deployment (see the
 
 ## What's included
 
-- `web` — PHP 8.2 + Apache (mysqli, mod_rewrite, mod_headers, `.htaccess`
+- `web` — PHP 8.2 + Apache (mysqli, zip, mod_rewrite, mod_headers, `.htaccess`
   support enabled), serving this repo directly via a bind mount so edits on
   the host show up immediately, no rebuild needed.
 - `db` — MySQL 8.0, auto-initialized on first start from

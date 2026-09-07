@@ -46,7 +46,8 @@ $avatar_bg = ($staff_jk == 'P') ? 'bg-pink-100' : 'bg-fuchsia-100';
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="view-transition" content="same-origin">
     <title>Dashboard Karyawan - Absensi Javag</title>
-    
+    <link rel="icon" type="image/png" href="/assets/images/logo.png">
+
     <!-- Tailwind CSS via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     

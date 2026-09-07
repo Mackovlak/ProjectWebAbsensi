@@ -3,3 +3,4 @@
 /assets/images/foto_karyawan
 /assets/vendor
 assets/composer.lock
+seed_dummy_data.local.php

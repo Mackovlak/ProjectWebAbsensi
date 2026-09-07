@@ -84,19 +84,24 @@ if (isset($_POST['ajukan_izin'])) {
         selesai("❌ Pengajuan tidak boleh melewati pergantian tahun. Silakan buat dua pengajuan terpisah.", false);
     }
 
-    // Batasi rentang agar tidak ada pengajuan ekstrem (mis. satu tahun penuh)
+    // Batasi rentang agar tidak ada pengajuan ekstrem (mis. satu tahun penuh).
+    // Melahirkan dikecualikan - dikonfirmasi sebagai cuti melahirkan penuh
+    // (~3 bulan), bukan cuti pendamping kelahiran yang singkat.
     $selisih_hari = (strtotime($tanggal_selesai) - strtotime($tanggal_mulai)) / 86400 + 1;
-    if ($selisih_hari > 31) {
-        selesai("❌ Rentang pengajuan maksimal 31 hari dalam satu permohonan.", false);
+    $batas_rentang = ($jenis === 'Melahirkan') ? 100 : 31;
+    if ($selisih_hari > $batas_rentang) {
+        selesai("❌ Rentang pengajuan maksimal {$batas_rentang} hari dalam satu permohonan.", false);
     }
 
-    // Sakit boleh mundur (baru bisa diurus setelah sembuh), jenis lain harus ke depan.
+    // Sakit & Duka Cita boleh mundur (baru bisa diurus setelah kejadian),
+    // jenis lain harus diajukan ke depan.
     $hari_ini = date('Y-m-d');
-    if ($jenis !== 'Sakit' && $tanggal_mulai < $hari_ini) {
+    $boleh_mundur = in_array($jenis, ['Sakit', 'Duka Cita'], true);
+    if (!$boleh_mundur && $tanggal_mulai < $hari_ini) {
         selesai("❌ Pengajuan {$jenis} harus diajukan sebelum tanggal pelaksanaan, tidak bisa mundur.", false);
     }
-    if ($jenis === 'Sakit' && $tanggal_mulai < date('Y-m-d', strtotime('-14 days'))) {
-        selesai("❌ Pengajuan Sakit hanya bisa mundur maksimal 14 hari ke belakang.", false);
+    if ($boleh_mundur && $tanggal_mulai < date('Y-m-d', strtotime('-14 days'))) {
+        selesai("❌ Pengajuan {$jenis} hanya bisa mundur maksimal 14 hari ke belakang.", false);
     }
 
     // ---------- Cek tumpang tindih ----------

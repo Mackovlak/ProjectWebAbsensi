@@ -339,15 +339,23 @@ require 'admin_header.php';
                                                     'Sakit' => 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-400 dark:border-rose-800/50',
                                                     'Cuti' => 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800/50',
                                                     'Alpha' => 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800/50',
-                                                    'Dinas Luar' => 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800/50'
+                                                    'Dinas Luar' => 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800/50',
+                                                    'Menikah' => 'bg-pink-50 text-pink-700 border-pink-200 dark:bg-pink-900/30 dark:text-pink-400 dark:border-pink-800/50',
+                                                    'Menikahkan Anak' => 'bg-pink-50 text-pink-700 border-pink-200 dark:bg-pink-900/30 dark:text-pink-400 dark:border-pink-800/50',
+                                                    'Melahirkan' => 'bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:text-teal-400 dark:border-teal-800/50',
+                                                    'Duka Cita' => 'bg-slate-200 text-slate-700 border-slate-300 dark:bg-slate-700/50 dark:text-slate-300 dark:border-slate-600'
                                                 ];
-                                                
+
                                                 $icons = [
                                                     'OFF' => 'fa-calendar-times',
                                                     'Sakit' => 'fa-file-medical',
                                                     'Cuti' => 'fa-calendar-check',
                                                     'Alpha' => 'fa-xmark',
-                                                    'Dinas Luar' => 'fa-briefcase'
+                                                    'Dinas Luar' => 'fa-briefcase',
+                                                    'Menikah' => 'fa-ring',
+                                                    'Menikahkan Anak' => 'fa-ring',
+                                                    'Melahirkan' => 'fa-baby',
+                                                    'Duka Cita' => 'fa-heart-crack'
                                                 ];
                                                 
                                                 $class = $keterangan_classes[$row['keterangan']] ?? $keterangan_classes['OFF'];
@@ -361,7 +369,7 @@ require 'admin_header.php';
                                                 <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border <?php echo $class; ?>">
                                                     <i class="fa-solid <?php echo $icon; ?> text-[10px]"></i> <?php echo htmlspecialchars($row['keterangan']); ?>
                                                 </span>
-                                                <?php if ($row['keterangan'] === 'Sakit' || $row['keterangan'] === 'Cuti' || $row['keterangan'] === 'Dinas Luar'): ?>
+                                                <?php if (in_array($row['keterangan'], ['Sakit', 'Cuti', 'Dinas Luar', 'Menikah', 'Menikahkan Anak', 'Melahirkan', 'Duka Cita'], true)): ?>
                                                     <div class="flex items-center gap-1.5 mt-1">
                                                         <?php if ($row['keterangan'] === 'Dinas Luar' && $status_pulang === 'Setengah Hari'): ?>
                                                             <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-800/50">
@@ -591,6 +599,10 @@ require 'admin_header.php';
                         <option value="Sakit">Sakit</option>
                         <option value="Cuti">Cuti</option>
                         <option value="Dinas Luar">Dinas Luar</option>
+                        <option value="Menikah">Menikah (Cuti Khusus)</option>
+                        <option value="Menikahkan Anak">Menikahkan Anak (Cuti Khusus)</option>
+                        <option value="Melahirkan">Cuti Melahirkan (Cuti Khusus)</option>
+                        <option value="Duka Cita">Duka Cita (Cuti Khusus)</option>
                     </select>
                 </div>
 
@@ -798,6 +810,10 @@ require 'admin_header.php';
                         <option value="Cuti">Cuti</option>
                         <option value="Alpha">Alpha</option>
                         <option value="Dinas Luar">Dinas Luar</option>
+                        <option value="Menikah">Menikah (Cuti Khusus)</option>
+                        <option value="Menikahkan Anak">Menikahkan Anak (Cuti Khusus)</option>
+                        <option value="Melahirkan">Cuti Melahirkan (Cuti Khusus)</option>
+                        <option value="Duka Cita">Duka Cita (Cuti Khusus)</option>
                     </select>
                 </div>
 

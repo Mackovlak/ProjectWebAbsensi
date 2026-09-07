@@ -16,8 +16,12 @@
 
 // Jenis pengajuan yang memotong jatah cuti tahunan.
 // Dinas Luar sengaja dikecualikan: itu tugas kantor, bukan hak istirahat.
+// Menikah / Menikahkan Anak / Melahirkan / Duka Cita juga dikecualikan: cuti
+// khusus di luar jatah tahunan (bukan hak istirahat biasa), lama pengajuan
+// diserahkan ke keputusan admin/supervisor - tidak ada batas hari otomatis.
 define('IZIN_JENIS_POTONG_KUOTA', ['Cuti', 'Sakit', 'Izin']);
-define('IZIN_JENIS_VALID', ['Cuti', 'Sakit', 'Izin', 'Dinas Luar']);
+define('IZIN_JENIS_KHUSUS', ['Menikah', 'Menikahkan Anak', 'Melahirkan', 'Duka Cita']);
+define('IZIN_JENIS_VALID', ['Cuti', 'Sakit', 'Izin', 'Dinas Luar', 'Menikah', 'Menikahkan Anak', 'Melahirkan', 'Duka Cita']);
 define('IZIN_JATAH_DEFAULT', 12);
 
 /**
@@ -42,10 +46,14 @@ function izinPotongKuota($jenis, $ada_bukti_sakit = false) {
  */
 function izinKeteranganAbsensi($jenis) {
     switch ($jenis) {
-        case 'Cuti':  return 'Cuti';
-        case 'Sakit': return 'Sakit';
-        case 'Izin':  return 'Izin';
-        default:      return null; // Dinas Luar
+        case 'Cuti':            return 'Cuti';
+        case 'Sakit':           return 'Sakit';
+        case 'Izin':            return 'Izin';
+        case 'Menikah':         return 'Menikah';
+        case 'Menikahkan Anak': return 'Menikahkan Anak';
+        case 'Melahirkan':      return 'Melahirkan';
+        case 'Duka Cita':       return 'Duka Cita';
+        default:                return null; // Dinas Luar
     }
 }
 
@@ -370,6 +378,13 @@ function badgeJenisIzin($jenis) {
             return 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-800/50';
         case 'Dinas Luar':
             return 'bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-900/30 dark:text-sky-400 dark:border-sky-800/50';
+        case 'Menikah':
+        case 'Menikahkan Anak':
+            return 'bg-pink-100 text-pink-700 border-pink-200 dark:bg-pink-900/30 dark:text-pink-400 dark:border-pink-800/50';
+        case 'Melahirkan':
+            return 'bg-teal-100 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:text-teal-400 dark:border-teal-800/50';
+        case 'Duka Cita':
+            return 'bg-slate-200 text-slate-700 border-slate-300 dark:bg-slate-700/50 dark:text-slate-300 dark:border-slate-600';
         default: // Izin
             return 'bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-800/50';
     }

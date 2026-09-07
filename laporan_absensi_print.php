@@ -29,6 +29,12 @@ $start_date = $_GET['start_date'] ?? date('Y-m-01');
 $end_date = $_GET['end_date'] ?? date('Y-m-t');
 $tipe = $_GET['tipe'] ?? 'log';
 
+// Dulu hardcode ke hari Minggu (DAYOFWEEK = 1); sekarang ikut hari lembur
+// yang benar-benar dikonfigurasi (system_settings.hari_overtime, default
+// Sabtu) - lihat kalender_functions.php.
+$mysql_dow_overtime = daftarHariOvertimeMysqlDow($conn);
+$label_hari_overtime = labelHariOvertime($conn);
+
 // Fetch Branch Name
 $cabang_name = "SEMUA CABANG";
 if ($cabang_id !== 'all') {
@@ -241,7 +247,7 @@ if ($tipe === 'statistik_karyawan' && !empty($user_id)) {
                         <th class="border border-gray-400 px-2 py-2 text-xs font-bold text-gray-800 text-center">Terlambat</th>
                         <th class="border border-gray-400 px-2 py-2 text-xs font-bold text-gray-800 text-center">Setengah Hari</th>
                         <th class="border border-gray-400 px-2 py-2 text-xs font-bold text-gray-800 text-center">Overtime</th>
-                        <th class="border border-gray-400 px-2 py-2 text-xs font-bold text-orange-600 text-center">Ahad</th>
+                        <th class="border border-gray-400 px-2 py-2 text-xs font-bold text-orange-600 text-center"><?php echo htmlspecialchars($label_hari_overtime); ?></th>
                         <th class="border border-gray-400 px-2 py-2 text-xs font-bold text-purple-600 text-center">Dinas Luar</th>
                     </tr>
                 </thead>
@@ -269,7 +275,7 @@ if ($tipe === 'statistik_karyawan' && !empty($user_id)) {
                                       CASE WHEN (TIME_TO_SEC(a.jam_pulang) - TIME_TO_SEC((SELECT jk.jam_pulang FROM jam_kerja jk WHERE jk.id_cabang = k.id_cabang ORDER BY ABS(TIMESTAMPDIFF(MINUTE, a.jam_masuk, jk.jam_masuk_akhir)) ASC LIMIT 1))) < 2100 THEN 0.5 ELSE 1 END
                                   ELSE 0 
                               END) as total_overtime,
-                              SUM(CASE WHEN DAYOFWEEK(a.tanggal) = 1 AND a.keterangan = 'Hadir' THEN 1 ELSE 0 END) as total_minggu,
+                              SUM(CASE WHEN DAYOFWEEK(a.tanggal) IN ($mysql_dow_overtime) AND a.keterangan = 'Hadir' THEN 1 ELSE 0 END) as total_minggu,
                               SUM(CASE WHEN a.keterangan = 'OFF' THEN 1 ELSE 0 END) as total_off,
                               SUM(CASE WHEN a.keterangan = 'Sakit' THEN 1 ELSE 0 END) as total_sakit,
                               SUM(CASE WHEN a.keterangan = 'Cuti' THEN 1 ELSE 0 END) as total_cuti,

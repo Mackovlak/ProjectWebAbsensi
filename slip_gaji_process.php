@@ -31,8 +31,15 @@ $akomodasi = 0; // Removed from UI, always 0
 // Transport (AUTO)
 $transport_nominal = (float)$_POST['transport_nominal'];
 
+// Dulu "Insentif Ahad" hardcode ke hari Minggu (DAYOFWEEK = 1); sekarang
+// ikut hari lembur yang benar-benar dikonfigurasi (system_settings.hari_overtime,
+// default Sabtu) - lihat kalender_functions.php. Mengikuti query yang sama
+// di slip_gaji_form.php supaya nilai fallback ini konsisten dengan yang
+// dilihat admin di form sebelum submit.
+$mysql_dow_overtime = daftarHariOvertimeMysqlDow($conn);
+
 // Get absensi data via raw SQL
-$sql_absensi = "SELECT 
+$sql_absensi = "SELECT
     COUNT(DISTINCT CASE WHEN a.keterangan IN ('Hadir', 'Dinas Luar') THEN a.id END) as total_hadir_raw,
     COUNT(DISTINCT CASE 
         WHEN a.keterangan = 'Hadir' AND (
@@ -53,9 +60,9 @@ $sql_absensi = "SELECT
             CASE WHEN (TIME_TO_SEC(a.jam_pulang) - TIME_TO_SEC((SELECT jk.jam_pulang FROM jam_kerja jk WHERE jk.id_cabang = k.id_cabang ORDER BY ABS(TIMESTAMPDIFF(MINUTE, a.jam_masuk, jk.jam_masuk_akhir)) ASC LIMIT 1))) < 2100 THEN 0.5 ELSE 1 END
         ELSE 0 
     END) as total_overtime,
-    COUNT(DISTINCT CASE WHEN a.keterangan IN ('Hadir', 'Dinas Luar') AND DAYOFWEEK(a.tanggal) = 1 THEN a.id END) as total_ahad_full_raw,
-    COUNT(DISTINCT CASE 
-        WHEN a.keterangan IN ('Hadir', 'Dinas Luar') AND DAYOFWEEK(a.tanggal) = 1
+    COUNT(DISTINCT CASE WHEN a.keterangan IN ('Hadir', 'Dinas Luar') AND DAYOFWEEK(a.tanggal) IN ($mysql_dow_overtime) THEN a.id END) as total_ahad_full_raw,
+    COUNT(DISTINCT CASE
+        WHEN a.keterangan IN ('Hadir', 'Dinas Luar') AND DAYOFWEEK(a.tanggal) IN ($mysql_dow_overtime)
         AND (
             (a.jam_pulang IS NOT NULL AND a.jam_pulang != '00:00:00' AND TIMESTAMPDIFF(MINUTE, a.jam_masuk, a.jam_pulang) < 330)
             OR ((a.jam_pulang IS NULL OR a.jam_pulang = '00:00:00') AND a.tanggal < CURDATE())

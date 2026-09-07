@@ -177,6 +177,14 @@ Without this table, every "allow reset / delete face / lock face" admin
 action will throw and roll back (it's inside a transaction with no
 silent-catch, per `toggle_face_reset_permission.php`).
 
+**After importing this dump**, once the application code is deployed (§6)
+and `config.php` can reach the database, run `migrate.php` (see §15 and
+`MIGRATIONS.md`) to bring the schema the rest of the way up to date — this
+dump is a point-in-time snapshot and may predate some of the tracked
+migrations under `migrations/`. `migrate.php status` will show you exactly
+what, if anything, is still pending; it's safe to run even if the dump
+already includes everything (each migration checks before it acts).
+
 ---
 
 ## 6. Deploy the application code
@@ -325,7 +333,7 @@ server {
     location ~ ^/(docker|\.claude)/ {
         deny all;
     }
-    location ~* ^/(db_absensi_qr_schema\.sql|docker-compose\.yml|DOCKER\.md|DEPLOYMENT\.md|CLAUDE\.md|README\.md)$ {
+    location ~* ^/(db_absensi_qr_schema\.sql|docker-compose\.yml|DOCKER\.md|DEPLOYMENT\.md|CLAUDE\.md|README\.md|MIGRATIONS\.md)$ {
         deny all;
     }
 
@@ -581,17 +589,32 @@ Run through this once, on the real domain, over HTTPS:
 ## 15. Deploying updates later
 
 No build step means updates are just a file sync + (occasionally) a
-manual schema change:
+tracked schema migration via `migrate.php` (see **`MIGRATIONS.md`** for the
+full guide):
 
 ```bash
 cd /var/www/absenslip
 git pull
-# if the change includes a schema update, apply it by hand (or via a new
-# one-off script like update_db.php) against the production DB -- there
-# is no migration runner in this project.
+
+# If the change includes a schema migration (new files under migrations/):
+#  1. BACK UP THE DATABASE FIRST - see §12. MySQL DDL (ALTER/CREATE TABLE)
+#     auto-commits and cannot be rolled back like a normal transaction, so
+#     a backup is the only real undo button here.
+#  2. Preview what's pending before touching anything:
+sudo -u www-data php migrate.php status
+#  3. Apply it:
+sudo -u www-data php migrate.php migrate --yes
+#     (or log in as Admin and use migrate.php's web UI, which shows the
+#     same pending-migrations preview before you confirm)
+
 sudo systemctl reload php8.1-fpm   # only needed if opcache is enabled and
                                     # you want to force a cache bust
 ```
+
+Migrations are tracked in the `schema_migrations` table, applied in
+filename order, and each runs exactly once — safe to run `migrate.php
+status` any time to confirm what state a given environment is actually in,
+rather than guessing from memory.
 
 If you enabled `opcache` (recommended for perf — install
 `php8.1-opcache`, it's in the §3 install list), either set a short
@@ -611,4 +634,6 @@ immediately.
 | Camera or GPS prompt never appears | Not actually on HTTPS, or on an `www.`/bare-domain mismatch vs. the cert's SANs. |
 | Uploads fail / "Nonaktifkan" photo actions error | `assets/uploads/` not owned by `www-data`, or `client_max_body_size`/`upload_max_filesize`/`post_max_size` too small (§8/§10). |
 | Face-reset admin actions fail every time | Missing `face_admin_logs` table — see §5. |
+| `Class "ZipArchive" not found` on slip gaji / report Excel export | `php-zip` extension not installed. §3's install line already includes `php8.1-zip` for a fresh server; if this VPS was provisioned before the Excel-export feature existed, run `sudo apt install -y php8.1-zip && sudo systemctl restart php8.1-fpm`. |
 | WhatsApp reminders never send | No `wa_token` saved on any `users` row, or the Fonnte account/token is invalid — test manually per §14 step 8. |
+| `migrate.php migrate --yes` stopped partway with an error | Fix whatever the reported error says (often a data issue, e.g. duplicate rows blocking a new `UNIQUE` key), then just run it again — migrations already applied stay recorded in `schema_migrations` and won't re-run; only the failed one and anything after it will retry. |
