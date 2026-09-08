@@ -1,0 +1,25 @@
+{
+  "_readme": "Cuti bersama (joint/collective leave) is set entirely at the government's discretion each year via SKB 3 Menteri - it is NOT derivable from any calendar rule, only from the official decree (usually published 3-4 months before the year starts). Add new years here once announced; there is no way to auto-generate them reliably.",
+  "2025": [
+    { "date": "2025-01-28", "label": "Cuti Bersama Tahun Baru Imlek 2576 Kongzili" },
+    { "date": "2025-03-28", "label": "Cuti Bersama Hari Suci Nyepi (Tahun Baru Saka 1947)" },
+    { "date": "2025-04-02", "label": "Cuti Bersama Hari Raya Idul Fitri 1446 Hijriah" },
+    { "date": "2025-04-03", "label": "Cuti Bersama Hari Raya Idul Fitri 1446 Hijriah" },
+    { "date": "2025-04-04", "label": "Cuti Bersama Hari Raya Idul Fitri 1446 Hijriah" },
+    { "date": "2025-04-07", "label": "Cuti Bersama Hari Raya Idul Fitri 1446 Hijriah" },
+    { "date": "2025-05-13", "label": "Cuti Bersama Hari Raya Waisak" },
+    { "date": "2025-05-30", "label": "Cuti Bersama Kenaikan Yesus Kristus" },
+    { "date": "2025-06-09", "label": "Cuti Bersama Hari Raya Idul Adha 1446 Hijriah" },
+    { "date": "2025-12-26", "label": "Cuti Bersama Hari Raya Natal" }
+  ],
+  "2026": [
+    { "date": "2026-02-16", "label": "Cuti Bersama Tahun Baru Imlek 2577 Kongzili" },
+    { "date": "2026-03-18", "label": "Cuti Bersama Hari Suci Nyepi (Tahun Baru Saka 1948)" },
+    { "date": "2026-03-20", "label": "Cuti Bersama Hari Raya Idul Fitri 1447 H" },
+    { "date": "2026-03-23", "label": "Cuti Bersama Hari Raya Idul Fitri 1447 H" },
+    { "date": "2026-03-24", "label": "Cuti Bersama Hari Raya Idul Fitri 1447 H" },
+    { "date": "2026-05-15", "label": "Cuti Bersama Kenaikan Yesus Kristus" },
+    { "date": "2026-05-28", "label": "Cuti Bersama Hari Raya Idul Adha 1447 H" },
+    { "date": "2026-12-24", "label": "Cuti Bersama Hari Raya Natal" }
+  ]
+}

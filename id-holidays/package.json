@@ -1,0 +1,11 @@
+{
+  "name": "id-holidays",
+  "version": "1.0.0",
+  "description": "Self-computed Indonesian public holiday generator (no external API, no dependencies).",
+  "main": "lib/holidays.js",
+  "scripts": {
+    "generate": "node generate.js",
+    "validate": "node validate.js"
+  },
+  "license": "MIT"
+}
