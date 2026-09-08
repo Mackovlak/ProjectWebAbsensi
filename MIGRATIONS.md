@@ -129,6 +129,25 @@ it says what you expect (especially in production) before confirming.
 
 ## Running in production
 
+### Attendance camera capture (007)
+
+Migration `007_foto_capture_absensi.php` adds only `absensi_capture`; it does
+not alter existing attendance rows or leave/overtime attachments. Camera
+JPEGs (maximum 512 KB each, 1280 pixels on the longest side) are stored in
+this separate table, so they have no public upload URL and are not loaded
+by existing attendance queries. Include this table in database backups;
+photo storage will increase database and backup size.
+
+Deploy the capture code, then follow the backup/status/apply/verify steps
+below. Until 007 is applied, attendance keeps its existing behavior and the
+review page shows a setup notice. Once applied, camera proof is required
+for Hadir clock-in and Hadir/Dinas Luar clock-out. Old/manual records show
+"Belum ada foto". HRD uses the existing Admin role; supervisors can only
+view their assigned branch via `histori_absensi.php` (read-only for supervisors)
+and the authenticated image endpoint. The **Bukti Foto** action opens clock-in
+and clock-out photos together. Verify both roles, clock-in, clock-out, and the overtime
+follow-up form after deployment. Face confidence logic is unchanged.
+
 This is the part that matters if a past update caused instability. Do these
 in order, every time:
 

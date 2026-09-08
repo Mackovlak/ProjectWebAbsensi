@@ -286,6 +286,7 @@ $total_notif = $actionable_notif_count + count($notif_izin_info);
             </a>
             <?php endif; ?>
 
+            <a href="histori_absensi.php" class="flex items-center gap-3 px-4 py-3 mx-4 <?= basename($_SERVER['PHP_SELF']) === 'histori_absensi.php' ? 'bg-purple-600 text-white' : 'text-white hover:bg-[#1e293b]' ?> rounded-xl"><i class="ph-duotone ph-calendar-check text-xl"></i><span class="font-medium text-sm">Rekap Absensi</span></a>
             <p class="px-6 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 mt-8">Persetujuan</p>
 
             <a href="kelola_pengajuan_izin.php" class="flex items-center justify-between px-4 py-3 mx-4 <?php echo basename($_SERVER['PHP_SELF']) == 'kelola_pengajuan_izin.php' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
