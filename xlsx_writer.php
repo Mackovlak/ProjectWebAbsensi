@@ -122,20 +122,25 @@ class SimpleXLSXWriter
         $xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
         $xml .= '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">';
 
-        if (!empty($this->colWidths)) {
-            $xml .= '<cols>';
-            foreach ($this->colWidths as $i => $w) {
-                $xml .= '<col min="' . ($i + 1) . '" max="' . ($i + 1) . '" width="' . (float)$w . '" customWidth="1"/>';
-            }
-            $xml .= '</cols>';
-        }
-
+        // Urutan elemen CT_Worksheet WAJIB persis: sheetViews sebelum cols,
+        // cols sebelum sheetData. LibreOffice memaafkan urutan salah (auto-
+        // reorder diam-diam); Excel asli memvalidasi ketat dan menolaknya -
+        // gejalanya "file perlu diperbaiki" lalu isi sheet dibuang kosong,
+        // bukan sekadar diurutkan ulang. Jangan tukar urutan tiga blok ini.
         if ($this->freezeRow !== null) {
             $topLeft = 'A' . ($this->freezeRow + 1);
             $xml .= '<sheetViews><sheetView tabSelected="1" workbookViewId="0">'
                   . '<pane ySplit="' . $this->freezeRow . '" topLeftCell="' . $topLeft . '" activePane="bottomLeft" state="frozen"/>'
                   . '<selection pane="bottomLeft" activeCell="' . $topLeft . '" sqref="' . $topLeft . '"/>'
                   . '</sheetView></sheetViews>';
+        }
+
+        if (!empty($this->colWidths)) {
+            $xml .= '<cols>';
+            foreach ($this->colWidths as $i => $w) {
+                $xml .= '<col min="' . ($i + 1) . '" max="' . ($i + 1) . '" width="' . (float)$w . '" customWidth="1"/>';
+            }
+            $xml .= '</cols>';
         }
 
         $xml .= '<sheetData>';
@@ -211,6 +216,7 @@ class SimpleXLSXWriter
             . '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>' // 4 bold
             . '<xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>' // 5 title
             . '</cellXfs>'
+            . '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
             . '</styleSheet>';
     }
 
