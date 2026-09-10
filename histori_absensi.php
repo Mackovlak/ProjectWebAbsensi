@@ -147,6 +147,10 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
             </a>
             <?php endif; ?>
 
+            <button onclick="exportAbsensiExcel()" class="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-colors font-medium text-sm shadow-sm shadow-emerald-500/30">
+                <i class="fa-solid fa-file-excel"></i> Export Excel
+            </button>
+
 
             <!-- Filter Opsi Cabang -->
             <form action="histori_absensi.php" method="GET" class="relative m-0" id="formCabang">
@@ -889,6 +893,17 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
     </div>
 </div>
 
+<!-- Hidden Form Export Excel -->
+<form id="exportForm" method="POST" action="export_absensi.php" class="hidden">
+    <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+    <input type="hidden" name="format" value="excel">
+    <input type="hidden" name="cabang" value="<?php echo htmlspecialchars($nama_cabang); ?>">
+    <input type="hidden" name="id_cabang" value="<?php echo (int)$id_cabang; ?>">
+    <input type="hidden" name="search_name" value="<?php echo htmlspecialchars($search_name); ?>">
+    <input type="hidden" name="start_date" value="<?php echo htmlspecialchars($start_date); ?>">
+    <input type="hidden" name="end_date" value="<?php echo htmlspecialchars($end_date); ?>">
+</form>
+
 <script>
 function openCaptureModal(button) {
     const data = button.dataset;
@@ -918,6 +933,10 @@ function openCaptureModal(button) {
         }
     }
     openModal('modal-capture-absensi');
+}
+
+function exportAbsensiExcel() {
+    document.getElementById('exportForm').submit();
 }
 
 // DataTables JS Pagination

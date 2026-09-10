@@ -336,6 +336,8 @@ $csrf_token = generateCSRFToken();
     <input type="hidden" name="data" id="exportData">
     <input type="hidden" name="format" id="exportFormat">
     <input type="hidden" name="cabang" value="<?php echo htmlspecialchars($nama_cabang); ?>">
+    <input type="hidden" name="id_cabang" value="<?php echo (int)$id_cabang; ?>">
+    <input type="hidden" name="search_name" value="<?php echo htmlspecialchars($search_name); ?>">
     <input type="hidden" name="start_date" value="<?php echo htmlspecialchars($start_date); ?>">
     <input type="hidden" name="end_date" value="<?php echo htmlspecialchars($end_date); ?>">
 </form>
