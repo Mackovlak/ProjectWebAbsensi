@@ -1,6 +1,7 @@
 <?php
 require 'config.php';
 require_once 'attendance_capture.php';
+require_once 'attendance_face.php';
 
 header('Content-Type: application/json; charset=utf-8');
 error_reporting(E_ALL);
@@ -13,6 +14,16 @@ function outputJSON($data) {
 }
 
 try {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        header('Allow: POST');
+        outputJSON(['success' => false, 'message' => 'Gunakan POST.']);
+    }
+    foreach (['id_karyawan', 'lokasi', 'keterangan', 'alasan', 'alasan_pulang'] as $field) {
+        if (isset($_POST[$field]) && !is_string($_POST[$field])) {
+            outputJSON(['success' => false, 'message' => 'Format permintaan tidak valid.']);
+        }
+    }
     $capture_ready = attendanceCaptureReady($conn);
     $capture_bytes = null;
     $rate_check = checkRateLimit('absen', 5);
@@ -28,10 +39,11 @@ try {
     $keterangan_param = isset($_POST['keterangan']) ? sanitizeInput($_POST['keterangan']) : '';
     $is_dinas_luar = isset($_POST['is_dinas_luar']) && $_POST['is_dinas_luar'] === 'true';
     
-    $face_descriptor = isset($_POST['face_descriptor']) ? $_POST['face_descriptor'] : null;
-    $face_confidence = isset($_POST['face_confidence']) ? floatval($_POST['face_confidence']) : null;
+    // Never trust a confidence score or verified flag from the browser.
+    $face_confidence = null;
+    $face_verified = 0;
     
-    $MIN_FACE_CONFIDENCE = 62.0;
+    $MIN_FACE_CONFIDENCE = ATTENDANCE_FACE_MIN_CONFIDENCE;
     
     $tanggal = date('Y-m-d');
     $waktu = date('H:i:s');
@@ -45,9 +57,12 @@ try {
     if (!validateIDKaryawan($id_karyawan)) {
         outputJSON(['success' => false, 'message' => 'Format ID Karyawan tidak valid.']);
     }
+    if (!in_array($keterangan_param, ['Hadir', 'pulang', 'OFF', 'Sakit', 'Cuti', 'Alpha'], true)) {
+        outputJSON(['success' => false, 'message' => 'Jenis absensi tidak valid.']);
+    }
 
     // Get karyawan data
-    $stmt = $conn->prepare("SELECT k.id, k.id_cabang, u.face_descriptor FROM karyawan k LEFT JOIN users u ON k.id_karyawan = u.id_karyawan WHERE k.id_karyawan = ?");
+    $stmt = $conn->prepare("SELECT k.id, k.id_cabang, u.face_descriptor FROM karyawan k LEFT JOIN users u ON k.id_karyawan = u.id_karyawan WHERE k.id_karyawan = ? AND k.status = 'aktif' AND (u.id IS NULL OR u.is_active = 1)");
     $stmt->bind_param("s", $id_karyawan);
     $stmt->execute();
     $result_karyawan = $stmt->get_result();
@@ -95,29 +110,7 @@ try {
             ]);
         }
         
-        // 2. VALIDASI WAJAH (wajib karena sudah pasti registrasi)
-        if ($face_confidence === null || $face_descriptor === null) {
-            outputJSON([
-                'success' => false,
-                'message' => '🔒 Verifikasi wajah wajib dilakukan untuk absensi Hadir. Silakan aktifkan kamera dan verifikasi wajah Anda.',
-                'type' => 'face_required'
-            ]);
-        }
-        
-        // Cek confidence threshold
-        if ($face_confidence < $MIN_FACE_CONFIDENCE) {
-            outputJSON([
-                'success' => false,
-                'message' => "❌ Verifikasi wajah gagal! Confidence score terlalu rendah ({$face_confidence}%). Minimal {$MIN_FACE_CONFIDENCE}% diperlukan. Silakan coba lagi dengan pencahayaan yang lebih baik.",
-                'type' => 'face_verification_failed',
-                'confidence' => $face_confidence,
-                'threshold' => $MIN_FACE_CONFIDENCE
-            ]);
-        }
     }
-    // Untuk keterangan selain "Hadir" (OFF, Sakit, Cuti, Alpha): 
-    // TIDAK ADA VALIDASI GPS atau FACE - langsung lanjut ke proses insert
-    // =================================================================
 
     // Cek duplikasi
     $time_threshold = date('Y-m-d H:i:s', strtotime('-10 seconds'));
@@ -131,19 +124,38 @@ try {
     $stmt_duplicate->close();
 
     // Cek status absensi hari ini
-    $stmt_check = $conn->prepare("SELECT id, jam_masuk, jam_pulang FROM absensi WHERE id_karyawan = ? AND tanggal = ?");
+    $stmt_check = $conn->prepare("SELECT id, jam_masuk, jam_pulang, keterangan FROM absensi WHERE id_karyawan = ? AND tanggal = ?");
     $stmt_check->bind_param("ss", $id_karyawan, $tanggal);
     $stmt_check->execute();
     $result_check = $stmt_check->get_result();
-    $row_ada = $result_check->num_rows > 0;
-    $data_absen = $row_ada ? $result_check->fetch_assoc() : null;
+    $attendance_row = $result_check->fetch_assoc();
+    $row_ada = (bool)$attendance_row;
+    $data_absen = $attendance_row;
 
-    // Kiosk sekarang membiarkan Masuk dan Pulang dipilih bebas (bukan
-    // otomatis dari state) - klik "Absen Pulang" mengirim aksi=pulang
-    // secara eksplisit, supaya bisa dibedakan dari submit Masuk walau
-    // belum ada baris sama sekali hari ini (skenario lupa absen masuk).
+    // Kiosk membiarkan Masuk dan Pulang dipilih bebas (bukan otomatis dari
+    // state) - klik "Absen Pulang" mengirim aksi=pulang secara eksplisit,
+    // supaya bisa dibedakan dari submit Masuk walau belum ada baris sama
+    // sekali hari ini (skenario lupa absen masuk - lihat cabang !$row_ada
+    // di bawah, yang tetap mewajibkan verifikasi wajah lewat token yang
+    // sama seperti Pulang normal).
     $aksi_pulang = isset($_POST['aksi']) && $_POST['aksi'] === 'pulang';
     $is_absen_pulang = $row_ada || $aksi_pulang;
+
+    // Derive the operation from the database (+ aksi=pulang eksplisit untuk
+    // kasus lupa absen masuk), bukan cuma dari status/jenis yang diposting.
+    $needs_face = $is_absen_pulang
+        ? ($row_ada ? in_array($attendance_row['keterangan'], ['Hadir', 'Dinas Luar', 'Pending Dinas'], true) : true)
+        : ($keterangan_param === 'Hadir' || $is_dinas_luar || $izin_dinas_hari_ini);
+    if ($needs_face) {
+        $context = attendanceFaceContext($id_karyawan, $row_ada ? $attendance_row : null, $karyawan_data['face_descriptor'], $tanggal, $is_absen_pulang ? 'pulang' : 'masuk');
+        $verified = attendanceFaceConsumeToken($_SESSION, 'attendance_face_receipts', $_POST['verification_token'] ?? null, $context);
+        $capture_bytes = readAttendanceCapture($_FILES['foto_capture'] ?? null);
+        if (!hash_equals($verified['photo_hash'], hash('sha256', $capture_bytes))) {
+            throw new RuntimeException('Foto berbeda dari verifikasi. Silakan verifikasi ulang.');
+        }
+        $face_confidence = $verified['confidence'];
+        $face_verified = 1;
+    }
 
     // ============== SAKIT / CUTI: rute lewat pengajuan_izin ==============
     // Dulu keterangan ini langsung diinsert ke absensi (auto-approved, tanpa
@@ -265,6 +277,9 @@ try {
             // paling wajar untuk menagihnya karena karyawan sendiri yang baru
             // sadar lupa absen masuk, sebelum Admin/SPV sempat menanyakannya
             // lewat histori_absensi.php.
+            // Verifikasi wajah (token + foto) sudah dikonsumsi di blok
+            // $needs_face di atas - $face_verified/$face_confidence di sini
+            // berasal dari situ (server), bukan dari input klien.
             $alasan_tidak_masuk = isset($_POST['alasan']) ? sanitizeInput($_POST['alasan']) : '';
             if (strlen($alasan_tidak_masuk) < 5) {
                 $stmt_check->close();
@@ -275,14 +290,6 @@ try {
                 ]);
             }
 
-            if (!$has_registered_face) {
-                $stmt_check->close();
-                outputJSON([
-                    'success' => false,
-                    'message' => '❌ Registrasi Wajah Diperlukan!<br><br>Untuk absensi <strong>PULANG</strong>, Anda wajib melakukan registrasi wajah terlebih dahulu melalui menu profile/akun Anda.',
-                    'type' => 'face_registration_required'
-                ]);
-            }
             $validasi_lokasi = validateLokasiAbsen($lokasi, $id_karyawan, $conn);
             if (!$validasi_lokasi['valid'] && !isset($validasi_lokasi['bypass'])) {
                 $stmt_check->close();
@@ -293,22 +300,6 @@ try {
                     'radius' => $validasi_lokasi['radius'],
                     'type' => 'location_error'
                 ]);
-            }
-            if ($face_confidence === null || $face_confidence < $MIN_FACE_CONFIDENCE) {
-                $stmt_check->close();
-                outputJSON([
-                    'success' => false,
-                    'message' => '🔒 Verifikasi wajah wajib dilakukan untuk absen pulang. Confidence score minimal ' . $MIN_FACE_CONFIDENCE . '% diperlukan.',
-                    'type' => 'face_required'
-                ]);
-            }
-
-            // Foto kamera diambil di kondisi yang sama seperti Pulang normal
-            // (frontend memakai fungsi submitAbsenPulang() yang sama persis
-            // untuk kedua kasus), jadi wajib dibaca di sini juga - kalau tidak,
-            // foto yang sudah diupload browser akan diam-diam dibuang.
-            if ($capture_ready) {
-                $capture_bytes = readAttendanceCapture($_FILES['foto_capture'] ?? null);
             }
 
             $conn->begin_transaction();
@@ -339,7 +330,7 @@ try {
                 $stmt_insert_pulang_saja->bind_param("ssssdss", $id_karyawan, $tanggal, $waktu, $lokasi, $face_confidence, $alasan_tidak_masuk, $waktu_alasan_tidak_masuk);
 
                 if ($stmt_insert_pulang_saja->execute()) {
-                    saveAttendanceCapture($conn, $conn->insert_id, 'pulang', $capture_bytes);
+                    if ($capture_ready) saveAttendanceCapture($conn, $conn->insert_id, 'pulang', $capture_bytes);
                     logActivity($conn, 'absen_pulang_tanpa_masuk', "Absen pulang jam $waktu tanpa absen masuk sebelumnya - perlu ditinjau", $id_karyawan);
                     if (!$conn->commit()) throw new RuntimeException('Gagal menyimpan absensi pulang.');
                     $stmt_insert_pulang_saja->close();
@@ -488,18 +479,18 @@ try {
         }
         $conn->begin_transaction();
         // Update dengan data face jika ada
-        $face_verified = (!empty($face_descriptor) && !empty($face_confidence) && $face_confidence >= $MIN_FACE_CONFIDENCE) ? 1 : 0;
+        // $face_verified and $face_confidence come only from the consumed server receipt.
         
         if ($face_verified) {
-            $stmt_update = $conn->prepare("UPDATE absensi SET jam_pulang = ?, lokasi_pulang = ?, face_verified = 1, face_confidence = ?, alasan_pulang = ?, foto_pulang = ? WHERE id = ?");
+            $stmt_update = $conn->prepare("UPDATE absensi SET jam_pulang = ?, lokasi_pulang = ?, face_verified = 1, face_confidence = ?, alasan_pulang = ?, foto_pulang = ? WHERE id = ? AND (jam_pulang IS NULL OR jam_pulang = '00:00:00')");
             $stmt_update->bind_param("ssdssi", $waktu, $lokasi, $face_confidence, $alasan_pulang, $foto_pulang_name, $data_absen['id']);
         } else {
-            $stmt_update = $conn->prepare("UPDATE absensi SET jam_pulang = ?, lokasi_pulang = ?, alasan_pulang = ?, foto_pulang = ? WHERE id = ?");
+            $stmt_update = $conn->prepare("UPDATE absensi SET jam_pulang = ?, lokasi_pulang = ?, alasan_pulang = ?, foto_pulang = ? WHERE id = ? AND (jam_pulang IS NULL OR jam_pulang = '00:00:00')");
             $stmt_update->bind_param("ssssi", $waktu, $lokasi, $alasan_pulang, $foto_pulang_name, $data_absen['id']);
         }
         
         if ($stmt_update->execute() && $stmt_update->affected_rows > 0) {
-            saveAttendanceCapture($conn, $data_absen['id'], 'pulang', $capture_bytes);
+            if ($capture_ready) saveAttendanceCapture($conn, $data_absen['id'], 'pulang', $capture_bytes);
             $log_message = "Absen pulang jam $waktu" . ($face_verified ? " (Face Verified: {$face_confidence}%)" : "");
             logActivity($conn, 'absen_pulang', $log_message, $id_karyawan);
             
@@ -591,7 +582,7 @@ try {
         }
 
         // Face verified status
-        $face_verified = (!empty($face_descriptor) && !empty($face_confidence) && $face_confidence >= $MIN_FACE_CONFIDENCE) ? 1 : 0;
+        // $face_verified and $face_confidence come only from the consumed server receipt.
 
         if ($capture_ready && ($keterangan_param === 'Hadir' || isset($_FILES['foto_capture']))) {
             $capture_bytes = readAttendanceCapture($_FILES['foto_capture'] ?? null);
@@ -645,7 +636,7 @@ try {
             }
             
             if ($stmt_insert->execute()) {
-                saveAttendanceCapture($conn, $conn->insert_id, 'masuk', $capture_bytes);
+                if ($capture_ready) saveAttendanceCapture($conn, $conn->insert_id, 'masuk', $capture_bytes);
                 $log_message = "Absen $keterangan ($status_masuk)" . ($face_verified ? " - Face Verified: {$face_confidence}%" : "");
                 logActivity($conn, 'absen_masuk', $log_message, $id_karyawan);
 

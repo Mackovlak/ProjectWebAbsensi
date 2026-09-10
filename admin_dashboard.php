@@ -320,8 +320,34 @@ if ($result_best) {
     </div>
 </div>
 
-<!-- Kalender Global Perusahaan -->
-<div class="mb-8">
+<!-- Absen Pribadi & Kalender Global Perusahaan -->
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+    <?php if (!empty($header_profile['id_karyawan'])): ?>
+    <a href="absen.php?id=<?php echo urlencode($header_profile['id_karyawan']); ?>" class="flex items-center justify-between gap-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 hover:-translate-y-0.5 hover:shadow-md transition-all group">
+        <div class="flex items-center gap-4 min-w-0">
+            <div class="w-12 h-12 shrink-0 rounded-xl bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center">
+                <i class="ph-duotone ph-fingerprint text-2xl text-brand-600 dark:text-brand-400"></i>
+            </div>
+            <div class="min-w-0">
+                <h3 class="font-bold text-slate-800 dark:text-white">Absen Sekarang</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400 truncate">Check-in / check-out kehadiran hari ini.</p>
+            </div>
+        </div>
+        <i class="ph-bold ph-arrow-right text-slate-400 group-hover:translate-x-1 transition-transform shrink-0"></i>
+    </a>
+    <?php else: ?>
+    <div class="flex items-center justify-between gap-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 p-5 opacity-75" title="Tautkan akun Admin ke data karyawan untuk menggunakan absensi">
+        <div class="flex items-center gap-4 min-w-0">
+            <div class="w-12 h-12 shrink-0 rounded-xl bg-slate-200 dark:bg-slate-700 flex items-center justify-center"><i class="ph-duotone ph-fingerprint text-2xl text-slate-400"></i></div>
+            <div class="min-w-0">
+                <h3 class="font-bold text-slate-600 dark:text-slate-300">Absen Sekarang</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400 truncate">Akun belum tertaut ke data karyawan.</p>
+            </div>
+        </div>
+        <i class="ph-bold ph-lock text-slate-400 shrink-0"></i>
+    </div>
+    <?php endif; ?>
+
     <a href="admin_kalender.php" class="flex items-center justify-between gap-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 hover:-translate-y-0.5 hover:shadow-md transition-all group">
         <div class="flex items-center gap-4 min-w-0">
             <div class="w-12 h-12 shrink-0 rounded-xl bg-fuchsia-50 dark:bg-fuchsia-900/30 flex items-center justify-center">

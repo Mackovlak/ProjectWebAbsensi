@@ -7,7 +7,7 @@
  * dispatch-by-POST-key milik master_process.php.
  *
  * Aksi yang didukung:
- *  - ajukan_izin  : karyawan (staff) mengajukan izin untuk rentang tanggal
+ *  - ajukan_izin  : karyawan (staff/supervisor/admin) mengajukan izin
  *  - batal_izin   : karyawan membatalkan pengajuannya sendiri
  *  - review_izin  : supervisor/admin/owner menyetujui atau menolak
  */
@@ -21,7 +21,18 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 verifyCSRFToken($_POST['csrf_token'] ?? '');
 
-$redirect_default = isStaff() ? 'staff_pengajuan_izin.php' : 'kelola_pengajuan_izin.php';
+$is_self_service_action = isset($_POST['ajukan_izin']) || isset($_POST['batal_izin']);
+$redirect_default = $is_self_service_action ? 'staff_pengajuan_izin.php' : 'kelola_pengajuan_izin.php';
+
+function requirePemilikKuota() {
+    if (!isLoggedIn() || !in_array($_SESSION['role'] ?? '', ['staff', 'supervisor', 'admin'], true)) {
+        redirect('login.php');
+    }
+    if (empty($_SESSION['id_karyawan'])) {
+        $_SESSION['error_message'] = 'Akun Anda belum tertaut dengan data karyawan.';
+        redirect(dashboardUntukRole($_SESSION['role']));
+    }
+}
 
 /**
  * Simpan flash message lalu kembali ke halaman asal.
@@ -38,10 +49,10 @@ function selesai($pesan, $sukses = true, $redirect = null) {
 }
 
 // ==========================================================
-// AJUKAN IZIN (staff)
+// AJUKAN IZIN (staff / supervisor / admin yang tertaut ke karyawan)
 // ==========================================================
 if (isset($_POST['ajukan_izin'])) {
-    requireStaff();
+    requirePemilikKuota();
 
     $id_karyawan = $_SESSION['id_karyawan'] ?? '';
     if (empty($id_karyawan)) {
@@ -187,7 +198,7 @@ if (isset($_POST['ajukan_izin'])) {
         $ket_kuota = (!$potong_kuota && $jenis === 'Sakit')
             ? " Karena dilampiri bukti, pengajuan ini <b>tidak memotong kuota tahunan</b> Anda."
             : "";
-        selesai("✅ Pengajuan {$jenis} untuk {$rentang} berhasil dikirim dan menunggu persetujuan Supervisor.{$ket_kuota}");
+        selesai("✅ Pengajuan {$jenis} untuk {$rentang} berhasil dikirim dan menunggu persetujuan atasan.{$ket_kuota}");
     } else {
         $stmt->close();
         // Bersihkan lampiran yang terlanjur naik supaya tidak jadi file yatim
@@ -199,10 +210,10 @@ if (isset($_POST['ajukan_izin'])) {
 }
 
 // ==========================================================
-// BATALKAN PENGAJUAN (staff, miliknya sendiri)
+// BATALKAN PENGAJUAN (pemilik pengajuan)
 // ==========================================================
 if (isset($_POST['batal_izin'])) {
-    requireStaff();
+    requirePemilikKuota();
 
     $id_pengajuan = intval($_POST['id_pengajuan'] ?? 0);
     $id_karyawan  = $_SESSION['id_karyawan'] ?? '';
@@ -292,6 +303,12 @@ if (isset($_POST['review_izin'])) {
 
         if (!$data) {
             throw new Exception("Pengajuan tidak ditemukan.");
+        }
+
+        // Admin/supervisor yang juga merupakan karyawan tidak boleh menyetujui
+        // pengajuan miliknya sendiri. Pengajuan harus direview atasan lain.
+        if (!empty($_SESSION['id_karyawan']) && $data['id_karyawan'] === $_SESSION['id_karyawan']) {
+            throw new Exception("Anda tidak dapat mereview pengajuan izin milik sendiri.");
         }
 
         if ($cabang_reviewer !== null && (int)$data['cabang_karyawan'] !== (int)$cabang_reviewer) {

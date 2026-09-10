@@ -1,5 +1,6 @@
 <?php
 require 'config.php';
+require_once 'attendance_face.php';
 requireLogin();
 
 header('Content-Type: application/json; charset=utf-8');
@@ -43,18 +44,14 @@ try {
     }
 
     $descriptors_json = $_POST['descriptors'];
-    $descriptors = json_decode($descriptors_json, true);
+    $descriptors = attendanceFaceTemplates($descriptors_json);
 
     if (!is_array($descriptors) || count($descriptors) < 3) {
         throw new Exception('Data wajah tidak lengkap. Minimal 3 foto diperlukan.');
     }
 
-    // Validasi setiap descriptor
-    foreach ($descriptors as $desc) {
-        if (!is_array($desc) || count($desc) !== 128) {
-            throw new Exception('Format data wajah tidak valid');
-        }
-    }
+    // Canonical arrays of finite numbers; the server matcher uses this format.
+    $descriptors_json = json_encode($descriptors, JSON_THROW_ON_ERROR);
 
     // Simpan ke database
     $conn->begin_transaction();

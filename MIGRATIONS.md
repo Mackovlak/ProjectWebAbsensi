@@ -146,7 +146,9 @@ for Hadir clock-in and Hadir/Dinas Luar clock-out. Old/manual records show
 view their assigned branch via `histori_absensi.php` (read-only for supervisors)
 and the authenticated image endpoint. The **Bukti Foto** action opens clock-in
 and clock-out photos together. Verify both roles, clock-in, clock-out, and the overtime
-follow-up form after deployment. Face confidence logic is unchanged.
+follow-up form after deployment. See `ATTENDANCE_VERIFICATION.md` for the
+server-side confidence check and short-lived verification tokens (no additional
+migration required).
 
 This is the part that matters if a past update caused instability. Do these
 in order, every time:
