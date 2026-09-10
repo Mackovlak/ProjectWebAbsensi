@@ -46,12 +46,12 @@ $label_hari_overtime = labelHariOvertime($conn);
 // Get attendance data via raw SQL (menggantikan stored procedure untuk kompatibilitas hosting)
 $sql_absensi = "SELECT 
     COUNT(DISTINCT CASE WHEN a.keterangan IN ('Hadir', 'Dinas Luar') THEN a.id END) as total_hadir_raw,
-    COUNT(DISTINCT CASE 
+    COUNT(DISTINCT CASE
         WHEN a.keterangan = 'Hadir' AND (
             (a.jam_pulang IS NOT NULL AND a.jam_pulang != '00:00:00' AND TIMESTAMPDIFF(MINUTE, a.jam_masuk, a.jam_pulang) < 330)
             OR ((a.jam_pulang IS NULL OR a.jam_pulang = '00:00:00') AND a.tanggal < CURDATE())
         )
-        THEN a.id 
+        THEN a.id
     END) as total_setengah_hari,
     COUNT(DISTINCT CASE WHEN a.keterangan IN ('Hadir', 'Dinas Luar') AND a.status_masuk = 'Terlambat' THEN a.id END) as total_terlambat,
     SUM(CASE 
@@ -99,6 +99,12 @@ $absensi = [
 // overtime_sabtu = 1 yang dihitung. Angkanya DISARANKAN, bukan otomatis
 // menimpa - admin yang memutuskan lewat tombol "Tambahkan".
 $lembur_sabtu = getLemburHariSabtu($conn, $id_karyawan, $bulan, $tahun);
+
+// Potongan keterlambatan bertingkat (per hari, dari menit_terlambat mentah) -
+// lihat keterlambatan_functions.php. Rate lama per-karyawan cuma dipakai
+// sebagai fallback untuk hari absensi lama yang belum punya menit_terlambat.
+$rate_keterlambatan_fallback = $karyawan['rate_keterlambatan'] ?? 20000;
+$keterlambatan_auto = hitungTotalPotonganKeterlambatanPeriode($conn, $id_karyawan, $bulan, $tahun, $rate_keterlambatan_fallback);
 
 // Check existing slip
 $stmt = $conn->prepare("SELECT * FROM slip_gaji WHERE id_karyawan = ? AND bulan = ? AND tahun = ?");
@@ -517,17 +523,34 @@ require 'admin_header.php';
                 
                 <div class="p-6 space-y-4" id="potonganContainer">
                     
-                    <!-- Keterlambatan (Otomatis Absen) -->
+                    <!-- Keterlambatan (Otomatis Bertingkat per Hari) -->
                     <div class="flex items-start gap-4">
                         <div class="w-1/3">
                             <p class="text-sm font-semibold text-slate-700 dark:text-slate-300">Pot. Keterlambatan</p>
-                            <p class="text-[10px] text-rose-600 dark:text-rose-400 mt-1"><i class="fa-solid fa-link"></i> Auto x Telat (<?php echo $absensi['total_terlambat'] ?? 0; ?>)</p>
+                            <p class="text-[10px] text-rose-600 dark:text-rose-400 mt-1"><i class="fa-solid fa-link"></i> Otomatis bertingkat (<?php echo $keterlambatan_auto['jumlah_hari']; ?> hari telat)</p>
+                            <?php if ($keterlambatan_auto['jumlah_legacy'] > 0): ?>
+                            <p class="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5"><i class="fa-solid fa-triangle-exclamation"></i> <?php echo $keterlambatan_auto['jumlah_legacy']; ?> hari pakai rate lama* (data menit belum tersedia)</p>
+                            <?php endif; ?>
+                            <?php if (!empty($keterlambatan_auto['rincian'])): ?>
+                            <details class="mt-1.5">
+                                <summary class="text-[10px] text-slate-500 dark:text-slate-400 cursor-pointer hover:text-brand-600 dark:hover:text-brand-400">Lihat rincian per hari</summary>
+                                <ul class="mt-1 space-y-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+                                    <?php foreach ($keterlambatan_auto['rincian'] as $r): ?>
+                                    <li>
+                                        <?php echo date('d-m', strtotime($r['tanggal'])); ?>:
+                                        <?php echo $r['menit_terlambat'] !== null ? $r['menit_terlambat'] . ' menit' : 'data lama*'; ?>
+                                        - Rp <?php echo number_format($r['potongan'], 0, ',', '.'); ?>
+                                    </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            </details>
+                            <?php endif; ?>
                         </div>
                         <div class="w-2/3 flex items-center gap-1.5">
                             <div class="relative flex-1 group">
-                                <span class="absolute left-2 top-2.5 text-slate-400 text-xs">Rate</span>
-                                <input type="text" id="rateTelatInput" inputmode="numeric" value="<?php echo number_format($existing['keterlambatan_nominal'] ?? $karyawan['rate_keterlambatan'] ?? 20000, 0, ',', '.'); ?>" class="format-rp calc-rate hidden-real-input w-full pl-10 pr-2 py-2.5 border border-slate-200 dark:border-slate-600 rounded-xl text-right text-sm bg-slate-50 dark:bg-slate-900/50 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-brand-500 font-mono transition-colors">
-                                <input type="hidden" id="rateTelatValue" name="keterlambatan_nominal" value="<?php echo $existing['keterlambatan_nominal'] ?? $karyawan['rate_keterlambatan'] ?? 20000; ?>">
+                                <span class="absolute left-2 top-2.5 text-slate-400 text-[10px] leading-tight">Rate lama*</span>
+                                <input type="text" id="rateTelatInput" inputmode="numeric" title="Dipakai hanya sebagai fallback untuk hari absensi lama yang belum punya data menit keterlambatan" value="<?php echo number_format($rate_keterlambatan_fallback, 0, ',', '.'); ?>" class="format-rp calc-rate hidden-real-input w-full pl-16 pr-2 py-2.5 border border-slate-200 dark:border-slate-600 rounded-xl text-right text-sm bg-slate-50 dark:bg-slate-900/50 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-brand-500 font-mono transition-colors">
+                                <input type="hidden" id="rateTelatValue" name="keterlambatan_nominal" value="<?php echo $rate_keterlambatan_fallback; ?>">
                             </div>
                             <?php if(!$is_locked): ?>
                             <button type="button" onclick="saveRate('rate_keterlambatan', 'rateTelatValue', this)" class="shrink-0 px-3 py-2.5 bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-800/50 border border-rose-200 dark:border-rose-800 rounded-xl text-sm font-semibold transition-colors" title="Simpan sebagai Default Karyawan">
@@ -537,11 +560,13 @@ require 'admin_header.php';
                             <div class="text-slate-400 font-bold px-1">=</div>
                             <div class="relative flex-1">
                                 <span class="absolute left-2 top-2.5 text-slate-400 text-xs">Rp</span>
-                                <input type="text" id="resTelat" value="0" readonly class="format-rp dec-input w-full pl-8 pr-3 py-2.5 border border-rose-200 dark:border-rose-800 bg-rose-50/50 dark:bg-rose-900/20 rounded-xl text-right text-sm font-mono font-bold text-rose-700 dark:text-rose-400 cursor-not-allowed outline-none">
-                                <input type="hidden" name="keterlambatan_jumlah" id="inKeterlambatanJumlah" value="">
+                                <input type="text" id="resTelat" value="<?php echo number_format($existing['keterlambatan_total'] ?? $keterlambatan_auto['total'], 0, ',', '.'); ?>" <?php echo $is_locked ? 'readonly' : 'oninput="document.getElementById(\'inKeterlambatanManual\').value=\'1\'; calculateAll();"'; ?> class="format-rp w-full pl-8 pr-3 py-2.5 border border-rose-200 dark:border-rose-800 bg-rose-50/50 dark:bg-rose-900/20 rounded-xl text-right text-sm font-mono font-bold text-rose-700 dark:text-rose-400 outline-none focus:ring-2 focus:ring-rose-400 <?php echo $is_locked ? 'cursor-not-allowed' : ''; ?>" title="Bisa diketik manual untuk override - klik reset untuk kembali ke hitungan otomatis">
+                                <input type="hidden" name="keterlambatan_jumlah" id="inKeterlambatanJumlah" value="<?php echo $keterlambatan_auto['jumlah_hari']; ?>">
+                                <input type="hidden" name="keterlambatan_manual" id="inKeterlambatanManual" value="0">
+                                <input type="hidden" name="keterlambatan_total_manual" id="inKeterlambatanTotalManual" value="">
                             </div>
                             <?php if(!$is_locked && $is_edit): ?>
-                            <button type="button" onclick="resetAttendanceCalculation('telat')" class="shrink-0 px-2.5 py-2.5 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-800/50 border border-amber-200 dark:border-amber-800 rounded-xl text-sm font-semibold transition-colors" title="Reset hitungan ke Absen terbaru">
+                            <button type="button" onclick="resetAttendanceCalculation('telat')" class="shrink-0 px-2.5 py-2.5 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-800/50 border border-amber-200 dark:border-amber-800 rounded-xl text-sm font-semibold transition-colors" title="Reset ke hitungan otomatis">
                                 <i class="fa-solid fa-rotate-right"></i>
                             </button>
                             <?php endif; ?>
@@ -661,17 +686,21 @@ require 'admin_header.php';
 <!-- SCRIPT LOGIKA PERHITUNGAN OTOMATIS & FORMAT ANGKA -->
 <script>
     // Data Histori (Real-time DB)
-    const realtimeAbsen = { 
-        hadir: <?php echo $absensi['total_hari_hadir'] ?? 0; ?>, 
-        telat: <?php echo $absensi['total_terlambat'] ?? 0; ?>, 
-        ahad: <?php echo ($absensi["total_ahad_full"]??0) + (($absensi["total_ahad_setengah"]??0)*0.5); ?>, 
-        lembur: <?php echo $absensi['total_overtime'] ?? 0; ?> 
+    const realtimeAbsen = {
+        hadir: <?php echo $absensi['total_hari_hadir'] ?? 0; ?>,
+        ahad: <?php echo ($absensi["total_ahad_full"]??0) + (($absensi["total_ahad_setengah"]??0)*0.5); ?>,
+        lembur: <?php echo $absensi['total_overtime'] ?? 0; ?>
     };
+
+    // Total potongan keterlambatan bertingkat, dihitung server-side dari
+    // menit_terlambat mentah tiap hari (keterlambatan_functions.php) - bukan
+    // lagi rate x jumlah, jadi tidak masuk pola calcAbsen (rate x kuantitas)
+    // seperti komponen lain di bawah ini.
+    const keterlambatanAutoTotal = <?php echo (float)$keterlambatan_auto['total']; ?>;
 
     // Data Digunakan untuk Kalkulasi (Locked jika sudah save, kecuali di-reset)
     let calcAbsen = {
         hadir: <?php echo isset($existing['transport_hari']) ? $existing['transport_hari'] : ($absensi['total_hari_hadir'] ?? 0); ?>,
-        telat: <?php echo isset($existing['keterlambatan_jumlah']) ? $existing['keterlambatan_jumlah'] : ($absensi['total_terlambat'] ?? 0); ?>,
         ahad: <?php echo isset($existing['insentif_ahad_hari']) ? $existing['insentif_ahad_hari'] : (($absensi["total_ahad_full"]??0) + (($absensi["total_ahad_setengah"]??0)*0.5)); ?>,
         lembur: <?php echo isset($existing['overtime_jam']) ? $existing['overtime_jam'] : ($absensi['total_overtime'] ?? 0); ?>
     };
@@ -698,10 +727,13 @@ require 'admin_header.php';
 
     function resetAttendanceCalculation(type) {
         if(type === 'hadir') calcAbsen.hadir = realtimeAbsen.hadir;
-        else if(type === 'telat') calcAbsen.telat = realtimeAbsen.telat;
         else if(type === 'ahad') calcAbsen.ahad = realtimeAbsen.ahad;
         else if(type === 'lembur') calcAbsen.lembur = realtimeAbsen.lembur;
-        
+        else if(type === 'telat') {
+            document.getElementById('resTelat').value = formatRibuan(keterlambatanAutoTotal);
+            document.getElementById('inKeterlambatanManual').value = '0';
+        }
+
         calculateAll();
         
         // Show SweetAlert confirmation
@@ -821,10 +853,11 @@ require 'admin_header.php';
         document.getElementById('resAhad').value = formatRibuan(resAhad);
         if(document.getElementById('inInsentifAhadHari')) document.getElementById('inInsentifAhadHari').value = calcAbsen.ahad;
 
-        const rateTelat = parseFloat(document.querySelector('[name="keterlambatan_nominal"]').value) || 0;
-        const resTelat = rateTelat * calcAbsen.telat;
-        document.getElementById('resTelat').value = formatRibuan(resTelat);
-        if(document.getElementById('inKeterlambatanJumlah')) document.getElementById('inKeterlambatanJumlah').value = calcAbsen.telat;
+        // Keterlambatan bertingkat: nilainya sudah dihitung server-side (atau
+        // diketik manual oleh admin), field ini cuma dibaca di sini - bukan
+        // dihitung ulang dari rate x jumlah seperti komponen lain di atas.
+        const resTelat = parseRibuan(document.getElementById('resTelat').value) || 0;
+        document.getElementById('inKeterlambatanTotalManual').value = resTelat;
 
         // 2. Jumlahkan Semua Penghasilan
         let totalPenghasilan = resTransport + resOvertime + resAhad;

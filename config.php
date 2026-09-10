@@ -259,6 +259,9 @@ require_once 'izin_functions.php';
 // Include helper kalender, hari libur & hari kerja
 require_once 'kalender_functions.php';
 
+// Include helper potongan keterlambatan bertingkat
+require_once 'keterlambatan_functions.php';
+
 // Function untuk generate CSRF token
 function generateCSRFToken() {
     if (!isset($_SESSION['csrf_token'])) {

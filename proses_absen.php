@@ -242,7 +242,7 @@ try {
     if ($is_absen_pulang) {
         // ============== PROSES ABSEN PULANG ==============
         $data_absen = $result_check->fetch_assoc();
-        
+
         if ($data_absen['jam_pulang'] != NULL && $data_absen['jam_pulang'] != '00:00:00') {
             $stmt_check->close();
             outputJSON(['success' => false, 'message' => 'Anda sudah absen pulang hari ini.']);
@@ -421,6 +421,7 @@ try {
             $keterangan = $is_dinas_luar ? 'Pending Dinas' : $keterangan_param;
         }
         $status_masuk = 'Tepat Waktu';
+        $menit_terlambat = null;
 
         // Keterlambatan hanya berlaku pada HARI KERJA normal. Pada hari lembur
         // (mis. Sabtu) jam masuk memang tidak tetap - bisa 10:00 tergantung
@@ -452,8 +453,20 @@ try {
                         }
                     }
                 }
-                if ($target_rule && $waktu > $target_rule['jam_masuk_akhir']) {
-                    $status_masuk = 'Terlambat';
+                if ($target_rule) {
+                    // Menit mentah lewat jam_masuk_akhir shift - fakta historis,
+                    // independen dari tarif dispensasi/potongan (yang bisa
+                    // berubah kapan saja lewat system_settings). Status
+                    // 'Terlambat' baru berlaku setelah lewat masa dispensasi
+                    // (default 10 menit), bukan begitu lewat jam_masuk_akhir
+                    // persis - lihat keterlambatan_functions.php.
+                    $selisih_menit = (int)round((strtotime($waktu) - strtotime($target_rule['jam_masuk_akhir'])) / 60);
+                    if ($selisih_menit > 0) {
+                        $menit_terlambat = $selisih_menit;
+                        if (apakahTerlambat($menit_terlambat, null, $conn)) {
+                            $status_masuk = 'Terlambat';
+                        }
+                    }
                 }
             }
         }
@@ -500,16 +513,16 @@ try {
             // Insert data
             if ($face_verified) {
                 $stmt_insert = $conn->prepare(
-                    "INSERT INTO absensi (id_karyawan, tanggal, jam_masuk, lokasi_masuk, keterangan, status_masuk, face_verified, face_confidence, alasan, foto_bukti, waktu_alasan) 
-                     VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)"
+                    "INSERT INTO absensi (id_karyawan, tanggal, jam_masuk, lokasi_masuk, keterangan, status_masuk, menit_terlambat, face_verified, face_confidence, alasan, foto_bukti, waktu_alasan)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)"
                 );
-                $stmt_insert->bind_param("ssssssdsss", $id_karyawan, $tanggal, $waktu, $lokasi, $keterangan, $status_masuk, $face_confidence, $alasan, $foto_bukti_name, $waktu_alasan);
+                $stmt_insert->bind_param("ssssssidsss", $id_karyawan, $tanggal, $waktu, $lokasi, $keterangan, $status_masuk, $menit_terlambat, $face_confidence, $alasan, $foto_bukti_name, $waktu_alasan);
             } else {
                 $stmt_insert = $conn->prepare(
-                    "INSERT INTO absensi (id_karyawan, tanggal, jam_masuk, lokasi_masuk, keterangan, status_masuk, alasan, foto_bukti, waktu_alasan) 
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                    "INSERT INTO absensi (id_karyawan, tanggal, jam_masuk, lokasi_masuk, keterangan, status_masuk, menit_terlambat, alasan, foto_bukti, waktu_alasan)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 );
-                $stmt_insert->bind_param("sssssssss", $id_karyawan, $tanggal, $waktu, $lokasi, $keterangan, $status_masuk, $alasan, $foto_bukti_name, $waktu_alasan);
+                $stmt_insert->bind_param("ssssssisss", $id_karyawan, $tanggal, $waktu, $lokasi, $keterangan, $status_masuk, $menit_terlambat, $alasan, $foto_bukti_name, $waktu_alasan);
             }
             
             if ($stmt_insert->execute()) {
