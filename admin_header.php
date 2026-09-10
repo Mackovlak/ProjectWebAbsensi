@@ -265,6 +265,10 @@ $total_notif = count($notif_dinas) + count($notif_pulang_cepat) + count($notif_i
                     </span>
                 <?php endif; ?>
             </a>
+            <a href="staff_pengajuan_izin.php" class="flex items-center gap-3 px-4 py-3 mx-4 <?php echo basename($_SERVER['PHP_SELF']) == 'staff_pengajuan_izin.php' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
+                <i class="ph-duotone ph-calendar-plus text-xl w-6 flex items-center justify-center"></i>
+                <span class="font-medium text-sm">Pengajuan Saya</span>
+            </a>
             <?php endif; ?>
 
             <!-- Master Data dengan Submenu -->

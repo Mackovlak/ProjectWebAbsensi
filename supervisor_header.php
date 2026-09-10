@@ -272,6 +272,11 @@ $total_notif = $actionable_notif_count + count($notif_izin_info);
                 <span class="font-medium text-sm">Kalender</span>
             </a>
 
+            <a href="supervisor_data_karyawan.php" class="flex items-center gap-3 px-4 py-3 mx-4 <?php echo in_array(basename($_SERVER['PHP_SELF']), ['supervisor_data_karyawan.php', 'supervisor_detail_karyawan.php'], true) ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
+                <i class="ph-duotone ph-users-three text-xl w-6 flex items-center justify-center"></i>
+                <span class="font-medium text-sm">Data Karyawan</span>
+            </a>
+
             <?php if (!empty($header_profile['id_karyawan'])): ?>
             <a href="register_face.php" class="flex items-center justify-between px-4 py-3 mx-4 <?php echo basename($_SERVER['PHP_SELF']) == 'register_face.php' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
                 <div class="flex items-center gap-3">
@@ -284,6 +289,10 @@ $total_notif = $actionable_notif_count + count($notif_izin_info);
                     </span>
                 <?php endif; ?>
             </a>
+            <a href="staff_pengajuan_izin.php" class="flex items-center gap-3 px-4 py-3 mx-4 <?php echo basename($_SERVER['PHP_SELF']) == 'staff_pengajuan_izin.php' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
+                <i class="ph-duotone ph-calendar-plus text-xl w-6 flex items-center justify-center"></i>
+                <span class="font-medium text-sm">Pengajuan Saya</span>
+            </a>
             <?php endif; ?>
 
             <a href="histori_absensi.php" class="flex items-center gap-3 px-4 py-3 mx-4 <?= basename($_SERVER['PHP_SELF']) === 'histori_absensi.php' ? 'bg-purple-600 text-white' : 'text-white hover:bg-[#1e293b]' ?> rounded-xl"><i class="ph-duotone ph-calendar-check text-xl"></i><span class="font-medium text-sm">Rekap Absensi</span></a>
@@ -292,7 +301,7 @@ $total_notif = $actionable_notif_count + count($notif_izin_info);
             <a href="kelola_pengajuan_izin.php" class="flex items-center justify-between px-4 py-3 mx-4 <?php echo basename($_SERVER['PHP_SELF']) == 'kelola_pengajuan_izin.php' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
                 <div class="flex items-center gap-3">
                     <i class="ph-duotone ph-clipboard-text text-xl w-6 flex items-center justify-center <?php echo basename($_SERVER['PHP_SELF']) == 'kelola_pengajuan_izin.php' ? '' : 'opacity-70 group-hover:opacity-100 transition-opacity'; ?>"></i>
-                    <span class="font-medium text-sm">Pengajuan Izin</span>
+                    <span class="font-medium text-sm">Pengajuan Tim</span>
                 </div>
                 <?php if ($actionable_notif_count > 0): ?>
                     <span class="pulse-badge inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-bold bg-rose-500/20 text-rose-400 rounded-full border border-rose-500/30 shadow-sm shadow-rose-500/20">
