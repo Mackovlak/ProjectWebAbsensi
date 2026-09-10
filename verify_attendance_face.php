@@ -24,6 +24,12 @@ try {
     }
     $limit = checkRateLimit('attendance_face_' . $action, $action === 'start' ? 2 : 3);
     if (!$limit['allowed']) throw new RuntimeException('Tunggu ' . $limit['remaining'] . ' detik lalu coba lagi.');
+    // Dibatasi juga per id_karyawan (bukan cuma per sesi/aksi) - endpoint ini
+    // sessionless (kios bersama, siapa saja bisa mengetik ID siapa saja), jadi
+    // tanpa ini satu sesi bisa mencoba banyak ID karyawan berbeda secepat
+    // batas per-aksi mengizinkan, cuma diperlambat kalau menyasar ID yang sama.
+    $limit_id = checkRateLimit('attendance_face_' . $action . '_' . $id, $action === 'start' ? 2 : 3);
+    if (!$limit_id['allowed']) throw new RuntimeException('Tunggu ' . $limit_id['remaining'] . ' detik lalu coba lagi.');
 
     $stmt = $conn->prepare("SELECT u.face_descriptor FROM users u JOIN karyawan k ON k.id_karyawan = u.id_karyawan
                            WHERE u.id_karyawan = ? AND u.is_active = 1 AND k.status = 'aktif'");

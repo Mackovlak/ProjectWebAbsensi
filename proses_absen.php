@@ -19,6 +19,14 @@ try {
         header('Allow: POST');
         outputJSON(['success' => false, 'message' => 'Gunakan POST.']);
     }
+    // Sama seperti verify_attendance_face.php - dicek manual (bukan lewat
+    // verifyCSRFToken() global) karena endpoint ini harus selalu balas JSON,
+    // sedangkan verifyCSRFToken() mati dengan teks polos.
+    $csrf = $_POST['csrf_token'] ?? null;
+    if (!is_string($csrf) || empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $csrf)) {
+        http_response_code(403);
+        outputJSON(['success' => false, 'message' => 'Sesi tidak valid. Muat ulang halaman absensi.']);
+    }
     foreach (['id_karyawan', 'lokasi', 'keterangan', 'alasan', 'alasan_pulang'] as $field) {
         if (isset($_POST[$field]) && !is_string($_POST[$field])) {
             outputJSON(['success' => false, 'message' => 'Format permintaan tidak valid.']);
@@ -143,8 +151,12 @@ try {
 
     // Derive the operation from the database (+ aksi=pulang eksplisit untuk
     // kasus lupa absen masuk), bukan cuma dari status/jenis yang diposting.
+    // 'Pending Dinas' sengaja tidak diikutkan: verify_attendance_face.php
+    // tidak pernah menerbitkan token untuk status ini (masih menunggu ACC
+    // admin), jadi cabang ini dibiarkan gagal di pengecekan $is_pending_dinas
+    // di bawah yang pesannya jauh lebih jelas, bukan dipaksa lewat sini dulu.
     $needs_face = $is_absen_pulang
-        ? ($row_ada ? in_array($attendance_row['keterangan'], ['Hadir', 'Dinas Luar', 'Pending Dinas'], true) : true)
+        ? ($row_ada ? in_array($attendance_row['keterangan'], ['Hadir', 'Dinas Luar'], true) : true)
         : ($keterangan_param === 'Hadir' || $is_dinas_luar || $izin_dinas_hari_ini);
     if ($needs_face) {
         $context = attendanceFaceContext($id_karyawan, $row_ada ? $attendance_row : null, $karyawan_data['face_descriptor'], $tanggal, $is_absen_pulang ? 'pulang' : 'masuk');
@@ -474,7 +486,9 @@ try {
         }
         // ==============================================
 
-        if ($capture_ready && ($is_hadir_masuk || $is_dinas_luar_status || isset($_FILES['foto_capture']))) {
+        // $capture_bytes sudah dibaca+divalidasi di blok $needs_face di atas
+        // kalau memang butuh wajah - jangan baca file upload yang sama dua kali.
+        if ($capture_ready && $capture_bytes === null && ($is_hadir_masuk || $is_dinas_luar_status || isset($_FILES['foto_capture']))) {
             $capture_bytes = readAttendanceCapture($_FILES['foto_capture'] ?? null);
         }
         $conn->begin_transaction();
@@ -584,7 +598,9 @@ try {
         // Face verified status
         // $face_verified and $face_confidence come only from the consumed server receipt.
 
-        if ($capture_ready && ($keterangan_param === 'Hadir' || isset($_FILES['foto_capture']))) {
+        // $capture_bytes sudah dibaca+divalidasi di blok $needs_face di atas
+        // kalau memang butuh wajah - jangan baca file upload yang sama dua kali.
+        if ($capture_ready && $capture_bytes === null && ($keterangan_param === 'Hadir' || isset($_FILES['foto_capture']))) {
             $capture_bytes = readAttendanceCapture($_FILES['foto_capture'] ?? null);
         }
         // Insert absensi masuk

@@ -1322,7 +1322,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                 checkCancelled();
                 await faceSystem.startCamera('face-video');
                 checkCancelled();
-                const challenge = await request('start');
+                let challenge = await request('start');
                 const currentChallenge = Math.random() < 0.5 ? 'blink' : 'mouth';
                 instructionEl.textContent = currentChallenge === 'blink'
                     ? 'TANTANGAN: Tolong Kedipkan Mata Anda' : 'TANTANGAN: Tolong Buka Mulut / Senyum';
@@ -1353,11 +1353,25 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                         continue;
                     }
                     const photo = await captureAttendancePhoto(faceSystem.videoElement);
-                    const matched = await request('verify', {
-                        nonce: challenge.nonce,
-                        face_descriptor: JSON.stringify(result.descriptor),
-                        foto_capture: photo
-                    });
+                    let matched;
+                    try {
+                        matched = await request('verify', {
+                            nonce: challenge.nonce,
+                            face_descriptor: JSON.stringify(result.descriptor),
+                            foto_capture: photo
+                        });
+                    } catch (error) {
+                        checkCancelled();
+                        updateFaceStatus('error', error.message);
+                        // Nonce tantangan sudah terpakai begitu request('verify')
+                        // dikirim, walau hasilnya gagal (mis. wajah tak cocok) -
+                        // minta tantangan baru dulu sebelum mencoba lagi, supaya
+                        // satu momen kurang pas (pencahayaan/sudut) tidak
+                        // menggagalkan seluruh proses verifikasi.
+                        challenge = await request('start');
+                        await pause(300);
+                        continue;
+                    }
                     // The dark mask is only a live positioning aid. Remove it
                     // once the evidence photo has been captured successfully.
                     videoContainer?.classList.add('face-captured');
@@ -1395,6 +1409,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
         }
 
         function performSubmit(formData) {
+            formData.append('csrf_token', attendanceCsrf);
             const mainContainer = document.getElementById('main-container');
             const successContainer = document.getElementById('success-content');
             console.log('=== SUBMIT DATA ===');
