@@ -1,15 +1,37 @@
 <?php
 /**
  * ==========================================
- * PENGAJUAN IZIN / CUTI / DINAS LUAR - Staff
+ * PENGAJUAN IZIN / CUTI / DINAS LUAR - Karyawan
  * ==========================================
  * Karyawan mengajukan izin untuk rentang tanggal, memantau sisa kuota
  * tahunan, dan melihat riwayat pengajuannya.
  */
 
-include 'staff_header.php';
+require_once 'config.php';
+
+$role_pengaju = $_SESSION['role'] ?? '';
+if (!isLoggedIn() || !in_array($role_pengaju, ['staff', 'supervisor', 'admin'], true)) {
+    header('Location: login.php');
+    exit();
+}
+
+if ($role_pengaju === 'admin') {
+    include 'admin_header.php';
+    $footer_pengaju = 'admin_footer.php';
+} elseif ($role_pengaju === 'supervisor') {
+    include 'supervisor_header.php';
+    $footer_pengaju = 'supervisor_footer.php';
+} else {
+    include 'staff_header.php';
+    $footer_pengaju = 'staff_footer.php';
+}
 
 $id_karyawan_staff = $_SESSION['id_karyawan'] ?? '';
+if ($id_karyawan_staff === '') {
+    $_SESSION['error_message'] = 'Akun Anda belum tertaut dengan data karyawan, sehingga tidak memiliki kuota cuti.';
+    header('Location: ' . dashboardUntukRole($role_pengaju));
+    exit();
+}
 $csrf_token = generateCSRFToken();
 
 $tahun_aktif = isset($_GET['tahun']) ? intval($_GET['tahun']) : (int)date('Y');
@@ -66,7 +88,7 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
 <div class="mb-8">
     <h1 class="text-2xl sm:text-3xl font-bold text-slate-800 dark:text-white tracking-tight">Pengajuan Izin &amp; Cuti</h1>
     <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">
-        Ajukan izin untuk rentang tanggal tertentu. Pengajuan akan direview oleh Supervisor cabang Anda.
+        Ajukan izin untuk rentang tanggal tertentu. Pengajuan akan direview oleh atasan yang berwenang.
     </p>
 </div>
 
@@ -438,4 +460,4 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
 })();
 </script>
 
-<?php include 'staff_footer.php'; ?>
+<?php include $footer_pengaju; ?>

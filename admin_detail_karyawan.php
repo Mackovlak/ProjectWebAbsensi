@@ -22,6 +22,7 @@ if ($result->num_rows == 0) {
 
 $data = $result->fetch_assoc();
 $stmt->close();
+$kuota_cuti = getRingkasanKuotaIzin($conn, $data['id_karyawan'], (int)date('Y'));
 
 $jenis_kelamin = $data['jenis_kelamin'] ?? 'L';
 $default_avatar = ($jenis_kelamin == 'P') ? 'assets/images/avatar_p.png?v=2' : 'assets/images/avatar_l.png?v=2';
@@ -84,6 +85,29 @@ $bergabung = formatDate($join_date_formatted);
             <div class="w-full pt-4 border-t border-slate-100 dark:border-slate-700 flex justify-between text-sm">
                 <span class="text-slate-500 dark:text-slate-400">Penempatan</span>
                 <span class="font-semibold text-slate-700 dark:text-slate-300"><?php echo htmlspecialchars($data['nama_cabang']); ?></span>
+            </div>
+        </div>
+
+        <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                    <i class="fa-solid fa-umbrella-beach text-sky-500"></i> Kuota Cuti
+                </h3>
+                <span class="text-xs font-semibold text-slate-500"><?php echo (int)$kuota_cuti['tahun']; ?></span>
+            </div>
+            <p class="text-3xl font-bold text-sky-600 dark:text-sky-400">
+                <?php echo (int)$kuota_cuti['tersedia']; ?>
+                <span class="text-sm font-medium text-slate-400">/ <?php echo (int)$kuota_cuti['jatah']; ?> hari tersedia</span>
+            </p>
+            <div class="grid grid-cols-2 gap-3 mt-4 text-sm">
+                <div class="rounded-xl bg-slate-50 dark:bg-slate-900/50 p-3">
+                    <span class="block text-xs text-slate-500">Terpakai</span>
+                    <strong class="text-slate-700 dark:text-slate-200"><?php echo (int)$kuota_cuti['terpakai']; ?> hari</strong>
+                </div>
+                <div class="rounded-xl bg-amber-50 dark:bg-amber-900/20 p-3">
+                    <span class="block text-xs text-amber-600 dark:text-amber-400">Menunggu</span>
+                    <strong class="text-amber-700 dark:text-amber-300"><?php echo (int)$kuota_cuti['tertahan']; ?> hari</strong>
+                </div>
             </div>
         </div>
     </div>

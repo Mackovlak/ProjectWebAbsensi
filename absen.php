@@ -25,7 +25,7 @@ if (empty($id_karyawan) || !validateIDKaryawan($id_karyawan)) {
     die("ID Karyawan tidak valid atau tidak disediakan.");
 }
 
-$stmt = $conn->prepare("SELECT k.nama_karyawan, u.face_descriptor, u.username FROM karyawan k LEFT JOIN users u ON k.id_karyawan = u.id_karyawan WHERE k.id_karyawan = ?");
+$stmt = $conn->prepare("SELECT k.nama_karyawan, (u.face_descriptor IS NOT NULL AND u.face_descriptor <> '') AS has_face_data, u.username FROM karyawan k LEFT JOIN users u ON k.id_karyawan = u.id_karyawan WHERE k.id_karyawan = ?");
 $stmt->bind_param("s", $id_karyawan);
 $stmt->execute();
 $result_karyawan = $stmt->get_result();
@@ -35,7 +35,8 @@ if ($result_karyawan->num_rows == 0) {
 $karyawan_data = $result_karyawan->fetch_assoc();
 $nama_karyawan = $karyawan_data['nama_karyawan'];
 $username_karyawan = $karyawan_data['username'];
-$has_face_data = !empty($karyawan_data['face_descriptor']);
+$has_face_data = (bool)$karyawan_data['has_face_data'];
+$attendance_csrf = generateCSRFToken();
 $stmt->close();
 
 $today = date('Y-m-d');
@@ -176,13 +177,19 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
             position: relative; width: 100%; background: #000;
             border-radius: 15px; overflow: hidden; margin: 20px 0;
         }
-        #face-video { width: 100%; transform: scaleX(-1); }
+        #face-video { width: 100%; display: block; transform: scaleX(-1); }
         #face-canvas {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1);
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            transform: scaleX(-1); z-index: 2;
         }
         .face-guide {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 60%; aspect-ratio: 1; border: 3px dashed rgba(0, 255, 0, 0.6); border-radius: 50%;
+            width: 60%; aspect-ratio: 1; border: 3px dashed rgba(0, 255, 0, 0.85);
+            border-radius: 50%; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.72);
+            z-index: 3; pointer-events: none; transition: box-shadow 180ms ease, border-color 180ms ease;
+        }
+        .face-video-container.face-captured .face-guide {
+            box-shadow: none; border-color: rgba(16, 185, 129, 0.95);
         }
         .face-status {
             background: #f8f9fa; padding: 15px; border-radius: 10px;
@@ -328,11 +335,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
     <div id="hidden-inputs-container" style="display: none;">
         <input type="hidden" id="global-id-karyawan" value="<?php echo htmlspecialchars($id_karyawan); ?>">
         <input type="hidden" id="lokasi" value="">
-        <input type="hidden" id="face-descriptor" value="">
-        <input type="hidden" id="face-confidence" value="">
         <input type="hidden" id="lokasi-pulang" value="">
-        <input type="hidden" id="face-descriptor-pulang" value="">
-        <input type="hidden" id="face-confidence-pulang" value="">
     </div>
 
     <div id="main-container">
@@ -847,8 +850,11 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
         
         let faceSystem = null;
         let hasFaceData = <?php echo $has_face_data ? 'true' : 'false'; ?>;
-        let registeredFaceDescriptors = <?php echo $has_face_data ? $karyawan_data['face_descriptor'] : '[]'; ?>;
+        const attendanceCsrf = <?php echo json_encode($attendance_csrf); ?>;
         let currentAbsenType = null;
+        // A radius rejection happens before the server consumes the verified
+        // face receipt. Retain it briefly for the immediate Dinas Luar retry.
+        let pendingMasukVerification = null;
 
         document.addEventListener('DOMContentLoaded', function() {
             const statusLokasi = document.getElementById('status-lokasi');
@@ -1102,8 +1108,8 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
             submitAbsen(keterangan, alasan, fotoFile);
         }
 
-        let overtimeCapture = null;
         async function submitOvertimeForm() {
+            if (cancelActiveVerification) return;
             const alasan = document.getElementById('overtime-alasan-text').value;
             const fotoInput = document.getElementById('overtime-foto-bukti');
             
@@ -1121,21 +1127,30 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
             }
 
             document.getElementById('modal-input-overtime').style.display = 'none';
+            let verification;
+            try {
+                currentAbsenType = 'pulang';
+                verification = await verifyFace();
+            } catch (error) {
+                document.getElementById('modal-input-overtime').style.display = 'flex';
+                Swal.fire('Verifikasi Gagal', error.message, 'error');
+                return;
+            }
             
             const formData = new FormData();
             formData.append('id_karyawan', document.getElementById('global-id-karyawan').value);
             formData.append('lokasi', document.getElementById('lokasi-pulang').value);
             formData.append('keterangan', 'pulang');
-            formData.append('face_descriptor', document.getElementById('face-descriptor-pulang').value || '');
-            formData.append('face_confidence', document.getElementById('face-confidence-pulang').value || '');
             formData.append('alasan_pulang', alasan);
             formData.append('foto_pulang', fotoInput.files[0]);
-            if (overtimeCapture) formData.append('foto_capture', overtimeCapture, 'pulang.jpg');
+            formData.append('foto_capture', verification.photo, 'pulang.jpg');
+            formData.append('verification_token', verification.token);
             
             performSubmit(formData);
         }
 
         async function submitAbsen(keterangan, alasan = '', fotoFile = null, isDinasLuar = false) {
+            if (cancelActiveVerification) return;
             currentAbsenType = 'masuk';
             const lokasiValue = document.getElementById('lokasi').value;
             // GPS Location requirement ONLY if it's NOT a Dinas Luar attempt
@@ -1151,8 +1166,6 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                 const formData = new FormData();
                 formData.append('id_karyawan', document.getElementById('global-id-karyawan').value);
                 formData.append('lokasi', document.getElementById('lokasi').value);
-                formData.append('face_descriptor', document.getElementById('face-descriptor').value);
-                formData.append('face_confidence', document.getElementById('face-confidence').value);
                 formData.append('keterangan', keterangan);
                 if (alasan) formData.append('alasan', alasan);
                 if (fotoFile) formData.append('foto_bukti', fotoFile);
@@ -1162,9 +1175,18 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
 
             if (hasFaceData && keterangan === 'Hadir') {
                 try {
-                    const photo = await verifyFace();
+                    const canReuseVerification = isDinasLuar
+                        && pendingMasukVerification
+                        && Date.now() - pendingMasukVerification.createdAt < 110000;
+                    const verification = canReuseVerification
+                        ? pendingMasukVerification.verification
+                        : await verifyFace();
+                    if (!canReuseVerification) {
+                        pendingMasukVerification = { verification, createdAt: Date.now() };
+                    }
                     const formData = buildFormData();
-                    formData.append('foto_capture', photo, 'masuk.jpg');
+                    formData.append('foto_capture', verification.photo, 'masuk.jpg');
+                    formData.append('verification_token', verification.token);
                     performSubmit(formData);
                 } catch (error) {
                     Swal.fire('Verifikasi Gagal', error.message, 'error');
@@ -1175,6 +1197,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
             }
         }
         async function submitAbsenPulang() {
+            if (cancelActiveVerification) return;
             currentAbsenType = 'pulang';
             const lokasiValue = document.getElementById('lokasi-pulang').value;
             if (!lokasiValue || lokasiValue === '') {
@@ -1189,16 +1212,15 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                 formData.append('id_karyawan', document.getElementById('global-id-karyawan').value);
                 formData.append('lokasi', document.getElementById('lokasi-pulang').value);
                 formData.append('keterangan', 'pulang');
-                formData.append('face_descriptor', document.getElementById('face-descriptor-pulang').value || '');
-                formData.append('face_confidence', document.getElementById('face-confidence-pulang').value || '');
                 return formData;
             };
 
             if (hasFaceData) {
                 try {
-                    const photo = await verifyFace();
+                    const verification = await verifyFace();
                     const formData = buildFormDataPulang();
-                    formData.append('foto_capture', photo, 'pulang.jpg');
+                    formData.append('foto_capture', verification.photo, 'pulang.jpg');
+                    formData.append('verification_token', verification.token);
                     performSubmit(formData);
                 } catch (error) {
                     Swal.fire('Verifikasi Gagal', error.message, 'error');
@@ -1225,146 +1247,105 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
 
         async function verifyFace() {
             if (cancelActiveVerification) throw new Error('Verifikasi sedang berlangsung.');
-            return new Promise(async (resolve, reject) => {
-                let cancelled = false;
-                cancelActiveVerification = () => {
-                    cancelled = true;
-                    cancelActiveVerification = null;
-                    reject(new Error('Verifikasi dibatalkan.'));
-                };
-                try {
-                    document.getElementById('face-overlay').style.display = 'flex';
-                    const instructionEl = document.getElementById('liveness-instruction');
-                    instructionEl.innerHTML = 'Memuat model AI...';
-                    instructionEl.style.color = '#4f46e5';
-                    
-                    updateFaceStatus('loading', 'Memuat model AI...');
-                    if (!faceSystem) {
-                        faceSystem = new FaceRecognitionSystem();
-                        await faceSystem.loadModels();
-                    }
-                    updateFaceStatus('loading', 'Mengaktifkan kamera...');
-                    await faceSystem.startCamera('face-video');
-                    if (cancelled) { faceSystem.stopCamera(); return; }
-                    
-                    // Liveness Challenge Setup
-                    const challenges = ['blink', 'mouth'];
-                    const currentChallenge = challenges[Math.floor(Math.random() * challenges.length)];
-                    let challengePassed = false;
-                    
-                    if (currentChallenge === 'blink') {
-                        instructionEl.innerHTML = 'TANTANGAN: Tolong Kedipkan Mata Anda';
-                    } else {
-                        instructionEl.innerHTML = 'TANTANGAN: Tolong Buka Mulut / Senyum';
-                    }
-                    instructionEl.style.color = '#e11d48';
-                    updateFaceStatus('loading', 'Ikuti instruksi di atas...');
-
-                    // 10 seconds limit, checking every ~100ms -> ~100 attempts
-                    let attempts = 0;
-                    const maxAttempts = 100; 
-                    
-                    const verifyLoop = async () => {
-                        if (cancelled) return;
-                        if (attempts >= maxAttempts) {
-                            cancelActiveVerification = null;
-                            faceSystem.stopCamera();
-                            document.getElementById('face-overlay').style.display = 'none';
-                            reject(new Error('Waktu habis. Gagal mendeteksi liveness. Silakan coba lagi.'));
-                            return;
-                        }
-                        attempts++;
-                        try {
-                            const result = await faceSystem.captureFaceDescriptor();
-                            if (cancelled) return;
-                            const quality = faceSystem.validateFaceQuality(result);
-                            
-                            if (!quality.valid) {
-                                updateFaceStatus('error', quality.message);
-                                setTimeout(verifyLoop, 300);
-                                return;
-                            }
-
-                            // 1. Check Liveness First
-                            if (!challengePassed) {
-                                const passed = faceSystem.checkLiveness(result.landmarks, currentChallenge);
-                                if (passed) {
-                                    challengePassed = true;
-                                    instructionEl.innerHTML = 'Tantangan Berhasil! Mencocokkan Wajah...';
-                                    instructionEl.style.color = '#10b981';
-                                    updateFaceStatus('success', 'Liveness terdeteksi. Mencocokkan wajah...');
-                                    // Wait a tiny bit before matching so the user sees the success message
-                                    setTimeout(verifyLoop, 500); 
-                                    return;
-                                } else {
-                                    updateFaceStatus('loading', 'Menunggu gerakan Anda...');
-                                    // Kurangi delay menjadi 100ms agar tidak melewatkan kedipan mata yang cepat (100-300ms)
-                                    setTimeout(verifyLoop, 100);
-                                    return;
-                                }
-                            }
-
-                            // 2. Liveness passed, now match face identity
-                            let bestMatch = { isMatch: false, confidence: 0 };
-                            for (let registeredDesc of registeredFaceDescriptors) {
-                                const comparison = faceSystem.compareFaces(result.descriptor, registeredDesc);
-                                if (comparison.confidence > bestMatch.confidence) {
-                                    bestMatch = comparison;
-                                }
-                            }
-                            console.log('Best match:', bestMatch);
-                            
-                            if (bestMatch.isMatch) {
-                                const photo = await captureAttendancePhoto(faceSystem.videoElement);
-                                if (cancelled) return;
-                                const canvas = document.getElementById('face-canvas');
-                                canvas.width = faceSystem.videoElement.videoWidth;
-                                canvas.height = faceSystem.videoElement.videoHeight;
-                                faceSystem.drawDetection(result, canvas);
-                                updateFaceStatus('success', `Wajah terverifikasi! (${bestMatch.confidence.toFixed(1)}%)`);
-                                
-                                if (currentAbsenType === 'masuk') {
-                                    document.getElementById('face-descriptor').value = JSON.stringify(result.descriptor);
-                                    document.getElementById('face-confidence').value = bestMatch.confidence.toFixed(2);
-                                } else {
-                                    document.getElementById('face-descriptor-pulang').value = JSON.stringify(result.descriptor);
-                                    document.getElementById('face-confidence-pulang').value = bestMatch.confidence.toFixed(2);
-                                }
-                                setTimeout(() => {
-                                    if (cancelled) return;
-                                    cancelActiveVerification = null;
-                                    faceSystem.stopCamera();
-                                    document.getElementById('face-overlay').style.display = 'none';
-                                    resolve(photo);
-                                }, 1500);
-                            } else {
-                                updateFaceStatus('error', `Wajah tidak cocok (${bestMatch.confidence.toFixed(1)}%). Coba lagi...`);
-                                // Reset attempt count slightly for identity matching, but still bound by overall maxAttempts
-                                setTimeout(verifyLoop, 1000);
-                            }
-                        } catch (error) {
-                            console.error('Verification error:', error);
-                            updateFaceStatus('error', error.message);
-                            setTimeout(verifyLoop, 500);
-                        }
-                    };
-                    setTimeout(verifyLoop, 500);
-                } catch (error) {
-                    cancelActiveVerification = null;
-                    console.error('Face verification error:', error);
-                    if (faceSystem) faceSystem.stopCamera();
-                    document.getElementById('face-overlay').style.display = 'none';
-                    reject(error);
+            const controller = new AbortController();
+            const kind = currentAbsenType;
+            cancelActiveVerification = () => controller.abort();
+            const checkCancelled = () => {
+                if (controller.signal.aborted) throw new Error('Verifikasi dibatalkan.');
+            };
+            const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+            const request = async (action, fields = {}) => {
+                checkCancelled();
+                const body = new FormData();
+                body.append('action', action);
+                body.append('csrf_token', attendanceCsrf);
+                body.append('id_karyawan', document.getElementById('global-id-karyawan').value);
+                body.append('jenis', kind);
+                for (const [key, value] of Object.entries(fields)) {
+                    if (value instanceof Blob) body.append(key, value, 'capture.jpg');
+                    else body.append(key, value);
                 }
-            });
+                const response = await fetch('verify_attendance_face.php', {method: 'POST', body, signal: controller.signal});
+                let data;
+                try { data = await response.json(); }
+                catch { throw new Error('Respons verifikasi server tidak valid. Silakan coba lagi.'); }
+                checkCancelled();
+                if (!response.ok || !data.success) throw new Error(data.message || 'Verifikasi server gagal.');
+                return data;
+            };
+            try {
+                document.getElementById('face-overlay').style.display = 'flex';
+                const videoContainer = document.querySelector('.face-video-container');
+                videoContainer?.classList.remove('face-captured');
+                const instructionEl = document.getElementById('liveness-instruction');
+                instructionEl.textContent = 'Memuat model AI...';
+                updateFaceStatus('loading', 'Memuat model AI...');
+                if (!faceSystem) faceSystem = new FaceRecognitionSystem();
+                if (!faceSystem.isModelLoaded) await faceSystem.loadModels();
+                checkCancelled();
+                await faceSystem.startCamera('face-video');
+                checkCancelled();
+                const challenge = await request('start');
+                const currentChallenge = Math.random() < 0.5 ? 'blink' : 'mouth';
+                instructionEl.textContent = currentChallenge === 'blink'
+                    ? 'TANTANGAN: Tolong Kedipkan Mata Anda' : 'TANTANGAN: Tolong Buka Mulut / Senyum';
+                instructionEl.style.color = '#e11d48';
+                let challengePassed = false;
+                const deadline = Date.now() + 60000;
+                while (Date.now() < deadline) {
+                    checkCancelled();
+                    let result;
+                    try {
+                        result = await faceSystem.captureFaceDescriptor();
+                        const quality = faceSystem.validateFaceQuality(result);
+                        if (!quality.valid) throw new Error(quality.message);
+                    } catch (error) {
+                        checkCancelled();
+                        updateFaceStatus('error', error.message);
+                        await pause(300);
+                        continue;
+                    }
+                    checkCancelled();
+                    if (!challengePassed) {
+                        challengePassed = faceSystem.checkLiveness(result.landmarks, currentChallenge);
+                        if (challengePassed) {
+                            instructionEl.textContent = 'Tantangan berhasil. Verifikasi server...';
+                            instructionEl.style.color = '#10b981';
+                        }
+                        await pause(challengePassed ? 500 : 100);
+                        continue;
+                    }
+                    const photo = await captureAttendancePhoto(faceSystem.videoElement);
+                    const matched = await request('verify', {
+                        nonce: challenge.nonce,
+                        face_descriptor: JSON.stringify(result.descriptor),
+                        foto_capture: photo
+                    });
+                    // The dark mask is only a live positioning aid. Remove it
+                    // once the evidence photo has been captured successfully.
+                    videoContainer?.classList.add('face-captured');
+                    const canvas = document.getElementById('face-canvas');
+                    canvas.width = faceSystem.videoElement.videoWidth;
+                    canvas.height = faceSystem.videoElement.videoHeight;
+                    faceSystem.drawDetection(result, canvas);
+                    updateFaceStatus('success', `Wajah terverifikasi! (${matched.confidence.toFixed(1)}%)`);
+                    await pause(1000);
+                    checkCancelled();
+                    return {photo, token: matched.verification_token};
+                }
+                throw new Error('Waktu verifikasi habis. Silakan coba lagi.');
+            } catch (error) {
+                if (controller.signal.aborted) throw new Error('Verifikasi dibatalkan.');
+                throw error;
+            } finally {
+                if (faceSystem) faceSystem.stopCamera();
+                document.getElementById('face-overlay').style.display = 'none';
+                cancelActiveVerification = null;
+            }
         }
 
         function cancelFaceVerification() {
             if (cancelActiveVerification) cancelActiveVerification();
-            if (faceSystem) {
-                faceSystem.stopCamera();
-            }
-            document.getElementById('face-overlay').style.display = 'none';
         }
 
         function updateFaceStatus(type, message) {
@@ -1399,6 +1380,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                     const data = JSON.parse(text);
                     console.log('Parsed data:', data);
                     if (data.success) {
+                        pendingMasukVerification = null;
                         mainContainer.style.display = 'none';
                         
                         // Menampilkan SweetAlert2 untuk konfirmasi visual yang lebih jelas
@@ -1414,11 +1396,12 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                         });
                         
                     } else if (data.type === 'overtime_form_required') {
-                        overtimeCapture = formData.get('foto_capture');
+                        pendingMasukVerification = null;
                         // Hilangkan loader, tampilkan modal overtime
                         mainContainer.innerHTML = '';
                         document.getElementById('modal-input-overtime').style.display = 'flex';
                     } else if (data.type === 'pulang_cepat_required') {
+                        pendingMasukVerification = null;
                         mainContainer.innerHTML = '';
                         Swal.fire({
                             icon: 'warning',
@@ -1427,6 +1410,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                             confirmButtonText: 'OK'
                         }).then(() => location.reload());
                     } else {
+                        if (data.type !== 'location_error') pendingMasukVerification = null;
                         mainContainer.innerHTML = `
                             <div class="error-container">
                                 <div class="error-icon ${data.type === 'location_error' ? 'location' : ''}">
@@ -1458,6 +1442,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                         `;
                     }
                 } catch (e) {
+                    pendingMasukVerification = null;
                     console.error('JSON Parse Error:', e);
                     mainContainer.innerHTML = `
                         <div class="error-container">
@@ -1470,6 +1455,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                 }
             })
             .catch(error => {
+                pendingMasukVerification = null;
                 console.error('Fetch Error:', error);
                 mainContainer.innerHTML = `
                     <div class="error-container">
