@@ -1,10 +1,15 @@
 <?php
 require 'config.php';
-requireAdmin(); // Check admin access
+require_once 'attendance_capture.php';
+$cabang_reviewer = requireAttendancePhotoReviewer($conn);
+$is_admin = isAdmin();
+$capture_ready = attendanceCaptureReady($conn);
 
 // Ambil daftar cabang untuk dropdown
 $cabang_list = [];
-$res_cabang = $conn->query("SELECT id, nama_cabang FROM cabang ORDER BY nama_cabang ASC");
+$res_cabang = $conn->query("SELECT id, nama_cabang FROM cabang"
+    . ($cabang_reviewer !== null ? ' WHERE id = ' . (int)$cabang_reviewer : '')
+    . " ORDER BY nama_cabang ASC");
 if ($res_cabang) {
     while($row = $res_cabang->fetch_assoc()) {
         $cabang_list[] = $row;
@@ -21,6 +26,9 @@ if (!isset($_GET['cabang']) || !is_numeric($_GET['cabang'])) {
 } else {
     $id_cabang = intval($_GET['cabang']);
 }
+
+// Supervisor cannot override their branch through a query parameter.
+if ($cabang_reviewer !== null) $id_cabang = (int)$cabang_reviewer;
 
 // Ambil nama cabang
 $nama_cabang = 'Cabang Tidak Ditemukan';
@@ -57,10 +65,14 @@ if ($id_cabang > 0) {
     $stmt_shifts->close();
 
     // Auto-Reject (Delete) Pending Dinas yang sudah lebih dari 4 jam
-    $conn->query("DELETE FROM absensi WHERE keterangan = 'Pending Dinas' AND TIMESTAMPDIFF(HOUR, waktu_alasan, NOW()) >= 4");
+    if ($is_admin) $conn->query("DELETE FROM absensi WHERE keterangan = 'Pending Dinas' AND TIMESTAMPDIFF(HOUR, waktu_alasan, NOW()) >= 4");
 
     // Query diperbarui dengan is_manual_entry dan manual_entry_by
-    $sql = "SELECT a.*, 
+    $capture_columns = $capture_ready
+        ? "EXISTS(SELECT 1 FROM absensi_capture p WHERE p.id_absensi = a.id AND p.jenis = 'masuk') AS capture_masuk,
+           EXISTS(SELECT 1 FROM absensi_capture p WHERE p.id_absensi = a.id AND p.jenis = 'pulang') AS capture_pulang,"
+        : '0 AS capture_masuk, 0 AS capture_pulang,';
+    $sql = "SELECT a.*, $capture_columns
             k.nama_karyawan, 
             k.id as karyawan_id,
             k.id_cabang,
@@ -113,7 +125,7 @@ function detectCorrectShift($jam_masuk_karyawan, $shifts_data) {
 
 $csrf_token = generateCSRFToken();
 
-require 'admin_header.php';
+require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
 ?>
 
 <!-- MAIN CONTENT -->
@@ -129,9 +141,11 @@ require 'admin_header.php';
         
         <div class="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-start sm:justify-end">
             <!-- Tombol ke Halaman Statistik -->
+            <?php if ($is_admin): ?>
             <a href="statistik_absensi.php?cabang=<?php echo $id_cabang; ?>&start_date=<?php echo $start_date; ?>&end_date=<?php echo $end_date; ?>" class="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors font-medium text-sm shadow-sm">
                 <i class="fa-solid fa-chart-pie text-brand-500"></i> Lihat Statistik
             </a>
+            <?php endif; ?>
 
 
             <!-- Filter Opsi Cabang -->
@@ -155,7 +169,7 @@ require 'admin_header.php';
                 </div>
             </form>
 
-            <div class="flex items-center gap-2">
+            <?php if ($is_admin): ?><div class="flex items-center gap-2">
                 <!-- Tombol Kelola Cuti Bersama -->
                 <button onclick="openModal('modal-kelola-cuti-bersama')" class="flex items-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl transition-colors font-medium text-sm shadow-sm shadow-teal-500/30">
                     <i class="fa-solid fa-calendar-plus"></i> Kelola Cuti Bersama
@@ -166,6 +180,7 @@ require 'admin_header.php';
                     <i class="fa-solid fa-plus"></i> Tambah Absensi Manual
                 </button>
             </div>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -361,7 +376,7 @@ require 'admin_header.php';
                                                 $class = $keterangan_classes[$row['keterangan']] ?? $keterangan_classes['OFF'];
                                                 $icon = $icons[$row['keterangan']] ?? 'fa-circle';
                                             ?>
-                                            <?php if ($row['keterangan'] === 'Pending Dinas'): ?>
+                                            <?php if ($row['keterangan'] === 'Pending Dinas' && $is_admin): ?>
                                                 <button type="button" onclick="openApprovalDinasModal(this)" data-id="<?php echo $row['id']; ?>" data-nama="<?php echo htmlspecialchars($row['nama_karyawan']); ?>" data-alasan="<?php echo htmlspecialchars($row['alasan'] ?? ''); ?>" data-foto="<?php echo htmlspecialchars($row['foto_bukti'] ?? ''); ?>" data-waktu="<?php echo date('H:i:s', strtotime($row['jam_masuk'])); ?>" data-lokasi="<?php echo htmlspecialchars($row['lokasi_masuk'] ?? ''); ?>" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-amber-500 text-white shadow-sm hover:bg-amber-600 transition-colors">
                                                     <i class="fa-solid fa-clock"></i> Permintaan Persetujuan Dinas
                                                 </button>
@@ -395,9 +410,18 @@ require 'admin_header.php';
                                     </div>
                                 </td>
                                 <td class="px-5 py-4 whitespace-nowrap text-center">
+                                    <?php if ($row['capture_masuk'] || $row['capture_pulang']): ?>
+                                        <button type="button" onclick="openCaptureModal(this)" data-id="<?= (int)$row['id'] ?>" data-nama="<?= htmlspecialchars($row['nama_karyawan'], ENT_QUOTES, 'UTF-8') ?>" data-tanggal="<?= htmlspecialchars($row['tanggal'], ENT_QUOTES, 'UTF-8') ?>" data-masuk="<?= (int)$row['capture_masuk'] ?>" data-pulang="<?= (int)$row['capture_pulang'] ?>" data-jam-masuk="<?= htmlspecialchars($row['jam_masuk'] ?? '-', ENT_QUOTES, 'UTF-8') ?>" data-jam-pulang="<?= htmlspecialchars($row['jam_pulang'] ?? '-', ENT_QUOTES, 'UTF-8') ?>" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200 hover:bg-fuchsia-100 dark:bg-fuchsia-900/30 dark:text-fuchsia-400 dark:border-fuchsia-800/50">
+                                            <i class="fa-solid fa-camera"></i> Bukti Foto
+                                        </button>
+                                    <?php else: ?>
+                                        <span class="text-xs text-slate-400"><?= $capture_ready ? 'Belum ada foto' : 'Foto belum aktif' ?></span>
+                                    <?php endif; ?>
+                                    <?php if ($is_admin): ?>
                                     <button type="button" onclick="openEditAbsensiModal(this)" data-absen='<?php echo htmlspecialchars(json_encode($row), ENT_QUOTES); ?>' class="p-2 text-fuchsia-600 hover:bg-fuchsia-50 rounded-lg dark:text-fuchsia-400 dark:hover:bg-fuchsia-900/30 transition-colors border border-transparent hover:border-fuchsia-200 dark:hover:border-fuchsia-800" title="Edit Data">
                                         <i class="fa-solid fa-pen-to-square"></i>
                                     </button>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php endwhile; ?>
@@ -487,6 +511,7 @@ require 'admin_header.php';
 </div>
 
 <!-- ========================================== -->
+<?php if ($is_admin): ?>
 <!-- MODAL: PERSETUJUAN DINAS LUAR              -->
 <!-- ========================================== -->
 <div id="modal-persetujuan-dinas" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 transition-opacity">
@@ -844,7 +869,57 @@ require 'admin_header.php';
     </div>
 </div>
 
+<?php endif; ?>
+
+<div id="modal-capture-absensi" role="dialog" aria-modal="true" aria-labelledby="capture-title" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto border border-slate-200 dark:border-slate-700">
+        <div class="p-5 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+            <div><h3 id="capture-title" class="text-lg font-bold text-slate-800 dark:text-white">Bukti Foto Absensi</h3><p id="capture-karyawan" class="text-sm text-slate-500 dark:text-slate-400"></p></div>
+            <button type="button" onclick="closeModal('modal-capture-absensi')" aria-label="Tutup bukti foto" class="p-2 text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="p-5 grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <?php foreach (['masuk' => 'Masuk', 'pulang' => 'Pulang'] as $jenis => $label): ?>
+                <section><h4 class="font-semibold text-slate-800 dark:text-white"><?= $label ?> <span id="capture-jam-<?= $jenis ?>" class="text-sm font-normal"></span></h4>
+                    <a id="capture-link-<?= $jenis ?>" target="_blank" rel="noopener" class="hidden block mt-3" title="Buka foto ukuran penuh"><img id="capture-img-<?= $jenis ?>" alt="Bukti foto <?= strtolower($label) ?>" class="w-full rounded-xl object-contain max-h-80"></a>
+                    <p id="capture-empty-<?= $jenis ?>" class="py-8 text-center text-sm text-slate-400">Belum ada foto</p>
+                </section>
+            <?php endforeach; ?>
+        </div>
+        <div class="p-4 border-t border-slate-200 dark:border-slate-700 text-right"><button type="button" onclick="closeModal('modal-capture-absensi')" class="px-5 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-sm">Tutup</button></div>
+    </div>
+</div>
+
 <script>
+function openCaptureModal(button) {
+    const data = button.dataset;
+    document.getElementById('capture-karyawan').textContent = data.nama + ' · ' + data.tanggal;
+    for (const jenis of ['masuk', 'pulang']) {
+        const link = document.getElementById('capture-link-' + jenis);
+        const img = document.getElementById('capture-img-' + jenis);
+        const empty = document.getElementById('capture-empty-' + jenis);
+        document.getElementById('capture-jam-' + jenis).textContent = data[jenis === 'masuk' ? 'jamMasuk' : 'jamPulang'] || '-';
+        img.removeAttribute('src');
+        link.removeAttribute('href');
+        link.classList.add('hidden');
+        empty.textContent = 'Belum ada foto';
+        empty.classList.remove('hidden');
+        if (data[jenis] === '1') {
+            const url = 'foto_capture_absensi.php?id=' + encodeURIComponent(data.id) + '&jenis=' + jenis;
+            img.onerror = () => {
+                if (img.getAttribute('src') !== url) return;
+                link.classList.add('hidden');
+                empty.textContent = 'Foto tidak dapat dimuat. Tutup lalu coba lagi.';
+                empty.classList.remove('hidden');
+            };
+            img.src = url;
+            link.href = url;
+            link.classList.remove('hidden');
+            empty.classList.add('hidden');
+        }
+    }
+    openModal('modal-capture-absensi');
+}
+
 // DataTables JS Pagination
 const tableBody = document.getElementById('tableBody');
 let currentPage = 1;
@@ -1347,5 +1422,5 @@ function switchTabKelolaCuti(tab) {
 </script>
 <?php 
 if (isset($stmt)) $stmt->close();
-require 'admin_footer.php'; 
+require $is_admin ? 'admin_footer.php' : 'supervisor_footer.php';
 ?>

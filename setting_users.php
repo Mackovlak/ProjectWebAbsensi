@@ -145,8 +145,9 @@ $current_user_id = $_SESSION['user_id'];
                             <?php 
                             $has_face = !empty($row['face_descriptor']);
                             $reset_allowed = ($row['face_reset_allowed'] == 1);
+                            $has_employee_link = !empty($row['id_karyawan']);
                             
-                            if ($row['role'] == 'staff'):
+                            if ($has_employee_link || $has_face):
                                 if ($has_face): 
                             ?>
                                 <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50">
@@ -165,7 +166,7 @@ $current_user_id = $_SESSION['user_id'];
                                 </span>
                             <?php endif; ?>
                             <?php else: ?>
-                                <span class="text-xs text-slate-400 dark:text-slate-500">-</span>
+                                <span class="text-xs text-slate-400 dark:text-slate-500">Tidak tertaut karyawan</span>
                             <?php endif; ?>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -189,7 +190,7 @@ $current_user_id = $_SESSION['user_id'];
                                     <i class="fa-solid fa-user-pen"></i>
                                 </button>
                                 
-                                <?php if ($row['role'] == 'staff'): ?>
+                                <?php if ($has_employee_link): ?>
                                     <?php if ($has_face && !$reset_allowed): ?>
                                         <button onclick="toggleFacePermission('<?php echo $row['id_karyawan']; ?>', 'allow_reset', '<?php echo htmlspecialchars($row['username']); ?>')" class="p-2 text-purple-600 hover:bg-purple-50 rounded-lg dark:text-purple-400 dark:hover:bg-purple-900/30 transition-colors" title="Izinkan Reset Wajah">
                                             <i class="fa-solid fa-unlock-keyhole"></i>

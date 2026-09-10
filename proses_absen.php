@@ -1,5 +1,6 @@
 <?php
 require 'config.php';
+require_once 'attendance_capture.php';
 
 header('Content-Type: application/json; charset=utf-8');
 error_reporting(E_ALL);
@@ -12,6 +13,8 @@ function outputJSON($data) {
 }
 
 try {
+    $capture_ready = attendanceCaptureReady($conn);
+    $capture_bytes = null;
     $rate_check = checkRateLimit('absen', 5);
     if (!$rate_check['allowed']) {
         outputJSON([
@@ -361,6 +364,10 @@ try {
         }
         // ==============================================
 
+        if ($capture_ready && ($is_hadir_masuk || $is_dinas_luar_status || isset($_FILES['foto_capture']))) {
+            $capture_bytes = readAttendanceCapture($_FILES['foto_capture'] ?? null);
+        }
+        $conn->begin_transaction();
         // Update dengan data face jika ada
         $face_verified = (!empty($face_descriptor) && !empty($face_confidence) && $face_confidence >= $MIN_FACE_CONFIDENCE) ? 1 : 0;
         
@@ -373,6 +380,7 @@ try {
         }
         
         if ($stmt_update->execute() && $stmt_update->affected_rows > 0) {
+            saveAttendanceCapture($conn, $data_absen['id'], 'pulang', $capture_bytes);
             $log_message = "Absen pulang jam $waktu" . ($face_verified ? " (Face Verified: {$face_confidence}%)" : "");
             logActivity($conn, 'absen_pulang', $log_message, $id_karyawan);
             
@@ -387,6 +395,7 @@ try {
                 $stmt_face_log->close();
             }
             
+            if (!$conn->commit()) throw new RuntimeException('Gagal menyimpan absensi pulang.');
             $stmt_update->close();
             $stmt_check->close();
             
@@ -396,6 +405,7 @@ try {
                 'title' => "Selamat Beristirahat!"
             ]);
         } else {
+            $conn->rollback();
             $stmt_update->close();
             $stmt_check->close();
             outputJSON(['success' => false, 'message' => 'Gagal merekam absensi pulang.']);
@@ -451,6 +461,9 @@ try {
         // Face verified status
         $face_verified = (!empty($face_descriptor) && !empty($face_confidence) && $face_confidence >= $MIN_FACE_CONFIDENCE) ? 1 : 0;
 
+        if ($capture_ready && ($keterangan_param === 'Hadir' || isset($_FILES['foto_capture']))) {
+            $capture_bytes = readAttendanceCapture($_FILES['foto_capture'] ?? null);
+        }
         // Insert absensi masuk
         $conn->begin_transaction();
         try {
@@ -500,6 +513,7 @@ try {
             }
             
             if ($stmt_insert->execute()) {
+                saveAttendanceCapture($conn, $conn->insert_id, 'masuk', $capture_bytes);
                 $log_message = "Absen $keterangan ($status_masuk)" . ($face_verified ? " - Face Verified: {$face_confidence}%" : "");
                 logActivity($conn, 'absen_masuk', $log_message, $id_karyawan);
 
@@ -514,7 +528,7 @@ try {
                     $stmt_face_log->close();
                 }
 
-                $conn->commit();
+                if (!$conn->commit()) throw new RuntimeException('Gagal menyimpan absensi masuk.');
                 $stmt_insert->close();
                 $stmt_check->close();
 
@@ -572,7 +586,11 @@ try {
 
     $stmt_check->close();
 
+} catch (RuntimeException $e) {
+    $conn->rollback();
+    outputJSON(['success' => false, 'message' => $e->getMessage()]);
 } catch (Exception $e) {
+    $conn->rollback();
     error_log("Fatal error in proses_absen.php: " . $e->getMessage());
     outputJSON([
         'success' => false, 
