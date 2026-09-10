@@ -135,7 +135,15 @@ try {
     $stmt_check->bind_param("ss", $id_karyawan, $tanggal);
     $stmt_check->execute();
     $result_check = $stmt_check->get_result();
-    $is_absen_pulang = $result_check->num_rows > 0;
+    $row_ada = $result_check->num_rows > 0;
+    $data_absen = $row_ada ? $result_check->fetch_assoc() : null;
+
+    // Kiosk sekarang membiarkan Masuk dan Pulang dipilih bebas (bukan
+    // otomatis dari state) - klik "Absen Pulang" mengirim aksi=pulang
+    // secara eksplisit, supaya bisa dibedakan dari submit Masuk walau
+    // belum ada baris sama sekali hari ini (skenario lupa absen masuk).
+    $aksi_pulang = isset($_POST['aksi']) && $_POST['aksi'] === 'pulang';
+    $is_absen_pulang = $row_ada || $aksi_pulang;
 
     // ============== SAKIT / CUTI: rute lewat pengajuan_izin ==============
     // Dulu keterangan ini langsung diinsert ke absensi (auto-approved, tanpa
@@ -241,7 +249,118 @@ try {
 
     if ($is_absen_pulang) {
         // ============== PROSES ABSEN PULANG ==============
-        $data_absen = $result_check->fetch_assoc();
+
+        if (!$row_ada) {
+            // Pulang dipilih sebagai AKSI PERTAMA hari ini - tidak ada baris
+            // sama sekali, artinya karyawan lupa (atau sengaja belum) absen
+            // masuk. Baris baru dibuat dengan jam_masuk KOSONG - sengaja
+            // dibiarkan tampak sebagai anomali (bukan ditebak/ditutupi jadi
+            // "Tepat Waktu"), supaya SPV/Admin bisa menanyakan langsung ke
+            // karyawan saat meninjau data sebelum membuat slip gaji, alih-
+            // alih sistem diam-diam mengarang jam masuk. Tidak ada
+            // perhitungan lembur/pulang-cepat di sini karena tidak ada
+            // jam_masuk sebagai pembanding shift - itu murni urusan admin
+            // memperbaiki manual lewat histori_absensi.php kalau perlu.
+            // Alasan wajib diisi di sini juga (bukan cuma dianjurkan) - ini titik
+            // paling wajar untuk menagihnya karena karyawan sendiri yang baru
+            // sadar lupa absen masuk, sebelum Admin/SPV sempat menanyakannya
+            // lewat histori_absensi.php.
+            $alasan_tidak_masuk = isset($_POST['alasan']) ? sanitizeInput($_POST['alasan']) : '';
+            if (strlen($alasan_tidak_masuk) < 5) {
+                $stmt_check->close();
+                outputJSON([
+                    'success' => false,
+                    'message' => 'Mohon isi alasan kenapa belum absen masuk hari ini (minimal 5 karakter).',
+                    'type' => 'alasan_required'
+                ]);
+            }
+
+            if (!$has_registered_face) {
+                $stmt_check->close();
+                outputJSON([
+                    'success' => false,
+                    'message' => '❌ Registrasi Wajah Diperlukan!<br><br>Untuk absensi <strong>PULANG</strong>, Anda wajib melakukan registrasi wajah terlebih dahulu melalui menu profile/akun Anda.',
+                    'type' => 'face_registration_required'
+                ]);
+            }
+            $validasi_lokasi = validateLokasiAbsen($lokasi, $id_karyawan, $conn);
+            if (!$validasi_lokasi['valid'] && !isset($validasi_lokasi['bypass'])) {
+                $stmt_check->close();
+                outputJSON([
+                    'success' => false,
+                    'message' => $validasi_lokasi['message'],
+                    'jarak' => $validasi_lokasi['jarak'],
+                    'radius' => $validasi_lokasi['radius'],
+                    'type' => 'location_error'
+                ]);
+            }
+            if ($face_confidence === null || $face_confidence < $MIN_FACE_CONFIDENCE) {
+                $stmt_check->close();
+                outputJSON([
+                    'success' => false,
+                    'message' => '🔒 Verifikasi wajah wajib dilakukan untuk absen pulang. Confidence score minimal ' . $MIN_FACE_CONFIDENCE . '% diperlukan.',
+                    'type' => 'face_required'
+                ]);
+            }
+
+            // Foto kamera diambil di kondisi yang sama seperti Pulang normal
+            // (frontend memakai fungsi submitAbsenPulang() yang sama persis
+            // untuk kedua kasus), jadi wajib dibaca di sini juga - kalau tidak,
+            // foto yang sudah diupload browser akan diam-diam dibuang.
+            if ($capture_ready) {
+                $capture_bytes = readAttendanceCapture($_FILES['foto_capture'] ?? null);
+            }
+
+            $conn->begin_transaction();
+            try {
+                $stmt_final_check = $conn->prepare("SELECT id FROM absensi WHERE id_karyawan = ? AND tanggal = ? FOR UPDATE");
+                $stmt_final_check->bind_param("ss", $id_karyawan, $tanggal);
+                $stmt_final_check->execute();
+                if ($stmt_final_check->get_result()->num_rows > 0) {
+                    $conn->rollback();
+                    $stmt_final_check->close();
+                    $stmt_check->close();
+                    outputJSON(['success' => false, 'message' => 'Absensi sudah tercatat.']);
+                }
+                $stmt_final_check->close();
+
+                // status_masuk SENGAJA tidak diisi (NULL) - tabel ini defaultnya
+                // 'Tepat Waktu' kalau kolomnya dilewati, yang justru menyesatkan
+                // (seolah ada absen masuk yang tepat waktu). Ditulis eksplisit
+                // NULL di sini supaya anomalinya benar-benar tampak kosong.
+                // alasan/waktu_alasan dipakai di sini untuk "kenapa lupa absen
+                // masuk" - baris jenis ini tidak pernah lewat alur alasan
+                // check-in yang lain (Dinas Luar dkk.), jadi tidak bentrok makna.
+                $waktu_alasan_tidak_masuk = date('Y-m-d H:i:s');
+                $stmt_insert_pulang_saja = $conn->prepare(
+                    "INSERT INTO absensi (id_karyawan, tanggal, jam_pulang, lokasi_pulang, keterangan, status_masuk, face_verified, face_confidence, input_method, alasan, waktu_alasan)
+                     VALUES (?, ?, ?, ?, 'Hadir', NULL, 1, ?, 'qr_scan', ?, ?)"
+                );
+                $stmt_insert_pulang_saja->bind_param("ssssdss", $id_karyawan, $tanggal, $waktu, $lokasi, $face_confidence, $alasan_tidak_masuk, $waktu_alasan_tidak_masuk);
+
+                if ($stmt_insert_pulang_saja->execute()) {
+                    saveAttendanceCapture($conn, $conn->insert_id, 'pulang', $capture_bytes);
+                    logActivity($conn, 'absen_pulang_tanpa_masuk', "Absen pulang jam $waktu tanpa absen masuk sebelumnya - perlu ditinjau", $id_karyawan);
+                    if (!$conn->commit()) throw new RuntimeException('Gagal menyimpan absensi pulang.');
+                    $stmt_insert_pulang_saja->close();
+                    $stmt_check->close();
+                    outputJSON([
+                        'success' => true,
+                        'title' => 'Absen Pulang Tercatat',
+                        'message' => "Absen pulang jam $waktu berhasil dicatat.<br><br>Karena tidak ada absen masuk hari ini, data ini akan ditandai untuk ditinjau Admin/Supervisor - Anda mungkin akan dihubungi untuk konfirmasi."
+                    ]);
+                } else {
+                    $conn->rollback();
+                    $stmt_insert_pulang_saja->close();
+                    $stmt_check->close();
+                    outputJSON(['success' => false, 'message' => 'Gagal merekam absensi pulang.']);
+                }
+            } catch (Exception $e) {
+                $conn->rollback();
+                $stmt_check->close();
+                outputJSON(['success' => false, 'message' => 'Gagal merekam absensi pulang: ' . $e->getMessage()]);
+            }
+        }
 
         if ($data_absen['jam_pulang'] != NULL && $data_absen['jam_pulang'] != '00:00:00') {
             $stmt_check->close();

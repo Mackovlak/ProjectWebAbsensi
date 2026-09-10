@@ -45,6 +45,7 @@ $sql_absensi = "SELECT
         WHEN a.keterangan = 'Hadir' AND (
             (a.jam_pulang IS NOT NULL AND a.jam_pulang != '00:00:00' AND TIMESTAMPDIFF(MINUTE, a.jam_masuk, a.jam_pulang) < 330)
             OR ((a.jam_pulang IS NULL OR a.jam_pulang = '00:00:00') AND a.tanggal < CURDATE())
+            OR a.dikonversi_izin_setengah_hari = 1
         )
         THEN a.id
     END) as total_setengah_hari,

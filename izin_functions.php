@@ -304,6 +304,84 @@ function getIzinDinasDisetujui($conn, $id_karyawan, $tanggal) {
 }
 
 /**
+ * Batas konversi "Tidak Absen Masuk" jadi izin setengah hari, per karyawan
+ * per bulan kalender. Angka ini kebijakan perusahaan (mengikuti Talenta),
+ * bukan terkait jatah_cuti tahunan - konversi ini murni reklasifikasi
+ * status satu hari yang sudah tercatat, bukan pengajuan cuti baru, jadi
+ * sengaja tidak memotong jatah_cuti.
+ */
+define('IZIN_SETENGAH_HARI_MAKS_PER_BULAN', 3);
+
+/**
+ * Berapa kali karyawan ini sudah mengonversi Tidak Absen Masuk jadi izin
+ * setengah hari pada bulan/tahun tertentu.
+ */
+function hitungKonversiSetengahHariBulanIni($conn, $id_karyawan, $bulan, $tahun) {
+    $stmt = $conn->prepare("SELECT COUNT(*) AS jumlah FROM absensi
+        WHERE id_karyawan = ? AND dikonversi_izin_setengah_hari = 1
+          AND MONTH(tanggal) = ? AND YEAR(tanggal) = ?");
+    $stmt->bind_param("sii", $id_karyawan, $bulan, $tahun);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    return (int)($row['jumlah'] ?? 0);
+}
+
+/**
+ * Konversi satu baris absensi "Tidak Absen Masuk" (Hadir tanpa jam_masuk)
+ * jadi izin setengah hari. Dipanggil oleh admin/SPV setelah menagih alasan
+ * ke karyawan lewat proses_pengajuan_izin.php.
+ *
+ * Tidak membuat baris pengajuan_izin baru maupun memotong jatah_cuti -
+ * cuma menandai baris yang sudah ada supaya slip_gaji_process.php ikut
+ * menghitungnya sebagai Setengah Hari (bukan Hadir penuh) dan supaya
+ * riwayatnya kelihatan di histori_absensi.php.
+ */
+function konversiTidakAbsenMasukKeSetengahHari($conn, $id_absensi, $id_reviewer) {
+    $stmt = $conn->prepare("SELECT * FROM absensi WHERE id = ? LIMIT 1");
+    $stmt->bind_param("i", $id_absensi);
+    $stmt->execute();
+    $absen = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    if (!$absen) {
+        return ['sukses' => false, 'pesan' => 'Data absensi tidak ditemukan.'];
+    }
+    if ($absen['keterangan'] !== 'Hadir' || !empty($absen['jam_masuk'])) {
+        return ['sukses' => false, 'pesan' => 'Baris ini bukan kasus Tidak Absen Masuk.'];
+    }
+    if ((int)$absen['dikonversi_izin_setengah_hari'] === 1) {
+        return ['sukses' => false, 'pesan' => 'Baris ini sudah pernah dikonversi sebelumnya.'];
+    }
+
+    $bulan = (int)date('n', strtotime($absen['tanggal']));
+    $tahun = (int)date('Y', strtotime($absen['tanggal']));
+    $jumlah_bulan_ini = hitungKonversiSetengahHariBulanIni($conn, $absen['id_karyawan'], $bulan, $tahun);
+    if ($jumlah_bulan_ini >= IZIN_SETENGAH_HARI_MAKS_PER_BULAN) {
+        return [
+            'sukses' => false,
+            'pesan'  => 'Batas konversi izin setengah hari (' . IZIN_SETENGAH_HARI_MAKS_PER_BULAN . 'x/bulan) sudah tercapai untuk karyawan ini di bulan ' . date('F Y', strtotime($absen['tanggal'])) . '.',
+        ];
+    }
+
+    $stmt = $conn->prepare("UPDATE absensi
+        SET dikonversi_izin_setengah_hari = 1, dikonversi_oleh = ?, dikonversi_at = NOW()
+        WHERE id = ?");
+    $stmt->bind_param("ii", $id_reviewer, $id_absensi);
+    if (!$stmt->execute()) {
+        $stmt->close();
+        return ['sukses' => false, 'pesan' => 'Gagal menyimpan konversi: ' . $conn->error];
+    }
+    $stmt->close();
+
+    return [
+        'sukses' => true,
+        'pesan'  => 'Berhasil dikonversi menjadi izin setengah hari (' . ($jumlah_bulan_ini + 1) . '/' . IZIN_SETENGAH_HARI_MAKS_PER_BULAN . ' bulan ini).',
+        'absen'  => $absen,
+    ];
+}
+
+/**
  * Cabang yang boleh direview oleh user yang sedang login.
  * - admin & owner : null (artinya semua cabang)
  * - supervisor    : cabang karyawan yang tertaut (users.id_cabang hanya

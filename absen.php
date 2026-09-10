@@ -396,9 +396,12 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                     <button type="button" class="btn btn-sakit" onclick="submitAbsenWithConfirm('Sakit', 'Apakah Anda yakin hari ini izin SAKIT?')"><i class="fas fa-heartbeat"></i> SAKIT</button>
                     <button type="button" class="btn btn-cuti" onclick="submitAbsenWithConfirm('Cuti', 'Apakah Anda yakin hari ini izin CUTI?')"><i class="fas fa-calendar-check"></i> CUTI</button>
                 </div>
-                <p style="margin-top: 10px; font-size: 11px; color: #94a3b8; text-align: center;">OFF & Alpha tidak lagi bisa diajukan sendiri &mdash; hubungi Admin bila diperlukan.</p>
             </form>
-            
+            <div style="margin-top: 4px; border-top: 1px dashed #e2e8f0; padding-top: 16px;">
+                <p style="font-size: 12px; color: #94a3b8; margin-bottom: 10px;">Sudah bekerja tapi lupa absen masuk tadi? Anda tetap bisa absen pulang - datanya akan ditandai untuk ditinjau.</p>
+                <button type="button" class="btn btn-pulang" onclick="submitAbsenPulangAwal()"><i class="fas fa-sign-out-alt"></i> Absen Pulang</button>
+            </div>
+
             <?php if (!empty($username_karyawan)): ?>
             <div style="margin-top: 25px; border-top: 1px dashed #cbd5e1; padding-top: 20px;">
                 <a href="login.php?username=<?php echo urlencode($username_karyawan); ?>" class="btn" style="background: #f1f5f9; color: #3b82f6; border: 2px solid #e2e8f0; font-weight: 600; text-decoration: none; box-shadow: none;">
@@ -1174,23 +1177,57 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                 performSubmit(formData);
             }
         }
-        async function submitAbsenPulang() {
+        // Dipanggil dari layar "belum absen" - karyawan memilih Pulang duluan
+        // (lupa/belum absen masuk hari ini). Beda dari absen pulang normal,
+        // ini butuh konfirmasi eksplisit karena tidak biasa, lalu memakai
+        // fungsi submitAbsenPulang() yang sama persis di bawah.
+        function submitAbsenPulangAwal() {
+            Swal.fire({
+                title: 'Absen Pulang Tanpa Absen Masuk?',
+                html: 'Anda belum tercatat absen masuk hari ini.<br><br>Mohon isi alasan kenapa belum absen masuk - Admin/Supervisor akan meninjau data ini sebelum slip gaji dibuat.',
+                icon: 'warning',
+                input: 'textarea',
+                inputPlaceholder: 'Contoh: Lupa absen masuk, HP mati saat tiba, dll.',
+                inputValidator: (value) => {
+                    if (!value || value.trim().length < 5) {
+                        return 'Alasan wajib diisi (minimal 5 karakter).';
+                    }
+                },
+                showCancelButton: true,
+                confirmButtonColor: '#8b5cf6',
+                cancelButtonColor: '#64748b',
+                confirmButtonText: '<i class="fas fa-sign-out-alt"></i> Ya, Absen Pulang',
+                cancelButtonText: 'Batal',
+                reverseButtons: true,
+                customClass: { popup: 'rounded-3xl' }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    submitAbsenPulang(result.value.trim());
+                }
+            });
+        }
+
+        async function submitAbsenPulang(alasanTidakMasuk = null) {
             currentAbsenType = 'pulang';
             const lokasiValue = document.getElementById('lokasi-pulang').value;
             if (!lokasiValue || lokasiValue === '') {
                 alert('⚠️ Lokasi GPS wajib untuk absen PULANG!\n\nPastikan GPS aktif dan Anda telah memberikan izin lokasi.');
                 document.getElementById('status-lokasi').style.animation = 'shake 0.5s';
                 setTimeout(() => { document.getElementById('status-lokasi').style.animation = '' }, 500);
-                return; 
+                return;
             }
-            
+
             const buildFormDataPulang = () => {
                 const formData = new FormData();
                 formData.append('id_karyawan', document.getElementById('global-id-karyawan').value);
                 formData.append('lokasi', document.getElementById('lokasi-pulang').value);
                 formData.append('keterangan', 'pulang');
+                formData.append('aksi', 'pulang');
                 formData.append('face_descriptor', document.getElementById('face-descriptor-pulang').value || '');
                 formData.append('face_confidence', document.getElementById('face-confidence-pulang').value || '');
+                if (alasanTidakMasuk) {
+                    formData.append('alasan', alasanTidakMasuk);
+                }
                 return formData;
             };
 
