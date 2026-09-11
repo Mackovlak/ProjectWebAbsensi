@@ -140,6 +140,13 @@ function backfillRiwayatAbsensi($conn, $confirmed, MigrationLog $log, string $su
     }
     $JAKARTA_FALLBACK = [-6.200000, 106.816666];
 
+    // Kebijakan keterlambatan bertingkat SAAT INI (system_settings, lihat
+    // keterlambatan_functions.php) - dipakai supaya menit_terlambat & status
+    // yang di-generate di sini konsisten dengan proses_absen.php yang asli
+    // dan ikut berubah kalau adminnya mengubah grace/tier di data_hari_libur.php,
+    // bukan rentang menit yang di-hardcode lepas dari pengaturan.
+    $pengaturan_telat = getPengaturanKeterlambatan($conn);
+
     if (!$confirmed) {
         $hariKerjaCount = 0;
         $d = strtotime($tanggal_awal);
@@ -169,9 +176,9 @@ function backfillRiwayatAbsensi($conn, $confirmed, MigrationLog $log, string $su
     $stmt_hadir = $conn->prepare(
         "INSERT INTO absensi
             (id_karyawan, tanggal, jam_masuk, jam_pulang, lokasi_masuk, lokasi_pulang,
-             keterangan, status_masuk, face_verified, face_confidence, input_method,
+             keterangan, status_masuk, menit_terlambat, face_verified, face_confidence, input_method,
              is_manual_entry, manual_entry_by)
-         VALUES (?, ?, ?, ?, ?, ?, 'Hadir', ?, 1, ?, 'qr_scan', 1, ?)"
+         VALUES (?, ?, ?, ?, ?, ?, 'Hadir', ?, ?, 1, ?, 'qr_scan', 1, ?)"
     );
     $stmt_khusus = $conn->prepare(
         "INSERT INTO absensi (id_karyawan, tanggal, keterangan, is_manual_entry, manual_entry_by)
@@ -205,14 +212,35 @@ function backfillRiwayatAbsensi($conn, $confirmed, MigrationLog $log, string $su
                         $masuk_akhir_detik = jamKeDetik($shift['masuk_akhir']);
                         $pulang_detik = jamKeDetik($shift['pulang']);
 
+                        // menit_terlambat & status_masuk dibuat dengan alur yang SAMA
+                        // dengan proses_absen.php: menit_terlambat = selisih mentah
+                        // lewat jam_masuk_akhir shift (NULL kalau tidak lewat sama
+                        // sekali), status baru 'Terlambat' setelah lewat masa
+                        // dispensasi (grace) yang sedang aktif di system_settings.
                         $telat = mt_rand(1, 100) <= 18;
                         if ($telat) {
-                            $jam_masuk = detikKeJam($masuk_akhir_detik + mt_rand(60, 3600)); // 1-60 menit lewat batas
-                            $status_masuk = 'Terlambat';
+                            // Disebar dari 1 menit lewat batas sampai sedikit di atas
+                            // batas pembekuan (maks_jam) kebijakan aktif, supaya tier1
+                            // & tier2 potongan sama-sama terwakili di data dummy -
+                            // bukan rentang tetap 1-60 menit yang lepas dari pengaturan.
+                            $batas_atas_menit = max(60, (int)round($pengaturan_telat['maks_jam'] * 60) + 15);
+                            $menit_terlambat = mt_rand(1, $batas_atas_menit);
+                            $jam_masuk = detikKeJam($masuk_akhir_detik + ($menit_terlambat * 60));
                         } else {
-                            $jam_masuk = detikKeJam($masuk_akhir_detik - mt_rand(0, 1800)); // sampai 30 menit lebih awal
-                            $status_masuk = 'Tepat Waktu';
+                            // Sebagian besar datang lebih awal (menit_terlambat NULL,
+                            // seperti hari yang tidak pernah lewat jam_masuk_akhir);
+                            // sisanya datang sedikit lewat tapi masih dalam masa
+                            // dispensasi - menit_terlambat tetap tercatat sebagai fakta
+                            // mentah walau statusnya tetap Tepat Waktu.
+                            if ($pengaturan_telat['grace_menit'] > 0 && mt_rand(1, 100) <= 30) {
+                                $menit_terlambat = mt_rand(1, $pengaturan_telat['grace_menit']);
+                                $jam_masuk = detikKeJam($masuk_akhir_detik + ($menit_terlambat * 60));
+                            } else {
+                                $menit_terlambat = null;
+                                $jam_masuk = detikKeJam($masuk_akhir_detik - mt_rand(0, 1800)); // sampai 30 menit lebih awal
+                            }
                         }
+                        $status_masuk = apakahTerlambat($menit_terlambat ?? 0, $pengaturan_telat) ? 'Terlambat' : 'Tepat Waktu';
                         $jam_pulang = detikKeJam($pulang_detik + mt_rand(-600, 2400)); // -10 menit s.d. +40 menit
 
                         $lokasi_masuk = lokasiAcak($koor, $JAKARTA_FALLBACK);
@@ -220,9 +248,9 @@ function backfillRiwayatAbsensi($conn, $confirmed, MigrationLog $log, string $su
                         $confidence = round(mt_rand(6500, 9800) / 100, 2);
 
                         $stmt_hadir->bind_param(
-                            "sssssssds",
+                            "sssssssids",
                             $id_karyawan, $tanggal, $jam_masuk, $jam_pulang,
-                            $lokasi_masuk, $lokasi_pulang, $status_masuk, $confidence, $sumberLabel
+                            $lokasi_masuk, $lokasi_pulang, $status_masuk, $menit_terlambat, $confidence, $sumberLabel
                         );
                         $ok = $stmt_hadir->execute();
                     } else if ($roll <= 84) {
@@ -254,15 +282,16 @@ function backfillRiwayatAbsensi($conn, $confirmed, MigrationLog $log, string $su
                         $jam_masuk = detikKeJam($masuk_detik);
                         $jam_pulang = detikKeJam($masuk_detik + $durasi_detik);
                         $status_masuk = 'Tepat Waktu'; // Sabtu tidak dihitung Terlambat
+                        $menit_terlambat = null; // idem - hari overtime tidak punya jam masuk baku untuk dibandingkan
 
                         $lokasi_masuk = lokasiAcak($koor, $JAKARTA_FALLBACK);
                         $lokasi_pulang = lokasiAcak($koor, $JAKARTA_FALLBACK);
                         $confidence = round(mt_rand(6500, 9800) / 100, 2);
 
                         $stmt_hadir->bind_param(
-                            "sssssssds",
+                            "sssssssids",
                             $id_karyawan, $tanggal, $jam_masuk, $jam_pulang,
-                            $lokasi_masuk, $lokasi_pulang, $status_masuk, $confidence, $sumberLabel
+                            $lokasi_masuk, $lokasi_pulang, $status_masuk, $menit_terlambat, $confidence, $sumberLabel
                         );
                         if ($stmt_hadir->execute()) { $hasil['absensi']++; } else { $hasil['absensi_gagal']++; }
                     }
