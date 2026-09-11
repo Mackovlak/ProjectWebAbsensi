@@ -101,6 +101,10 @@ $absensi = [
 // menimpa - admin yang memutuskan lewat tombol "Tambahkan".
 $lembur_sabtu = getLemburHariSabtu($conn, $id_karyawan, $bulan, $tahun);
 
+// Lembur hari kerja yang sudah disetujui SPV lewat pengajuan_lembur - beda
+// dari lembur Sabtu (mingguan otomatis), ini butuh izin lebih dulu.
+$lembur_disetujui = hitungJamLemburDisetujui($conn, $id_karyawan, $bulan, $tahun);
+
 // Potongan keterlambatan bertingkat (per hari, dari menit_terlambat mentah) -
 // lihat keterlambatan_functions.php. Rate lama per-karyawan cuma dipakai
 // sebagai fallback untuk hari absensi lama yang belum punya menit_terlambat.
@@ -400,6 +404,43 @@ require 'admin_header.php';
                         <?php if (!$is_locked): ?>
                         <button type="button" onclick="tambahLemburSabtu(<?php echo (float)$lembur_sabtu['total_jam']; ?>, this)"
                                 class="shrink-0 px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-colors">
+                            <i class="fa-solid fa-plus"></i> Tambahkan
+                        </button>
+                        <?php endif; ?>
+                    </div>
+                    <?php endif; ?>
+
+                    <?php if (!empty($lembur_disetujui['rincian'])): ?>
+                    <!-- Saran lembur hari kerja (izin lembur disetujui SPV) -->
+                    <div class="flex items-start gap-3 p-3.5 rounded-xl bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800/50">
+                        <i class="fa-solid fa-business-time text-orange-600 dark:text-orange-400 mt-0.5"></i>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-bold text-orange-800 dark:text-orange-300">
+                                Lembur hari kerja (izin disetujui): <?php echo $lembur_disetujui['total_jam']; ?> jam
+                                (<?php echo count($lembur_disetujui['rincian']); ?> hari)
+                            </p>
+                            <p class="text-xs text-orange-700 dark:text-orange-400/90 mt-1">
+                                <?php
+                                $potongan_rincian_lembur = array_slice($lembur_disetujui['rincian'], 0, 5);
+                                $teks_lembur = [];
+                                foreach ($potongan_rincian_lembur as $r) {
+                                    $teks_lembur[] = date('j M', strtotime($r['tanggal'])) . ' (pulang '
+                                        . substr($r['jam_pulang'], 0, 5) . ' vs shift ' . substr($r['jam_pulang_shift'], 0, 5)
+                                        . ' = ' . $r['jam'] . 'j)';
+                                }
+                                echo safe_output(implode(', ', $teks_lembur));
+                                if (count($lembur_disetujui['rincian']) > 5) {
+                                    echo ' &hellip; +' . (count($lembur_disetujui['rincian']) - 5) . ' hari lagi';
+                                }
+                                ?>
+                            </p>
+                            <p class="text-[11px] text-orange-600 dark:text-orange-500 mt-1.5">
+                                Belum termasuk pada kolom Overtime di bawah &mdash; tekan tombol untuk menambahkannya.
+                            </p>
+                        </div>
+                        <?php if (!$is_locked): ?>
+                        <button type="button" onclick="tambahLemburSabtu(<?php echo (float)$lembur_disetujui['total_jam']; ?>, this)"
+                                class="shrink-0 px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-xs font-bold transition-colors">
                             <i class="fa-solid fa-plus"></i> Tambahkan
                         </button>
                         <?php endif; ?>

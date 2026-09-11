@@ -413,19 +413,21 @@ try {
             }
         }
 
-        // ============== CEK OVERTIME =================
-        // Pada hari lembur (mis. Sabtu) seluruh jam kerjanya memang sudah
-        // dihitung lembur lewat getLemburHariSabtu(), jadi form alasan+foto
-        // overtime tidak perlu diminta lagi.
-        $is_hari_lembur = isHariOvertime($conn, $tanggal);
-
-        $is_overtime_request = false;
-        if ($is_hadir_masuk && !$is_hari_lembur) {
+        // ============== CEK PULANG CEPAT =================
+        // Overtime lewat jam pulang shift TIDAK LAGI otomatis terdeteksi/
+        // diblokir di sini - sejak fitur izin lembur (pengajuan_lembur), jam
+        // lemburnya dihitung nanti di slip gaji dari selisih jam_pulang aktual
+        // vs jam pulang shift, HANYA untuk hari yang punya izin lembur
+        // Disetujui (lihat hitungJamLemburDisetujui() di lembur_functions.php).
+        // Karyawan yang pulang telat tanpa izin lembur tetap absen normal -
+        // tidak dianggap lembur berbayar, tapi juga tidak diblokir/dipaksa
+        // isi alasan+foto di sini.
+        if ($is_hadir_masuk && !isHariOvertime($conn, $tanggal)) {
             $stmt_jam_pulang = $conn->prepare("
-                SELECT jk.jam_pulang 
-                FROM jam_kerja jk 
-                WHERE jk.id_cabang = ? 
-                ORDER BY ABS(TIMESTAMPDIFF(MINUTE, ?, jk.jam_masuk_akhir)) ASC 
+                SELECT jk.jam_pulang
+                FROM jam_kerja jk
+                WHERE jk.id_cabang = ?
+                ORDER BY ABS(TIMESTAMPDIFF(MINUTE, ?, jk.jam_masuk_akhir)) ASC
                 LIMIT 1
             ");
             $stmt_jam_pulang->bind_param("is", $id_cabang, $data_absen['jam_masuk']);
@@ -433,9 +435,7 @@ try {
             $result_jam_pulang = $stmt_jam_pulang->get_result();
             if ($result_jam_pulang->num_rows > 0) {
                 $target_jam_pulang = $result_jam_pulang->fetch_assoc()['jam_pulang'];
-                if ($waktu > $target_jam_pulang) {
-                    $is_overtime_request = true;
-                } elseif ($waktu < $target_jam_pulang && $ket_data['izin_pulang_cepat'] !== 'Disetujui') {
+                if ($waktu < $target_jam_pulang && $ket_data['izin_pulang_cepat'] !== 'Disetujui') {
                     // Pulang lebih awal dari jam pulang shift wajib punya izin
                     // pulang cepat yang sudah Disetujui Admin/Supervisor.
                     $stmt_jam_pulang->close();
@@ -455,35 +455,6 @@ try {
 
         $alasan_pulang = isset($_POST['alasan_pulang']) ? sanitizeInput($_POST['alasan_pulang']) : null;
         $foto_pulang_name = null;
-        
-        if ($is_overtime_request) {
-            if (empty($alasan_pulang) || empty($_FILES['foto_pulang']['name'])) {
-                $stmt_check->close();
-                outputJSON([
-                    'success' => false,
-                    'message' => 'Anda terdeteksi melakukan Overtime. Silakan isi alasan dan unggah foto bukti Overtime terlebih dahulu.',
-                    'type' => 'overtime_form_required'
-                ]);
-            }
-            
-            if (isset($_FILES['foto_pulang']) && $_FILES['foto_pulang']['error'] == 0) {
-                $upload_dir = __DIR__ . '/assets/uploads/absensi/';
-                if (!file_exists($upload_dir)) mkdir($upload_dir, 0777, true);
-                
-                $ext = strtolower(pathinfo($_FILES['foto_pulang']['name'], PATHINFO_EXTENSION));
-                $allowed_ext = ['jpg', 'jpeg', 'png'];
-                if (in_array($ext, $allowed_ext) && $_FILES['foto_pulang']['size'] <= 6 * 1024 * 1024) {
-                    $foto_pulang_name = $id_karyawan . '_overtime_' . date('Ymd_His') . '_' . uniqid() . '.' . $ext;
-                    move_uploaded_file($_FILES['foto_pulang']['tmp_name'], $upload_dir . $foto_pulang_name);
-                } else {
-                    $stmt_check->close();
-                    outputJSON([
-                        'success' => false,
-                        'message' => 'Format foto Overtime tidak valid atau ukuran terlalu besar (Max 6MB).'
-                    ]);
-                }
-            }
-        }
         // ==============================================
 
         // $capture_bytes sudah dibaca+divalidasi di blok $needs_face di atas

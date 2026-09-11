@@ -806,39 +806,6 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
         </div>
     </div>
 
-    <!-- Modal Overtime -->
-    <div id="modal-input-overtime" class="face-overlay" style="align-items: center; z-index: 10001;">
-        <div class="face-verification-box" style="text-align: left; padding: 25px; border-radius: 20px;">
-            <h2 style="margin-bottom: 5px;"><i class="fas fa-business-time text-brand-500"></i> Keterangan Overtime</h2>
-            <p style="font-size: 13px; margin-bottom: 20px;">Anda absen pulang melewati jam kerja. Mohon isi alasan (wajib) dan foto bukti (wajib).</p>
-            
-            <form id="form-input-overtime" onsubmit="event.preventDefault(); submitOvertimeForm();">
-                <div style="margin-bottom: 15px;">
-                    <label style="display: block; font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #333;">Alasan Overtime <span style="color: red;">*</span></label>
-                    <textarea id="overtime-alasan-text" required rows="3" style="width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #ccc; font-family: inherit; font-size: 14px; outline: none;"></textarea>
-                </div>
-                <div style="margin-bottom: 20px;">
-                    <label style="display: block; font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #333;">Foto Bukti <span style="color: red;">*</span></label>
-                    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                        <button type="button" class="btn" style="background: #e2e8f0; color: #475569; margin:0; padding: 10px; font-size: 13px; flex: 1;" onclick="document.getElementById('overtime-foto-bukti').setAttribute('capture', 'environment'); document.getElementById('overtime-foto-bukti').click();">
-                            <i class="fas fa-camera"></i> Kamera
-                        </button>
-                        <button type="button" class="btn" style="background: #e2e8f0; color: #475569; margin:0; padding: 10px; font-size: 13px; flex: 1;" onclick="document.getElementById('overtime-foto-bukti').removeAttribute('capture'); document.getElementById('overtime-foto-bukti').click();">
-                            <i class="fas fa-image"></i> Galeri
-                        </button>
-                    </div>
-                    <input type="file" id="overtime-foto-bukti" accept="image/*" required style="display: none;" onchange="updateFileName('overtime-foto-bukti', 'overtime-file-name')">
-                    <div id="overtime-file-name" style="font-size: 12px; color: #0ea5e9; font-weight: 500; margin-bottom: 5px;"></div>
-                    <small style="display: block; margin-top: 5px; color: #666; font-size: 11px;">Maks. 6MB. Format JPG, PNG.</small>
-                </div>
-                <div style="display: flex; gap: 10px;">
-                    <button type="button" class="btn" style="background: #f1f5f9; color: #475569;" onclick="document.getElementById('modal-input-overtime').style.display='none'; location.reload();">Batal</button>
-                    <button type="submit" class="btn" style="background: #0ea5e9; color: white;">Simpan Overtime</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
     <script src="assets/js/face-recognition.js?v=2.0"></script>
     <script>
         function updateFileName(inputId, textId) {
@@ -1109,47 +1076,6 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
 
             document.getElementById('modal-input-alasan').style.display = 'none';
             submitAbsen(keterangan, alasan, fotoFile);
-        }
-
-        async function submitOvertimeForm() {
-            if (cancelActiveVerification) return;
-            const alasan = document.getElementById('overtime-alasan-text').value;
-            const fotoInput = document.getElementById('overtime-foto-bukti');
-            
-            if (alasan.trim() === '') {
-                Swal.fire('Peringatan', 'Alasan Overtime wajib diisi!', 'warning');
-                return;
-            }
-            if (fotoInput.files.length === 0) {
-                Swal.fire('Peringatan', 'Foto bukti Overtime wajib diunggah!', 'warning');
-                return;
-            }
-            if (fotoInput.files[0].size > 6 * 1024 * 1024) {
-                Swal.fire('Peringatan', 'Ukuran foto maksimal 6MB!', 'warning');
-                return;
-            }
-
-            document.getElementById('modal-input-overtime').style.display = 'none';
-            let verification;
-            try {
-                currentAbsenType = 'pulang';
-                verification = await verifyFace();
-            } catch (error) {
-                document.getElementById('modal-input-overtime').style.display = 'flex';
-                Swal.fire('Verifikasi Gagal', error.message, 'error');
-                return;
-            }
-            
-            const formData = new FormData();
-            formData.append('id_karyawan', document.getElementById('global-id-karyawan').value);
-            formData.append('lokasi', document.getElementById('lokasi-pulang').value);
-            formData.append('keterangan', 'pulang');
-            formData.append('alasan_pulang', alasan);
-            formData.append('foto_pulang', fotoInput.files[0]);
-            formData.append('foto_capture', verification.photo, 'pulang.jpg');
-            formData.append('verification_token', verification.token);
-            
-            performSubmit(formData);
         }
 
         async function submitAbsen(keterangan, alasan = '', fotoFile = null, isDinasLuar = false) {
@@ -1447,11 +1373,6 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                             location.reload();
                         });
                         
-                    } else if (data.type === 'overtime_form_required') {
-                        pendingMasukVerification = null;
-                        // Hilangkan loader, tampilkan modal overtime
-                        mainContainer.innerHTML = '';
-                        document.getElementById('modal-input-overtime').style.display = 'flex';
                     } else if (data.type === 'pulang_cepat_required') {
                         pendingMasukVerification = null;
                         mainContainer.innerHTML = '';
