@@ -24,6 +24,12 @@ try {
     }
     $limit = checkRateLimit('attendance_face_' . $action, $action === 'start' ? 2 : 3);
     if (!$limit['allowed']) throw new RuntimeException('Tunggu ' . $limit['remaining'] . ' detik lalu coba lagi.');
+    // Dibatasi juga per id_karyawan (bukan cuma per sesi/aksi) - endpoint ini
+    // sessionless (kios bersama, siapa saja bisa mengetik ID siapa saja), jadi
+    // tanpa ini satu sesi bisa mencoba banyak ID karyawan berbeda secepat
+    // batas per-aksi mengizinkan, cuma diperlambat kalau menyasar ID yang sama.
+    $limit_id = checkRateLimit('attendance_face_' . $action . '_' . $id, $action === 'start' ? 2 : 3);
+    if (!$limit_id['allowed']) throw new RuntimeException('Tunggu ' . $limit_id['remaining'] . ' detik lalu coba lagi.');
 
     $stmt = $conn->prepare("SELECT u.face_descriptor FROM users u JOIN karyawan k ON k.id_karyawan = u.id_karyawan
                            WHERE u.id_karyawan = ? AND u.is_active = 1 AND k.status = 'aktif'");
@@ -33,18 +39,28 @@ try {
     $stmt->close();
     if (!$account || empty($account['face_descriptor'])) throw new RuntimeException('Registrasi wajah aktif diperlukan.');
 
+    $requested_kind = $_POST['jenis'] ?? null;
+    if (!in_array($requested_kind, ['masuk', 'pulang'], true)) {
+        throw new RuntimeException('Jenis absensi tidak valid.');
+    }
+
     $date = date('Y-m-d');
     $stmt = $conn->prepare('SELECT id, jam_pulang, keterangan FROM absensi WHERE id_karyawan = ? AND tanggal = ?');
     $stmt->bind_param('ss', $id, $date);
     $stmt->execute();
     $attendance = $stmt->get_result()->fetch_assoc();
     $stmt->close();
-    if ($attendance && ((!empty($attendance['jam_pulang']) && $attendance['jam_pulang'] !== '00:00:00')
-        || !in_array($attendance['keterangan'], ['Hadir', 'Dinas Luar'], true))) {
-        throw new RuntimeException('Status absensi saat ini tidak dapat diverifikasi. Muat ulang halaman.');
+    if ($attendance) {
+        if ($requested_kind === 'masuk'
+            || (!empty($attendance['jam_pulang']) && $attendance['jam_pulang'] !== '00:00:00')
+            || !in_array($attendance['keterangan'], ['Hadir', 'Dinas Luar'], true)) {
+            throw new RuntimeException('Status absensi saat ini tidak dapat diverifikasi. Muat ulang halaman.');
+        }
     }
-    $context = attendanceFaceContext($id, $attendance, $account['face_descriptor'], $date);
-    if (($_POST['jenis'] ?? null) !== $context['kind']) throw new RuntimeException('Status absensi berubah. Muat ulang halaman.');
+    // Tidak ada baris + jenis=pulang: karyawan lupa absen masuk dan memilih
+    // Pulang lebih dulu (lihat proses_absen.php) - tetap wajib verifikasi
+    // wajah yang sama seperti Pulang normal, cuma tanpa attendance_id nyata.
+    $context = attendanceFaceContext($id, $attendance, $account['face_descriptor'], $date, $requested_kind);
 
     if ($action === 'start') {
         $result = ['success' => true, 'nonce' => attendanceFaceIssueToken($_SESSION, 'attendance_face_challenges', $context), 'expires_in' => ATTENDANCE_FACE_TOKEN_TTL];

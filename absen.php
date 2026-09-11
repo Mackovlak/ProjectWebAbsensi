@@ -399,9 +399,12 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                     <button type="button" class="btn btn-sakit" onclick="submitAbsenWithConfirm('Sakit', 'Apakah Anda yakin hari ini izin SAKIT?')"><i class="fas fa-heartbeat"></i> SAKIT</button>
                     <button type="button" class="btn btn-cuti" onclick="submitAbsenWithConfirm('Cuti', 'Apakah Anda yakin hari ini izin CUTI?')"><i class="fas fa-calendar-check"></i> CUTI</button>
                 </div>
-                <p style="margin-top: 10px; font-size: 11px; color: #94a3b8; text-align: center;">OFF & Alpha tidak lagi bisa diajukan sendiri &mdash; hubungi Admin bila diperlukan.</p>
             </form>
-            
+            <div style="margin-top: 4px; border-top: 1px dashed #e2e8f0; padding-top: 16px;">
+                <p style="font-size: 12px; color: #94a3b8; margin-bottom: 10px;">Sudah bekerja tapi lupa absen masuk tadi? Anda tetap bisa absen pulang - datanya akan ditandai untuk ditinjau.</p>
+                <button type="button" class="btn btn-pulang" onclick="submitAbsenPulangAwal()"><i class="fas fa-sign-out-alt"></i> Absen Pulang</button>
+            </div>
+
             <?php if (!empty($username_karyawan)): ?>
             <div style="margin-top: 25px; border-top: 1px dashed #cbd5e1; padding-top: 20px;">
                 <a href="login.php?username=<?php echo urlencode($username_karyawan); ?>" class="btn" style="background: #f1f5f9; color: #3b82f6; border: 2px solid #e2e8f0; font-weight: 600; text-decoration: none; box-shadow: none;">
@@ -803,39 +806,6 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
         </div>
     </div>
 
-    <!-- Modal Overtime -->
-    <div id="modal-input-overtime" class="face-overlay" style="align-items: center; z-index: 10001;">
-        <div class="face-verification-box" style="text-align: left; padding: 25px; border-radius: 20px;">
-            <h2 style="margin-bottom: 5px;"><i class="fas fa-business-time text-brand-500"></i> Keterangan Overtime</h2>
-            <p style="font-size: 13px; margin-bottom: 20px;">Anda absen pulang melewati jam kerja. Mohon isi alasan (wajib) dan foto bukti (wajib).</p>
-            
-            <form id="form-input-overtime" onsubmit="event.preventDefault(); submitOvertimeForm();">
-                <div style="margin-bottom: 15px;">
-                    <label style="display: block; font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #333;">Alasan Overtime <span style="color: red;">*</span></label>
-                    <textarea id="overtime-alasan-text" required rows="3" style="width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #ccc; font-family: inherit; font-size: 14px; outline: none;"></textarea>
-                </div>
-                <div style="margin-bottom: 20px;">
-                    <label style="display: block; font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #333;">Foto Bukti <span style="color: red;">*</span></label>
-                    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                        <button type="button" class="btn" style="background: #e2e8f0; color: #475569; margin:0; padding: 10px; font-size: 13px; flex: 1;" onclick="document.getElementById('overtime-foto-bukti').setAttribute('capture', 'environment'); document.getElementById('overtime-foto-bukti').click();">
-                            <i class="fas fa-camera"></i> Kamera
-                        </button>
-                        <button type="button" class="btn" style="background: #e2e8f0; color: #475569; margin:0; padding: 10px; font-size: 13px; flex: 1;" onclick="document.getElementById('overtime-foto-bukti').removeAttribute('capture'); document.getElementById('overtime-foto-bukti').click();">
-                            <i class="fas fa-image"></i> Galeri
-                        </button>
-                    </div>
-                    <input type="file" id="overtime-foto-bukti" accept="image/*" required style="display: none;" onchange="updateFileName('overtime-foto-bukti', 'overtime-file-name')">
-                    <div id="overtime-file-name" style="font-size: 12px; color: #0ea5e9; font-weight: 500; margin-bottom: 5px;"></div>
-                    <small style="display: block; margin-top: 5px; color: #666; font-size: 11px;">Maks. 6MB. Format JPG, PNG.</small>
-                </div>
-                <div style="display: flex; gap: 10px;">
-                    <button type="button" class="btn" style="background: #f1f5f9; color: #475569;" onclick="document.getElementById('modal-input-overtime').style.display='none'; location.reload();">Batal</button>
-                    <button type="submit" class="btn" style="background: #0ea5e9; color: white;">Simpan Overtime</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
     <script src="assets/js/face-recognition.js?v=2.0"></script>
     <script>
         function updateFileName(inputId, textId) {
@@ -1108,47 +1078,6 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
             submitAbsen(keterangan, alasan, fotoFile);
         }
 
-        async function submitOvertimeForm() {
-            if (cancelActiveVerification) return;
-            const alasan = document.getElementById('overtime-alasan-text').value;
-            const fotoInput = document.getElementById('overtime-foto-bukti');
-            
-            if (alasan.trim() === '') {
-                Swal.fire('Peringatan', 'Alasan Overtime wajib diisi!', 'warning');
-                return;
-            }
-            if (fotoInput.files.length === 0) {
-                Swal.fire('Peringatan', 'Foto bukti Overtime wajib diunggah!', 'warning');
-                return;
-            }
-            if (fotoInput.files[0].size > 6 * 1024 * 1024) {
-                Swal.fire('Peringatan', 'Ukuran foto maksimal 6MB!', 'warning');
-                return;
-            }
-
-            document.getElementById('modal-input-overtime').style.display = 'none';
-            let verification;
-            try {
-                currentAbsenType = 'pulang';
-                verification = await verifyFace();
-            } catch (error) {
-                document.getElementById('modal-input-overtime').style.display = 'flex';
-                Swal.fire('Verifikasi Gagal', error.message, 'error');
-                return;
-            }
-            
-            const formData = new FormData();
-            formData.append('id_karyawan', document.getElementById('global-id-karyawan').value);
-            formData.append('lokasi', document.getElementById('lokasi-pulang').value);
-            formData.append('keterangan', 'pulang');
-            formData.append('alasan_pulang', alasan);
-            formData.append('foto_pulang', fotoInput.files[0]);
-            formData.append('foto_capture', verification.photo, 'pulang.jpg');
-            formData.append('verification_token', verification.token);
-            
-            performSubmit(formData);
-        }
-
         async function submitAbsen(keterangan, alasan = '', fotoFile = null, isDinasLuar = false) {
             if (cancelActiveVerification) return;
             currentAbsenType = 'masuk';
@@ -1196,7 +1125,37 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                 performSubmit(formData);
             }
         }
-        async function submitAbsenPulang() {
+        // Dipanggil dari layar "belum absen" - karyawan memilih Pulang duluan
+        // (lupa/belum absen masuk hari ini). Beda dari absen pulang normal,
+        // ini butuh konfirmasi eksplisit karena tidak biasa, lalu memakai
+        // fungsi submitAbsenPulang() yang sama persis di bawah.
+        function submitAbsenPulangAwal() {
+            Swal.fire({
+                title: 'Absen Pulang Tanpa Absen Masuk?',
+                html: 'Anda belum tercatat absen masuk hari ini.<br><br>Mohon isi alasan kenapa belum absen masuk - Admin/Supervisor akan meninjau data ini sebelum slip gaji dibuat.',
+                icon: 'warning',
+                input: 'textarea',
+                inputPlaceholder: 'Contoh: Lupa absen masuk, HP mati saat tiba, dll.',
+                inputValidator: (value) => {
+                    if (!value || value.trim().length < 5) {
+                        return 'Alasan wajib diisi (minimal 5 karakter).';
+                    }
+                },
+                showCancelButton: true,
+                confirmButtonColor: '#8b5cf6',
+                cancelButtonColor: '#64748b',
+                confirmButtonText: '<i class="fas fa-sign-out-alt"></i> Ya, Absen Pulang',
+                cancelButtonText: 'Batal',
+                reverseButtons: true,
+                customClass: { popup: 'rounded-3xl' }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    submitAbsenPulang(result.value.trim());
+                }
+            });
+        }
+
+        async function submitAbsenPulang(alasanTidakMasuk = null) {
             if (cancelActiveVerification) return;
             currentAbsenType = 'pulang';
             const lokasiValue = document.getElementById('lokasi-pulang').value;
@@ -1204,14 +1163,18 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                 alert('⚠️ Lokasi GPS wajib untuk absen PULANG!\n\nPastikan GPS aktif dan Anda telah memberikan izin lokasi.');
                 document.getElementById('status-lokasi').style.animation = 'shake 0.5s';
                 setTimeout(() => { document.getElementById('status-lokasi').style.animation = '' }, 500);
-                return; 
+                return;
             }
-            
+
             const buildFormDataPulang = () => {
                 const formData = new FormData();
                 formData.append('id_karyawan', document.getElementById('global-id-karyawan').value);
                 formData.append('lokasi', document.getElementById('lokasi-pulang').value);
                 formData.append('keterangan', 'pulang');
+                formData.append('aksi', 'pulang');
+                if (alasanTidakMasuk) {
+                    formData.append('alasan', alasanTidakMasuk);
+                }
                 return formData;
             };
 
@@ -1285,7 +1248,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                 checkCancelled();
                 await faceSystem.startCamera('face-video');
                 checkCancelled();
-                const challenge = await request('start');
+                let challenge = await request('start');
                 const currentChallenge = Math.random() < 0.5 ? 'blink' : 'mouth';
                 instructionEl.textContent = currentChallenge === 'blink'
                     ? 'TANTANGAN: Tolong Kedipkan Mata Anda' : 'TANTANGAN: Tolong Buka Mulut / Senyum';
@@ -1316,11 +1279,25 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                         continue;
                     }
                     const photo = await captureAttendancePhoto(faceSystem.videoElement);
-                    const matched = await request('verify', {
-                        nonce: challenge.nonce,
-                        face_descriptor: JSON.stringify(result.descriptor),
-                        foto_capture: photo
-                    });
+                    let matched;
+                    try {
+                        matched = await request('verify', {
+                            nonce: challenge.nonce,
+                            face_descriptor: JSON.stringify(result.descriptor),
+                            foto_capture: photo
+                        });
+                    } catch (error) {
+                        checkCancelled();
+                        updateFaceStatus('error', error.message);
+                        // Nonce tantangan sudah terpakai begitu request('verify')
+                        // dikirim, walau hasilnya gagal (mis. wajah tak cocok) -
+                        // minta tantangan baru dulu sebelum mencoba lagi, supaya
+                        // satu momen kurang pas (pencahayaan/sudut) tidak
+                        // menggagalkan seluruh proses verifikasi.
+                        challenge = await request('start');
+                        await pause(300);
+                        continue;
+                    }
                     // The dark mask is only a live positioning aid. Remove it
                     // once the evidence photo has been captured successfully.
                     videoContainer?.classList.add('face-captured');
@@ -1358,6 +1335,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
         }
 
         function performSubmit(formData) {
+            formData.append('csrf_token', attendanceCsrf);
             const mainContainer = document.getElementById('main-container');
             const successContainer = document.getElementById('success-content');
             console.log('=== SUBMIT DATA ===');
@@ -1395,11 +1373,6 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                             location.reload();
                         });
                         
-                    } else if (data.type === 'overtime_form_required') {
-                        pendingMasukVerification = null;
-                        // Hilangkan loader, tampilkan modal overtime
-                        mainContainer.innerHTML = '';
-                        document.getElementById('modal-input-overtime').style.display = 'flex';
                     } else if (data.type === 'pulang_cepat_required') {
                         pendingMasukVerification = null;
                         mainContainer.innerHTML = '';

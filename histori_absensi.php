@@ -147,6 +147,10 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
             </a>
             <?php endif; ?>
 
+            <button onclick="exportAbsensiExcel()" class="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-colors font-medium text-sm shadow-sm shadow-emerald-500/30">
+                <i class="fa-solid fa-file-excel"></i> Export Excel
+            </button>
+
 
             <!-- Filter Opsi Cabang -->
             <form action="histori_absensi.php" method="GET" class="relative m-0" id="formCabang">
@@ -274,7 +278,9 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
                                 'tanggal' => date('d-m-Y', strtotime($row['tanggal'])),
                                 'jam_masuk' => $row['jam_masuk'] ? date('H:i:s', strtotime($row['jam_masuk'])) : '-',
                                 'jam_keluar' => ($row['jam_pulang'] && $row['jam_pulang'] != '00:00:00') ? date('H:i:s', strtotime($row['jam_pulang'])) : '-',
-                                'status_masuk' => $row['keterangan'] == 'Hadir' ? $row['status_masuk'] : '-',
+                                'status_masuk' => ($row['keterangan'] == 'Hadir' && empty($row['jam_masuk']))
+                                    ? 'TIDAK ABSEN MASUK'
+                                    : ($row['keterangan'] == 'Hadir' ? $row['status_masuk'] : '-'),
                                 'status_pulang' => $status_pulang,
                                 'keterangan' => htmlspecialchars($row['keterangan']),
                             ];
@@ -299,9 +305,15 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
                                     <p class="text-xs text-slate-500 mt-0.5"><?php echo htmlspecialchars($nama_cabang); ?></p>
                                 </td>
                                 <td class="px-5 py-4 whitespace-nowrap text-center">
-                                    <span class="inline-block px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded font-mono text-sm border border-slate-200 dark:border-slate-600">
-                                        <?php echo $row['jam_masuk'] ? date('H:i:s', strtotime($row['jam_masuk'])) : '--:--:--'; ?>
-                                    </span>
+                                    <?php if (!empty($row['jam_masuk'])): ?>
+                                        <span class="inline-block px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded font-mono text-sm border border-slate-200 dark:border-slate-600">
+                                            <?php echo date('H:i:s', strtotime($row['jam_masuk'])); ?>
+                                        </span>
+                                    <?php elseif (!empty($row['jam_pulang'])): ?>
+                                        <span class="inline-block px-3 py-1 bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400 rounded font-mono text-sm border border-amber-200 dark:border-amber-800/50 font-bold" title="Tidak ada absen masuk - langsung absen pulang">--:--:--</span>
+                                    <?php else: ?>
+                                        <span class="inline-block px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded font-mono text-sm border border-slate-200 dark:border-slate-600">--:--:--</span>
+                                    <?php endif; ?>
                                 </td>
                                 <td class="px-5 py-4 whitespace-nowrap text-center">
                                     <?php if ($row['jam_pulang'] && $row['jam_pulang'] != '00:00:00' && $row['jam_pulang'] != NULL): ?>
@@ -315,7 +327,29 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
                                 <td class="px-5 py-4 whitespace-nowrap">
                                     <div class="flex flex-col gap-1.5 items-start">
                                         <?php if ($row['keterangan'] == 'Hadir'): ?>
-                                            <?php if ($row['status_masuk'] == 'Tepat Waktu'): ?>
+                                            <?php if (empty($row['jam_masuk'])): ?>
+                                                <div class="flex flex-wrap items-center gap-1.5">
+                                                    <?php if (!empty($row['dikonversi_izin_setengah_hari'])): ?>
+                                                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200 dark:bg-teal-900/30 dark:text-teal-400 dark:border-teal-800/50" title="<?php echo !empty($row['dikonversi_at']) ? 'Dikonversi ' . date('d-m-Y H:i', strtotime($row['dikonversi_at'])) : ''; ?>">
+                                                            <i class="fa-solid fa-calendar-check text-[10px]"></i> Izin Setengah Hari
+                                                        </span>
+                                                    <?php else: ?>
+                                                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800/50" title="Karyawan langsung absen pulang tanpa absen masuk - tanyakan alasannya">
+                                                            <i class="fa-solid fa-triangle-exclamation text-[10px]"></i> Tidak Absen Masuk
+                                                        </span>
+                                                    <?php endif; ?>
+                                                    <?php if (!empty($row['alasan'])): ?>
+                                                        <button type="button" onclick="openDetailAlasanModal(this)" data-alasan="<?php echo htmlspecialchars($row['alasan']); ?>" data-foto="" data-lokasi="<?php echo htmlspecialchars($row['lokasi_pulang'] ?? ''); ?>" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200 hover:bg-fuchsia-100 transition-colors dark:bg-fuchsia-900/30 dark:text-fuchsia-400 dark:border-fuchsia-800/50">
+                                                            <i class="fa-solid fa-eye"></i> Lihat Alasan
+                                                        </button>
+                                                    <?php endif; ?>
+                                                    <?php if (empty($row['dikonversi_izin_setengah_hari'])): ?>
+                                                        <button type="button" onclick="konversiSetengahHari(<?php echo (int)$row['id']; ?>, '<?php echo htmlspecialchars($row['nama_karyawan'], ENT_QUOTES); ?>')" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800/50">
+                                                            <i class="fa-solid fa-calendar-check"></i> Konversi ke Izin ½ Hari
+                                                        </button>
+                                                    <?php endif; ?>
+                                                </div>
+                                            <?php elseif ($row['status_masuk'] == 'Tepat Waktu'): ?>
                                                 <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800/50">
                                                     <i class="fa-solid fa-circle-check text-[10px]"></i> Hadir Tepat Waktu
                                                 </span>
@@ -889,6 +923,27 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
     </div>
 </div>
 
+<!-- Hidden Form Export Excel -->
+<form id="exportForm" method="POST" action="export_absensi.php" class="hidden">
+    <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+    <input type="hidden" name="format" value="excel">
+    <input type="hidden" name="cabang" value="<?php echo htmlspecialchars($nama_cabang); ?>">
+    <input type="hidden" name="id_cabang" value="<?php echo (int)$id_cabang; ?>">
+    <input type="hidden" name="search_name" value="<?php echo htmlspecialchars($search_name); ?>">
+    <input type="hidden" name="start_date" value="<?php echo htmlspecialchars($start_date); ?>">
+    <input type="hidden" name="end_date" value="<?php echo htmlspecialchars($end_date); ?>">
+</form>
+
+<!-- Hidden Form Konversi Izin Setengah Hari -->
+<form id="formKonversiSetengahHari" method="POST" action="proses_pengajuan_izin.php" class="hidden">
+    <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+    <input type="hidden" name="konversi_setengah_hari" value="1">
+    <input type="hidden" name="id_absensi" id="inKonversiIdAbsensi" value="">
+    <input type="hidden" name="id_cabang" value="<?php echo (int)$id_cabang; ?>">
+    <input type="hidden" name="start_date" value="<?php echo htmlspecialchars($start_date); ?>">
+    <input type="hidden" name="end_date" value="<?php echo htmlspecialchars($end_date); ?>">
+</form>
+
 <script>
 function openCaptureModal(button) {
     const data = button.dataset;
@@ -918,6 +973,30 @@ function openCaptureModal(button) {
         }
     }
     openModal('modal-capture-absensi');
+}
+
+function exportAbsensiExcel() {
+    document.getElementById('exportForm').submit();
+}
+
+function konversiSetengahHari(idAbsensi, nama) {
+    Swal.fire({
+        title: 'Konversi ke Izin Setengah Hari?',
+        html: `Baris "Tidak Absen Masuk" milik <b>${nama}</b> akan ditandai sebagai izin setengah hari.<br><br>Maksimal 3x per bulan per karyawan - sistem menolak otomatis kalau batas ini sudah tercapai.`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#059669',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: 'Ya, Konversi',
+        cancelButtonText: 'Batal',
+        reverseButtons: true,
+        customClass: { popup: 'rounded-3xl' }
+    }).then((result) => {
+        if (result.isConfirmed) {
+            document.getElementById('inKonversiIdAbsensi').value = idAbsensi;
+            document.getElementById('formKonversiSetengahHari').submit();
+        }
+    });
 }
 
 // DataTables JS Pagination

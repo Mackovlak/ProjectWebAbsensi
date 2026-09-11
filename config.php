@@ -259,6 +259,12 @@ require_once 'izin_functions.php';
 // Include helper kalender, hari libur & hari kerja
 require_once 'kalender_functions.php';
 
+// Include helper potongan keterlambatan bertingkat
+require_once 'keterlambatan_functions.php';
+
+// Include helper pengajuan izin lembur (hari kerja, di luar Sabtu/hari lembur mingguan)
+require_once 'lembur_functions.php';
+
 // Function untuk generate CSRF token
 function generateCSRFToken() {
     if (!isset($_SESSION['csrf_token'])) {

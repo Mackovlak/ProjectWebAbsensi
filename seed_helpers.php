@@ -61,7 +61,7 @@ function lokasiAcak($koordinat, $jakarta_fallback) {
  *
  * @return array{absensi:int, absensi_gagal:int}
  */
-function backfillRiwayatAbsensi($conn, $confirmed, MigrationLog $log, string $sumberLabel, int $hariKeBelakang = 90) {
+function backfillRiwayatAbsensi($conn, $confirmed, MigrationLog $log, string $sumberLabel, int $hariKeBelakang = 90, ?array $idKaryawanFilter = null) {
     $hasil = ['absensi' => 0, 'absensi_gagal' => 0];
 
     $hari_kerja = array_map('intval', explode(',', ambilSettingSeed($conn, 'hari_kerja', '1,2,3,4,5')));
@@ -81,15 +81,46 @@ function backfillRiwayatAbsensi($conn, $confirmed, MigrationLog $log, string $su
     }
     $stmt_libur->close();
 
+    // Filter opsional ke id_karyawan tertentu - kalau diisi, hanya karyawan
+    // itu yang diproses (tetap harus status 'aktif'). ID yang tidak
+    // ditemukan/tidak aktif dilaporkan, bukan dilewati diam-diam.
+    $idKaryawanFilter = $idKaryawanFilter !== null
+        ? array_values(array_unique(array_filter(array_map('trim', $idKaryawanFilter))))
+        : null;
+
     $roster = [];
-    $res_roster = $conn->query(
-        "SELECT k.id_karyawan, k.id_cabang, k.id_jabatan, COALESCE(j.overtime_sabtu, 0) AS overtime_sabtu
-         FROM karyawan k
-         LEFT JOIN jabatan j ON j.id = k.id_jabatan
-         WHERE k.status = 'aktif'"
-    );
-    while ($row = $res_roster->fetch_assoc()) {
-        $roster[] = $row;
+    $sql_roster = "SELECT k.id_karyawan, k.id_cabang, k.id_jabatan, COALESCE(j.overtime_sabtu, 0) AS overtime_sabtu
+                   FROM karyawan k
+                   LEFT JOIN jabatan j ON j.id = k.id_jabatan
+                   WHERE k.status = 'aktif'";
+    if ($idKaryawanFilter !== null && !empty($idKaryawanFilter)) {
+        $placeholders = implode(',', array_fill(0, count($idKaryawanFilter), '?'));
+        $sql_roster .= " AND k.id_karyawan IN ($placeholders)";
+        $stmt_roster = $conn->prepare($sql_roster);
+        $stmt_roster->bind_param(str_repeat('s', count($idKaryawanFilter)), ...$idKaryawanFilter);
+        $stmt_roster->execute();
+        $res_roster = $stmt_roster->get_result();
+        while ($row = $res_roster->fetch_assoc()) {
+            $roster[] = $row;
+        }
+        $stmt_roster->close();
+
+        $ditemukan = array_column($roster, 'id_karyawan');
+        $tidakDitemukan = array_diff($idKaryawanFilter, $ditemukan);
+        if (!empty($tidakDitemukan)) {
+            $log->warn("ID karyawan berikut dilewati (tidak ditemukan atau statusnya bukan 'aktif'): "
+                . implode(', ', array_map('htmlspecialchars', $tidakDitemukan)));
+        }
+    } else {
+        $res_roster = $conn->query($sql_roster);
+        while ($row = $res_roster->fetch_assoc()) {
+            $roster[] = $row;
+        }
+    }
+
+    if (empty($roster)) {
+        $log->error("Tidak ada karyawan aktif yang cocok untuk di-backfill - tidak ada yang dilakukan.");
+        return $hasil;
     }
 
     $jam_kerja_cabang = [];

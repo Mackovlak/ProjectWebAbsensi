@@ -41,12 +41,13 @@ $mysql_dow_overtime = daftarHariOvertimeMysqlDow($conn);
 // Get absensi data via raw SQL
 $sql_absensi = "SELECT
     COUNT(DISTINCT CASE WHEN a.keterangan IN ('Hadir', 'Dinas Luar') THEN a.id END) as total_hadir_raw,
-    COUNT(DISTINCT CASE 
+    COUNT(DISTINCT CASE
         WHEN a.keterangan = 'Hadir' AND (
             (a.jam_pulang IS NOT NULL AND a.jam_pulang != '00:00:00' AND TIMESTAMPDIFF(MINUTE, a.jam_masuk, a.jam_pulang) < 330)
             OR ((a.jam_pulang IS NULL OR a.jam_pulang = '00:00:00') AND a.tanggal < CURDATE())
+            OR a.dikonversi_izin_setengah_hari = 1
         )
-        THEN a.id 
+        THEN a.id
     END) as total_setengah_hari,
     COUNT(DISTINCT CASE WHEN a.keterangan IN ('Hadir', 'Dinas Luar') AND a.status_masuk = 'Terlambat' THEN a.id END) as total_terlambat,
     SUM(CASE 
@@ -103,10 +104,27 @@ $ahad_half = $absensi['total_ahad_setengah'] ?? 0;
 $insentif_ahad_hari = isset($_POST['insentif_ahad_hari']) ? (float)$_POST['insentif_ahad_hari'] : ($ahad_full + ($ahad_half * 0.5));
 $insentif_ahad_total = $insentif_ahad_nominal * $insentif_ahad_hari;
 
-// Keterlambatan (AUTO - Potongan)
-$keterlambatan_nominal = (float)$_POST['keterlambatan_nominal'];
-$keterlambatan_jumlah = isset($_POST['keterlambatan_jumlah']) ? (float)$_POST['keterlambatan_jumlah'] : ($absensi['total_terlambat'] ?? 0);
-$keterlambatan_total = $keterlambatan_nominal * $keterlambatan_jumlah;
+// Keterlambatan (AUTO - Potongan bertingkat per hari, lihat keterlambatan_functions.php)
+// $_POST['keterlambatan_nominal'] sekarang cuma dipakai sebagai rate fallback
+// untuk baris absensi lama yang belum punya menit_terlambat (sebelum migrasi
+// 007) - bukan rate flat yang dikalikan ke semua hari lagi.
+$keterlambatan_manual = isset($_POST['keterlambatan_manual']) && $_POST['keterlambatan_manual'] === '1';
+$rate_fallback_legacy = (float)($_POST['keterlambatan_nominal'] ?? 0);
+
+if ($keterlambatan_manual) {
+    $keterlambatan_total = (float)($_POST['keterlambatan_total_manual'] ?? 0);
+    $keterlambatan_jumlah = isset($_POST['keterlambatan_jumlah']) ? (float)$_POST['keterlambatan_jumlah'] : ($absensi['total_terlambat'] ?? 0);
+} else {
+    $hasil_keterlambatan = hitungTotalPotonganKeterlambatanPeriode($conn, $id_karyawan, $bulan, $tahun, $rate_fallback_legacy);
+    $keterlambatan_total = $hasil_keterlambatan['total'];
+    $keterlambatan_jumlah = $hasil_keterlambatan['jumlah_hari'];
+}
+
+// Nominal disimpan sebagai rata-rata efektif (total / jumlah hari), bukan
+// rate flat lagi - supaya baris "Rp nominal x jumlah = total" di slip cetak
+// (export_slip_gaji.php, laporan_slip_batch.php) tetap konsisten secara
+// aritmatika walau perhitungan aslinya kini bertingkat per hari.
+$keterlambatan_nominal = $keterlambatan_jumlah > 0 ? round($keterlambatan_total / $keterlambatan_jumlah) : 0;
 
 // Digenapkan
 $digenapkan = (float)$_POST['digenapkan'];

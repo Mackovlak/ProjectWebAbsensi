@@ -19,6 +19,14 @@ try {
         header('Allow: POST');
         outputJSON(['success' => false, 'message' => 'Gunakan POST.']);
     }
+    // Sama seperti verify_attendance_face.php - dicek manual (bukan lewat
+    // verifyCSRFToken() global) karena endpoint ini harus selalu balas JSON,
+    // sedangkan verifyCSRFToken() mati dengan teks polos.
+    $csrf = $_POST['csrf_token'] ?? null;
+    if (!is_string($csrf) || empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $csrf)) {
+        http_response_code(403);
+        outputJSON(['success' => false, 'message' => 'Sesi tidak valid. Muat ulang halaman absensi.']);
+    }
     foreach (['id_karyawan', 'lokasi', 'keterangan', 'alasan', 'alasan_pulang'] as $field) {
         if (isset($_POST[$field]) && !is_string($_POST[$field])) {
             outputJSON(['success' => false, 'message' => 'Format permintaan tidak valid.']);
@@ -129,16 +137,29 @@ try {
     $stmt_check->execute();
     $result_check = $stmt_check->get_result();
     $attendance_row = $result_check->fetch_assoc();
-    $is_absen_pulang = (bool)$attendance_row;
-    if (!$is_absen_pulang && $keterangan_param === 'pulang') {
-        outputJSON(['success' => false, 'message' => 'Absen masuk belum tercatat.']);
-    }
-    // Derive the operation from the database, not the posted status/jenis.
+    $row_ada = (bool)$attendance_row;
+    $data_absen = $attendance_row;
+
+    // Kiosk membiarkan Masuk dan Pulang dipilih bebas (bukan otomatis dari
+    // state) - klik "Absen Pulang" mengirim aksi=pulang secara eksplisit,
+    // supaya bisa dibedakan dari submit Masuk walau belum ada baris sama
+    // sekali hari ini (skenario lupa absen masuk - lihat cabang !$row_ada
+    // di bawah, yang tetap mewajibkan verifikasi wajah lewat token yang
+    // sama seperti Pulang normal).
+    $aksi_pulang = isset($_POST['aksi']) && $_POST['aksi'] === 'pulang';
+    $is_absen_pulang = $row_ada || $aksi_pulang;
+
+    // Derive the operation from the database (+ aksi=pulang eksplisit untuk
+    // kasus lupa absen masuk), bukan cuma dari status/jenis yang diposting.
+    // 'Pending Dinas' sengaja tidak diikutkan: verify_attendance_face.php
+    // tidak pernah menerbitkan token untuk status ini (masih menunggu ACC
+    // admin), jadi cabang ini dibiarkan gagal di pengecekan $is_pending_dinas
+    // di bawah yang pesannya jauh lebih jelas, bukan dipaksa lewat sini dulu.
     $needs_face = $is_absen_pulang
-        ? in_array($attendance_row['keterangan'], ['Hadir', 'Dinas Luar', 'Pending Dinas'], true)
+        ? ($row_ada ? in_array($attendance_row['keterangan'], ['Hadir', 'Dinas Luar'], true) : true)
         : ($keterangan_param === 'Hadir' || $is_dinas_luar || $izin_dinas_hari_ini);
     if ($needs_face) {
-        $context = attendanceFaceContext($id_karyawan, $attendance_row, $karyawan_data['face_descriptor'], $tanggal);
+        $context = attendanceFaceContext($id_karyawan, $row_ada ? $attendance_row : null, $karyawan_data['face_descriptor'], $tanggal, $is_absen_pulang ? 'pulang' : 'masuk');
         $verified = attendanceFaceConsumeToken($_SESSION, 'attendance_face_receipts', $_POST['verification_token'] ?? null, $context);
         $capture_bytes = readAttendanceCapture($_FILES['foto_capture'] ?? null);
         if (!hash_equals($verified['photo_hash'], hash('sha256', $capture_bytes))) {
@@ -252,8 +273,98 @@ try {
 
     if ($is_absen_pulang) {
         // ============== PROSES ABSEN PULANG ==============
-        $data_absen = $attendance_row;
-        
+
+        if (!$row_ada) {
+            // Pulang dipilih sebagai AKSI PERTAMA hari ini - tidak ada baris
+            // sama sekali, artinya karyawan lupa (atau sengaja belum) absen
+            // masuk. Baris baru dibuat dengan jam_masuk KOSONG - sengaja
+            // dibiarkan tampak sebagai anomali (bukan ditebak/ditutupi jadi
+            // "Tepat Waktu"), supaya SPV/Admin bisa menanyakan langsung ke
+            // karyawan saat meninjau data sebelum membuat slip gaji, alih-
+            // alih sistem diam-diam mengarang jam masuk. Tidak ada
+            // perhitungan lembur/pulang-cepat di sini karena tidak ada
+            // jam_masuk sebagai pembanding shift - itu murni urusan admin
+            // memperbaiki manual lewat histori_absensi.php kalau perlu.
+            // Alasan wajib diisi di sini juga (bukan cuma dianjurkan) - ini titik
+            // paling wajar untuk menagihnya karena karyawan sendiri yang baru
+            // sadar lupa absen masuk, sebelum Admin/SPV sempat menanyakannya
+            // lewat histori_absensi.php.
+            // Verifikasi wajah (token + foto) sudah dikonsumsi di blok
+            // $needs_face di atas - $face_verified/$face_confidence di sini
+            // berasal dari situ (server), bukan dari input klien.
+            $alasan_tidak_masuk = isset($_POST['alasan']) ? sanitizeInput($_POST['alasan']) : '';
+            if (strlen($alasan_tidak_masuk) < 5) {
+                $stmt_check->close();
+                outputJSON([
+                    'success' => false,
+                    'message' => 'Mohon isi alasan kenapa belum absen masuk hari ini (minimal 5 karakter).',
+                    'type' => 'alasan_required'
+                ]);
+            }
+
+            $validasi_lokasi = validateLokasiAbsen($lokasi, $id_karyawan, $conn);
+            if (!$validasi_lokasi['valid'] && !isset($validasi_lokasi['bypass'])) {
+                $stmt_check->close();
+                outputJSON([
+                    'success' => false,
+                    'message' => $validasi_lokasi['message'],
+                    'jarak' => $validasi_lokasi['jarak'],
+                    'radius' => $validasi_lokasi['radius'],
+                    'type' => 'location_error'
+                ]);
+            }
+
+            $conn->begin_transaction();
+            try {
+                $stmt_final_check = $conn->prepare("SELECT id FROM absensi WHERE id_karyawan = ? AND tanggal = ? FOR UPDATE");
+                $stmt_final_check->bind_param("ss", $id_karyawan, $tanggal);
+                $stmt_final_check->execute();
+                if ($stmt_final_check->get_result()->num_rows > 0) {
+                    $conn->rollback();
+                    $stmt_final_check->close();
+                    $stmt_check->close();
+                    outputJSON(['success' => false, 'message' => 'Absensi sudah tercatat.']);
+                }
+                $stmt_final_check->close();
+
+                // status_masuk SENGAJA tidak diisi (NULL) - tabel ini defaultnya
+                // 'Tepat Waktu' kalau kolomnya dilewati, yang justru menyesatkan
+                // (seolah ada absen masuk yang tepat waktu). Ditulis eksplisit
+                // NULL di sini supaya anomalinya benar-benar tampak kosong.
+                // alasan/waktu_alasan dipakai di sini untuk "kenapa lupa absen
+                // masuk" - baris jenis ini tidak pernah lewat alur alasan
+                // check-in yang lain (Dinas Luar dkk.), jadi tidak bentrok makna.
+                $waktu_alasan_tidak_masuk = date('Y-m-d H:i:s');
+                $stmt_insert_pulang_saja = $conn->prepare(
+                    "INSERT INTO absensi (id_karyawan, tanggal, jam_pulang, lokasi_pulang, keterangan, status_masuk, face_verified, face_confidence, input_method, alasan, waktu_alasan)
+                     VALUES (?, ?, ?, ?, 'Hadir', NULL, 1, ?, 'qr_scan', ?, ?)"
+                );
+                $stmt_insert_pulang_saja->bind_param("ssssdss", $id_karyawan, $tanggal, $waktu, $lokasi, $face_confidence, $alasan_tidak_masuk, $waktu_alasan_tidak_masuk);
+
+                if ($stmt_insert_pulang_saja->execute()) {
+                    if ($capture_ready) saveAttendanceCapture($conn, $conn->insert_id, 'pulang', $capture_bytes);
+                    logActivity($conn, 'absen_pulang_tanpa_masuk', "Absen pulang jam $waktu tanpa absen masuk sebelumnya - perlu ditinjau", $id_karyawan);
+                    if (!$conn->commit()) throw new RuntimeException('Gagal menyimpan absensi pulang.');
+                    $stmt_insert_pulang_saja->close();
+                    $stmt_check->close();
+                    outputJSON([
+                        'success' => true,
+                        'title' => 'Absen Pulang Tercatat',
+                        'message' => "Absen pulang jam $waktu berhasil dicatat.<br><br>Karena tidak ada absen masuk hari ini, data ini akan ditandai untuk ditinjau Admin/Supervisor - Anda mungkin akan dihubungi untuk konfirmasi."
+                    ]);
+                } else {
+                    $conn->rollback();
+                    $stmt_insert_pulang_saja->close();
+                    $stmt_check->close();
+                    outputJSON(['success' => false, 'message' => 'Gagal merekam absensi pulang.']);
+                }
+            } catch (Exception $e) {
+                $conn->rollback();
+                $stmt_check->close();
+                outputJSON(['success' => false, 'message' => 'Gagal merekam absensi pulang: ' . $e->getMessage()]);
+            }
+        }
+
         if ($data_absen['jam_pulang'] != NULL && $data_absen['jam_pulang'] != '00:00:00') {
             $stmt_check->close();
             outputJSON(['success' => false, 'message' => 'Anda sudah absen pulang hari ini.']);
@@ -302,19 +413,21 @@ try {
             }
         }
 
-        // ============== CEK OVERTIME =================
-        // Pada hari lembur (mis. Sabtu) seluruh jam kerjanya memang sudah
-        // dihitung lembur lewat getLemburHariSabtu(), jadi form alasan+foto
-        // overtime tidak perlu diminta lagi.
-        $is_hari_lembur = isHariOvertime($conn, $tanggal);
-
-        $is_overtime_request = false;
-        if ($is_hadir_masuk && !$is_hari_lembur) {
+        // ============== CEK PULANG CEPAT =================
+        // Overtime lewat jam pulang shift TIDAK LAGI otomatis terdeteksi/
+        // diblokir di sini - sejak fitur izin lembur (pengajuan_lembur), jam
+        // lemburnya dihitung nanti di slip gaji dari selisih jam_pulang aktual
+        // vs jam pulang shift, HANYA untuk hari yang punya izin lembur
+        // Disetujui (lihat hitungJamLemburDisetujui() di lembur_functions.php).
+        // Karyawan yang pulang telat tanpa izin lembur tetap absen normal -
+        // tidak dianggap lembur berbayar, tapi juga tidak diblokir/dipaksa
+        // isi alasan+foto di sini.
+        if ($is_hadir_masuk && !isHariOvertime($conn, $tanggal)) {
             $stmt_jam_pulang = $conn->prepare("
-                SELECT jk.jam_pulang 
-                FROM jam_kerja jk 
-                WHERE jk.id_cabang = ? 
-                ORDER BY ABS(TIMESTAMPDIFF(MINUTE, ?, jk.jam_masuk_akhir)) ASC 
+                SELECT jk.jam_pulang
+                FROM jam_kerja jk
+                WHERE jk.id_cabang = ?
+                ORDER BY ABS(TIMESTAMPDIFF(MINUTE, ?, jk.jam_masuk_akhir)) ASC
                 LIMIT 1
             ");
             $stmt_jam_pulang->bind_param("is", $id_cabang, $data_absen['jam_masuk']);
@@ -322,9 +435,7 @@ try {
             $result_jam_pulang = $stmt_jam_pulang->get_result();
             if ($result_jam_pulang->num_rows > 0) {
                 $target_jam_pulang = $result_jam_pulang->fetch_assoc()['jam_pulang'];
-                if ($waktu > $target_jam_pulang) {
-                    $is_overtime_request = true;
-                } elseif ($waktu < $target_jam_pulang && $ket_data['izin_pulang_cepat'] !== 'Disetujui') {
+                if ($waktu < $target_jam_pulang && $ket_data['izin_pulang_cepat'] !== 'Disetujui') {
                     // Pulang lebih awal dari jam pulang shift wajib punya izin
                     // pulang cepat yang sudah Disetujui Admin/Supervisor.
                     $stmt_jam_pulang->close();
@@ -344,38 +455,11 @@ try {
 
         $alasan_pulang = isset($_POST['alasan_pulang']) ? sanitizeInput($_POST['alasan_pulang']) : null;
         $foto_pulang_name = null;
-        
-        if ($is_overtime_request) {
-            if (empty($alasan_pulang) || empty($_FILES['foto_pulang']['name'])) {
-                $stmt_check->close();
-                outputJSON([
-                    'success' => false,
-                    'message' => 'Anda terdeteksi melakukan Overtime. Silakan isi alasan dan unggah foto bukti Overtime terlebih dahulu.',
-                    'type' => 'overtime_form_required'
-                ]);
-            }
-            
-            if (isset($_FILES['foto_pulang']) && $_FILES['foto_pulang']['error'] == 0) {
-                $upload_dir = __DIR__ . '/assets/uploads/absensi/';
-                if (!file_exists($upload_dir)) mkdir($upload_dir, 0777, true);
-                
-                $ext = strtolower(pathinfo($_FILES['foto_pulang']['name'], PATHINFO_EXTENSION));
-                $allowed_ext = ['jpg', 'jpeg', 'png'];
-                if (in_array($ext, $allowed_ext) && $_FILES['foto_pulang']['size'] <= 6 * 1024 * 1024) {
-                    $foto_pulang_name = $id_karyawan . '_overtime_' . date('Ymd_His') . '_' . uniqid() . '.' . $ext;
-                    move_uploaded_file($_FILES['foto_pulang']['tmp_name'], $upload_dir . $foto_pulang_name);
-                } else {
-                    $stmt_check->close();
-                    outputJSON([
-                        'success' => false,
-                        'message' => 'Format foto Overtime tidak valid atau ukuran terlalu besar (Max 6MB).'
-                    ]);
-                }
-            }
-        }
         // ==============================================
 
-        if ($capture_ready && ($is_hadir_masuk || $is_dinas_luar_status || isset($_FILES['foto_capture']))) {
+        // $capture_bytes sudah dibaca+divalidasi di blok $needs_face di atas
+        // kalau memang butuh wajah - jangan baca file upload yang sama dua kali.
+        if ($capture_ready && $capture_bytes === null && ($is_hadir_masuk || $is_dinas_luar_status || isset($_FILES['foto_capture']))) {
             $capture_bytes = readAttendanceCapture($_FILES['foto_capture'] ?? null);
         }
         $conn->begin_transaction();
@@ -432,6 +516,7 @@ try {
             $keterangan = $is_dinas_luar ? 'Pending Dinas' : $keterangan_param;
         }
         $status_masuk = 'Tepat Waktu';
+        $menit_terlambat = null;
 
         // Keterlambatan hanya berlaku pada HARI KERJA normal. Pada hari lembur
         // (mis. Sabtu) jam masuk memang tidak tetap - bisa 10:00 tergantung
@@ -463,8 +548,20 @@ try {
                         }
                     }
                 }
-                if ($target_rule && $waktu > $target_rule['jam_masuk_akhir']) {
-                    $status_masuk = 'Terlambat';
+                if ($target_rule) {
+                    // Menit mentah lewat jam_masuk_akhir shift - fakta historis,
+                    // independen dari tarif dispensasi/potongan (yang bisa
+                    // berubah kapan saja lewat system_settings). Status
+                    // 'Terlambat' baru berlaku setelah lewat masa dispensasi
+                    // (default 10 menit), bukan begitu lewat jam_masuk_akhir
+                    // persis - lihat keterlambatan_functions.php.
+                    $selisih_menit = (int)round((strtotime($waktu) - strtotime($target_rule['jam_masuk_akhir'])) / 60);
+                    if ($selisih_menit > 0) {
+                        $menit_terlambat = $selisih_menit;
+                        if (apakahTerlambat($menit_terlambat, null, $conn)) {
+                            $status_masuk = 'Terlambat';
+                        }
+                    }
                 }
             }
         }
@@ -472,7 +569,9 @@ try {
         // Face verified status
         // $face_verified and $face_confidence come only from the consumed server receipt.
 
-        if ($capture_ready && ($keterangan_param === 'Hadir' || isset($_FILES['foto_capture']))) {
+        // $capture_bytes sudah dibaca+divalidasi di blok $needs_face di atas
+        // kalau memang butuh wajah - jangan baca file upload yang sama dua kali.
+        if ($capture_ready && $capture_bytes === null && ($keterangan_param === 'Hadir' || isset($_FILES['foto_capture']))) {
             $capture_bytes = readAttendanceCapture($_FILES['foto_capture'] ?? null);
         }
         // Insert absensi masuk
@@ -511,16 +610,16 @@ try {
             // Insert data
             if ($face_verified) {
                 $stmt_insert = $conn->prepare(
-                    "INSERT INTO absensi (id_karyawan, tanggal, jam_masuk, lokasi_masuk, keterangan, status_masuk, face_verified, face_confidence, alasan, foto_bukti, waktu_alasan) 
-                     VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)"
+                    "INSERT INTO absensi (id_karyawan, tanggal, jam_masuk, lokasi_masuk, keterangan, status_masuk, menit_terlambat, face_verified, face_confidence, alasan, foto_bukti, waktu_alasan)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)"
                 );
-                $stmt_insert->bind_param("ssssssdsss", $id_karyawan, $tanggal, $waktu, $lokasi, $keterangan, $status_masuk, $face_confidence, $alasan, $foto_bukti_name, $waktu_alasan);
+                $stmt_insert->bind_param("ssssssidsss", $id_karyawan, $tanggal, $waktu, $lokasi, $keterangan, $status_masuk, $menit_terlambat, $face_confidence, $alasan, $foto_bukti_name, $waktu_alasan);
             } else {
                 $stmt_insert = $conn->prepare(
-                    "INSERT INTO absensi (id_karyawan, tanggal, jam_masuk, lokasi_masuk, keterangan, status_masuk, alasan, foto_bukti, waktu_alasan) 
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                    "INSERT INTO absensi (id_karyawan, tanggal, jam_masuk, lokasi_masuk, keterangan, status_masuk, menit_terlambat, alasan, foto_bukti, waktu_alasan)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 );
-                $stmt_insert->bind_param("sssssssss", $id_karyawan, $tanggal, $waktu, $lokasi, $keterangan, $status_masuk, $alasan, $foto_bukti_name, $waktu_alasan);
+                $stmt_insert->bind_param("ssssssisss", $id_karyawan, $tanggal, $waktu, $lokasi, $keterangan, $status_masuk, $menit_terlambat, $alasan, $foto_bukti_name, $waktu_alasan);
             }
             
             if ($stmt_insert->execute()) {

@@ -77,10 +77,14 @@ function attendanceFaceConsumeToken(&$session, $bucket, $token, $expected, $now 
     return $record['context'];
 }
 
-function attendanceFaceContext($employeeId, $attendance, $templates, $date) {
+// $kind lets a caller state the intended operation explicitly instead of
+// inferring it from $attendance's presence - needed for the "lupa absen
+// masuk" flow, where Pulang is chosen first and no row exists yet, so the
+// operation is still 'pulang' even though $attendance is null.
+function attendanceFaceContext($employeeId, $attendance, $templates, $date, $kind = null) {
     return [
         'employee' => $employeeId,
-        'kind' => $attendance ? 'pulang' : 'masuk',
+        'kind' => $kind ?? ($attendance ? 'pulang' : 'masuk'),
         'attendance_id' => $attendance ? (int)$attendance['id'] : 0,
         'date' => $date,
         'template_hash' => hash('sha256', $templates ?? ''),

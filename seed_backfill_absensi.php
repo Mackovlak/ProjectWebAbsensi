@@ -28,9 +28,12 @@
  * Admin di web, confirm eksplisit (POST + CSRF) sebelum menulis apa pun,
  * dan pengakuan tambahan kalau database yang terdeteksi bukan localhost.
  *
+ * Bisa dibatasi ke karyawan tertentu saja (parameter opsional) - kalau
+ * kosong, semua karyawan status 'aktif' diproses seperti biasa.
+ *
  * Jalankan: http://localhost/seed_backfill_absensi.php (login Admin dulu)
  * atau CLI : php seed_backfill_absensi.php                              (pratinjau)
- *            php seed_backfill_absensi.php --confirm [--force-remote] [--hari=90]
+ *            php seed_backfill_absensi.php --confirm [--force-remote] [--hari=90] [--karyawan=ID1,ID2,...]
  */
 
 require 'config.php';
@@ -45,6 +48,7 @@ if (!$isCli) {
 $info = infoKoneksiDb($conn);
 
 $argv = $_SERVER['argv'] ?? [];
+$idKaryawanFilter = null; // null = semua karyawan aktif
 if ($isCli) {
     $confirmed = in_array('--confirm', $argv, true);
     $forceRemote = in_array('--force-remote', $argv, true);
@@ -53,11 +57,19 @@ if ($isCli) {
         if (preg_match('/^--hari=(\d+)$/', $a, $m)) {
             $hariKeBelakang = max(1, min(365, (int)$m[1]));
         }
+        if (preg_match('/^--karyawan=(.+)$/', $a, $m)) {
+            $idKaryawanFilter = explode(',', $m[1]);
+        }
     }
 } else {
     $confirmed = ($_SERVER['REQUEST_METHOD'] === 'POST') && isset($_POST['jalankan_backfill']);
     $forceRemote = $confirmed && !empty($_POST['ack_remote']);
     $hariKeBelakang = $confirmed ? max(1, min(365, (int)($_POST['hari'] ?? 90))) : max(1, min(365, (int)($_GET['hari'] ?? 90)));
+    $rawKaryawan = $confirmed ? ($_POST['karyawan'] ?? '') : ($_GET['karyawan'] ?? '');
+    $rawKaryawan = trim($rawKaryawan);
+    if ($rawKaryawan !== '') {
+        $idKaryawanFilter = preg_split('/[\s,]+/', $rawKaryawan, -1, PREG_SPLIT_NO_EMPTY);
+    }
 }
 
 // Kalau host bukan localhost dan belum ada pengakuan eksplisit, turunkan ke
@@ -72,7 +84,7 @@ if (!$isCli && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['jalankan_b
 }
 
 $log = new MigrationLog();
-$hasil = backfillRiwayatAbsensi($conn, $confirmed, $log, 'seed_backfill_absensi.php', $hariKeBelakang);
+$hasil = backfillRiwayatAbsensi($conn, $confirmed, $log, 'seed_backfill_absensi.php', $hariKeBelakang, $idKaryawanFilter);
 $ada_error = $log->hasError();
 
 // ==========================================================
@@ -80,7 +92,10 @@ $ada_error = $log->hasError();
 // ==========================================================
 if ($isCli) {
     echo "DB: {$info['host']} / {$info['database']}" . ($info['is_local'] ? " (lokal)" : " *** BUKAN LOKAL ***") . "\n";
-    echo "Rentang: {$hariKeBelakang} hari ke belakang (tidak termasuk hari ini)\n\n";
+    echo "Rentang: {$hariKeBelakang} hari ke belakang (tidak termasuk hari ini)\n";
+    echo $idKaryawanFilter !== null
+        ? "Karyawan: " . implode(', ', $idKaryawanFilter) . "\n\n"
+        : "Karyawan: semua yang berstatus aktif\n\n";
 
     if ($butuhAckRemote) {
         echo "Database ini BUKAN localhost. Tambahkan --force-remote di samping --confirm untuk benar-benar menulis data di sini.\n\n";
@@ -180,6 +195,12 @@ $csrf_token = generateCSRFToken();
             <label style="font-size:13px;display:block;margin-bottom:10px;">
                 Rentang hari ke belakang:
                 <input type="number" name="hari" min="1" max="365" value="<?php echo $hariKeBelakang; ?>">
+            </label>
+            <label style="font-size:13px;display:block;margin-bottom:10px;">
+                ID Karyawan tertentu (opsional - kosongkan untuk semua karyawan aktif):<br>
+                <input type="text" name="karyawan" placeholder="mis. 20260812001, 20260812002"
+                       value="<?php echo htmlspecialchars($idKaryawanFilter !== null ? implode(', ', $idKaryawanFilter) : ''); ?>"
+                       style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;box-sizing:border-box;">
             </label>
             <?php if (!$info['is_local'] && !$confirmed): ?>
             <label class="ack">

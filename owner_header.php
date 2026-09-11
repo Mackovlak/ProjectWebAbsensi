@@ -285,6 +285,10 @@ $total_notif = count($notif_dinas) + count($notif_pulang_cepat) + count($notif_i
                     </span>
                 <?php endif; ?>
             </a>
+            <a href="kelola_pengajuan_lembur.php" class="flex items-center gap-3 px-4 py-3 mx-4 <?php echo basename($_SERVER['PHP_SELF']) == 'kelola_pengajuan_lembur.php' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
+                <i class="ph-duotone ph-business-time text-xl w-6 flex items-center justify-center <?php echo basename($_SERVER['PHP_SELF']) == 'kelola_pengajuan_lembur.php' ? '' : 'opacity-70 group-hover:opacity-100 transition-opacity'; ?>"></i>
+                <span class="font-medium text-sm">Pengajuan Lembur</span>
+            </a>
 
             <a href="owner_approval_gaji.php" class="flex items-center gap-3 px-4 py-3 mx-4 <?php echo basename($_SERVER['PHP_SELF']) == 'owner_approval_gaji.php' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
                 <i class="ph-duotone ph-signature text-xl w-6 flex items-center justify-center <?php echo basename($_SERVER['PHP_SELF']) == 'owner_approval_gaji.php' ? '' : 'opacity-70 group-hover:opacity-100 transition-opacity'; ?>"></i>

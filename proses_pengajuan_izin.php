@@ -388,6 +388,49 @@ if (isset($_POST['review_izin'])) {
     }
 }
 
+// ==========================================================
+// KONVERSI "TIDAK ABSEN MASUK" JADI IZIN SETENGAH HARI (supervisor / admin / owner)
+// ==========================================================
+if (isset($_POST['konversi_setengah_hari'])) {
+    requireApprover();
+
+    $id_absensi = intval($_POST['id_absensi'] ?? 0);
+    $redirect_balik = 'histori_absensi.php?cabang=' . (int)($_POST['id_cabang'] ?? 0)
+        . '&start_date=' . urlencode($_POST['start_date'] ?? '')
+        . '&end_date=' . urlencode($_POST['end_date'] ?? '');
+
+    if ($id_absensi <= 0) {
+        selesai("❌ Data absensi tidak valid.", false, $redirect_balik);
+    }
+
+    // Scoping cabang: supervisor hanya boleh menyentuh karyawan di cabangnya sendiri
+    $cabang_reviewer = getCabangReviewer($conn, $_SESSION['user_id'], $_SESSION['role']);
+    if ($cabang_reviewer !== null) {
+        $stmt_cek = $conn->prepare("SELECT k.id_cabang FROM absensi a
+                                     JOIN karyawan k ON a.id_karyawan = k.id_karyawan
+                                     WHERE a.id = ?");
+        $stmt_cek->bind_param("i", $id_absensi);
+        $stmt_cek->execute();
+        $cek = $stmt_cek->get_result()->fetch_assoc();
+        $stmt_cek->close();
+        if (!$cek || (int)$cek['id_cabang'] !== (int)$cabang_reviewer) {
+            selesai("❌ Data ini berada di luar cabang yang Anda supervisi.", false, $redirect_balik);
+        }
+    }
+
+    $hasil = konversiTidakAbsenMasukKeSetengahHari($conn, $id_absensi, $_SESSION['user_id']);
+
+    if (!$hasil['sukses']) {
+        selesai("❌ " . $hasil['pesan'], false, $redirect_balik);
+    }
+
+    logActivity($conn, 'konversi_izin_setengah_hari',
+        "Konversi Tidak Absen Masuk ({$hasil['absen']['id_karyawan']}, {$hasil['absen']['tanggal']}) jadi izin setengah hari - #{$id_absensi}",
+        $_SESSION['user_id']);
+
+    selesai("✅ " . $hasil['pesan'], true, $redirect_balik);
+}
+
 // Tidak ada aksi yang cocok
 selesai("❌ Aksi tidak dikenali.", false);
 ?>
