@@ -62,29 +62,35 @@ if ($result_check->num_rows > 0) {
     $absen_hari_ini = $result_check->fetch_assoc();
     if ($absen_hari_ini['jam_pulang'] != NULL && $absen_hari_ini['jam_pulang'] != '00:00:00') {
         $status_absen = 'sudah_pulang';
-        
-        $jam_masuk_ts = strtotime($absen_hari_ini['jam_masuk']);
-        $jam_pulang_ts = strtotime($absen_hari_ini['jam_pulang']);
-        $durasi_menit = ($jam_pulang_ts - $jam_masuk_ts) / 60;
-        
-        if ($durasi_menit > 0 && $durasi_menit < 330) {
-            $status_pulang = 'Setengah Hari';
-        } else {
-            $stmt_jam = $conn->prepare("SELECT MAX(jam_pulang) as jam_pulang_standar FROM jam_kerja WHERE id_cabang = ?");
-            $stmt_jam->bind_param("i", $absen_hari_ini['id_cabang']);
-            $stmt_jam->execute();
-            $jam_kerja = $stmt_jam->get_result()->fetch_assoc();
-            
-            if ($jam_kerja && !empty($jam_kerja['jam_pulang_standar'])) {
-                if (strtotime($absen_hari_ini['jam_pulang']) > strtotime($jam_kerja['jam_pulang_standar'])) {
-                    $status_pulang = 'Overtime';
+
+        // jam_masuk bisa NULL kalau karyawan langsung Absen Pulang tanpa
+        // absen masuk (lihat proses_absen.php) - tanpa titik acuan ini
+        // durasinya tidak bisa dihitung, jadi $status_pulang dibiarkan null
+        // (badge "Status Pulang" otomatis disembunyikan di tampilan bawah).
+        if (!empty($absen_hari_ini['jam_masuk'])) {
+            $jam_masuk_ts = strtotime($absen_hari_ini['jam_masuk']);
+            $jam_pulang_ts = strtotime($absen_hari_ini['jam_pulang']);
+            $durasi_menit = ($jam_pulang_ts - $jam_masuk_ts) / 60;
+
+            if ($durasi_menit > 0 && $durasi_menit < 330) {
+                $status_pulang = 'Setengah Hari';
+            } else {
+                $stmt_jam = $conn->prepare("SELECT MAX(jam_pulang) as jam_pulang_standar FROM jam_kerja WHERE id_cabang = ?");
+                $stmt_jam->bind_param("i", $absen_hari_ini['id_cabang']);
+                $stmt_jam->execute();
+                $jam_kerja = $stmt_jam->get_result()->fetch_assoc();
+
+                if ($jam_kerja && !empty($jam_kerja['jam_pulang_standar'])) {
+                    if (strtotime($absen_hari_ini['jam_pulang']) > strtotime($jam_kerja['jam_pulang_standar'])) {
+                        $status_pulang = 'Overtime';
+                    } else {
+                        $status_pulang = 'Normal';
+                    }
                 } else {
                     $status_pulang = 'Normal';
                 }
-            } else {
-                $status_pulang = 'Normal';
+                $stmt_jam->close();
             }
-            $stmt_jam->close();
         }
     } else {
         $status_absen = 'sudah_masuk';
@@ -131,6 +137,14 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- Tailwind CSS via CDN - dipakai sama seperti halaman lain di aplikasi
+         ini (admin_header.php, staff_header.php, login.php, dst.), khusus
+         untuk utility responsive (grid-cols-*, landscape:/portrait:) supaya
+         tidak perlu menulis media query manual. Ditaruh SEBELUM <style> di
+         bawah supaya kalau ada nama class yang kebetulan sama, CSS custom
+         yang sudah ada di halaman ini yang menang (lebih belakang di
+         cascade), bukan utility Tailwind yang baru ditambahkan. -->
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -140,30 +154,58 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
         }
         #main-container, #success-content {
             display: flex; justify-content: center; align-items: center;
-            min-height: 100vh; width: 100%; position: fixed; top: 0; left: 0; padding: 20px; box-sizing: border-box; overflow-y: auto;
+            /* height (bukan min-height) WAJIB di sini supaya overflow-y: auto
+               di bawah benar-benar aktif - position: fixed + min-height
+               membuat elemen ini tumbuh mengikuti konten (kartu status,
+               tombol OFF/Sakit/Cuti dkk.) melebihi tinggi layar tanpa cara
+               scroll ke bagian yang terpotong, cuma bisa "diperbaiki" dengan
+               zoom out. 100dvh dipasang setelah 100vh supaya browser lama
+               yang belum kenal dvh tetap dapat fallback vh, browser modern
+               (terutama mobile - address bar yang collapse/expand) pakai
+               tinggi viewport yang sebenarnya terlihat, bukan yang dihitung
+               statis saat halaman pertama dimuat. */
+            height: 100vh; height: 100dvh; width: 100%; position: fixed; top: 0; left: 0; padding: 20px; box-sizing: border-box; overflow-y: auto;
         }
-        .absen-container { 
-            background: #ffffff; padding: 32px 24px; border-radius: 28px; 
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15); width: 100%; max-width: 380px; 
+        .absen-container {
+            background: #ffffff; padding: clamp(16px, 4vh, 32px) clamp(16px, 5vw, 24px); border-radius: 28px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15); width: 100%; max-width: 380px;
+            max-height: 100%; overflow-y: auto;
             text-align: center; animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1); position: relative; margin: auto;
         }
         @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
         .logo-container {
-            display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 24px;
+            display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: clamp(10px, 2.5vh, 24px);
         }
         .logo-img-wrapper {
             background: rgba(255, 255, 255, 0.9); padding: 6px; border-radius: 10px;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
             border: 1px solid rgba(0, 0, 0, 0.05); display: flex; align-items: center; justify-content: center;
         }
-        .logo-img-wrapper img { height: 32px; width: auto; object-fit: contain; }
+        .logo-img-wrapper img { height: clamp(24px, 4vh, 32px); width: auto; object-fit: contain; }
         .logo-text-wrapper { display: flex; flex-direction: column; justify-content: center; text-align: left; }
-        .logo-title { font-size: 20px; font-weight: 800; color: #1e293b; letter-spacing: -0.5px; line-height: 1.1; margin: 0; }
+        .logo-title { font-size: clamp(16px, 3vh, 20px); font-weight: 800; color: #1e293b; letter-spacing: -0.5px; line-height: 1.1; margin: 0; }
         .logo-title span { background: linear-gradient(to right, #f97316, #facc15); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         .logo-subtitle { font-size: 11px; color: #64748b; font-weight: 600; letter-spacing: 0.3px; line-height: 1; margin-top: 2px; }
-        h2 { color: #1e293b; margin-bottom: 12px; font-size: 22px; font-weight: 700; line-height: 1.3; }
-        p { color: #64748b; margin-bottom: 20px; font-size: 14px; line-height: 1.5; }
-        .date-text { color: #0ea5e9; font-weight: 600; font-size: 15px; background: #f0f9ff; padding: 8px 16px; border-radius: 12px; display: inline-block; margin-bottom: 24px;}
+        h2 { color: #1e293b; margin-bottom: clamp(6px, 1.5vh, 12px); font-size: clamp(17px, 3.6vh, 22px); font-weight: 700; line-height: 1.3; }
+        p { color: #64748b; margin-bottom: clamp(8px, 2vh, 20px); font-size: clamp(12.5px, 1.8vh, 14px); line-height: 1.45; }
+        .date-text { color: #0ea5e9; font-weight: 600; font-size: clamp(13px, 1.8vh, 15px); background: #f0f9ff; padding: clamp(6px, 1vh, 8px) 16px; border-radius: 12px; display: inline-block; margin-bottom: clamp(10px, 2.5vh, 24px);}
+        /* Semua ukuran/spasi di bawah ini dipakai supaya kartu absen bisa
+           menyesuaikan diri ke layar pendek (HP kecil/landscape) tanpa perlu
+           discroll - clamp(min, nilai-relatif-vh, maks) mengecil otomatis
+           kalau tinggi layar (vh) kecil, tapi tidak pernah lebih kecil dari
+           batas minimum supaya tetap terbaca/mudah disentuh. */
+        .greeting-wrapper { margin-bottom: clamp(8px, 2.5vh, 24px); }
+        .greeting-label {
+            display: block; font-size: clamp(11px, 1.6vh, 14px); color: #64748b; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: clamp(3px, 0.8vh, 6px);
+        }
+        .greeting-name {
+            margin: 0; font-size: clamp(18px, 4vh, 24px); color: #1e293b; font-weight: 800;
+            letter-spacing: -0.5px; line-height: 1.2;
+        }
+        .divider-section { margin-top: clamp(10px, 2vh, 25px); border-top: 1px dashed #cbd5e1; padding-top: clamp(10px, 2vh, 20px); }
+        .divider-section-tight { margin-top: 4px; border-top: 1px dashed #e2e8f0; padding-top: clamp(8px, 1.8vh, 16px); }
+        .banner-box { padding: clamp(10px, 1.8vh, 15px); border-radius: 12px; margin-bottom: clamp(10px, 2vh, 20px); }
         .face-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0, 0, 0, 0.95); display: none; justify-content: center;
@@ -197,19 +239,19 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
         }
         .face-status.success { background: #d4edda; color: #155724; }
         .face-status.error { background: #f8d7da; color: #721c24; }
-        .btn { 
-            width: 100%; padding: 14px; margin: 8px 0 14px 0; border: none; border-radius: 16px; 
-            font-size: 14px; font-weight: 700; cursor: pointer; transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.2s ease; 
-            display: flex; align-items: center; justify-content: center; gap: 8px; 
+        .btn {
+            width: 100%; padding: clamp(10px, 1.8vh, 14px); margin: clamp(4px, 1vh, 8px) 0 clamp(6px, 1.6vh, 14px) 0; border: none; border-radius: 16px;
+            font-size: clamp(12.5px, 1.7vh, 14px); font-weight: 700; cursor: pointer; transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.2s ease;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
             letter-spacing: 0.3px; position: relative;
         }
         .btn:active:not(:disabled) { transform: translateY(5px); box-shadow: 0 0px 0 transparent !important; }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
-        
-        .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
-        .action-grid .btn { margin: 0 0 5px 0; padding: 12px 10px; font-size: 13px; border-radius: 14px; }
-        
-        .btn-hadir { background: #10b981; color: white; box-shadow: 0 5px 0 #059669; padding: 16px !important; font-size: 16px !important;}
+
+        .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(8px, 1.4vh, 12px); margin-top: clamp(6px, 1.2vh, 10px); }
+        .action-grid .btn { margin: 0 0 5px 0; padding: clamp(9px, 1.6vh, 12px) 10px; font-size: clamp(11.5px, 1.6vh, 13px); border-radius: 14px; }
+
+        .btn-hadir { background: #10b981; color: white; box-shadow: 0 5px 0 #059669; padding: clamp(11px, 2vh, 16px) !important; font-size: clamp(13.5px, 2vh, 16px) !important;}
         .btn-hadir:hover:not(:disabled) { background: #0f9d6e; }
         
         .btn-pulang { background: #8b5cf6; color: white; box-shadow: 0 5px 0 #7c3aed; }
@@ -229,8 +271,8 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
         
         .btn-secondary { background: #64748b; color: white; box-shadow: 0 5px 0 #475569; margin-bottom: 12px !important; }
         .btn-secondary:hover:not(:disabled) { background: #5c6b81; }
-        #status-lokasi { 
-            font-size: 14px; margin-top: 25px; padding: 15px 20px; 
+        #status-lokasi {
+            font-size: clamp(12.5px, 1.7vh, 14px); margin-top: clamp(10px, 2.5vh, 25px); padding: clamp(10px, 1.8vh, 15px) 20px;
             background: #f0f0f0; border-radius: 12px; color: #666;
             display: flex; align-items: center; justify-content: center; gap: 10px;
             transition: all 0.3s ease; font-weight: 500; border: 2px solid transparent;
@@ -245,18 +287,18 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
             color: #721c24 !important; border-color: #dc3545 !important;
             box-shadow: 0 4px 12px rgba(220, 53, 69, 0.2); animation: shake 0.5s ease;
         }
-        .absen-info { 
+        .absen-info {
             background: linear-gradient(135deg, #f0f4ff, #e8efff);
-            border-left: 5px solid #667eea; padding: 18px; border-radius: 12px; 
-            margin-bottom: 20px; text-align: left;
+            border-left: 5px solid #667eea; padding: clamp(12px, 2vh, 18px); border-radius: 12px;
+            margin-bottom: clamp(10px, 2vh, 20px); text-align: left;
             box-shadow: 0 2px 10px rgba(102, 126, 234, 0.1);
         }
-        .absen-info strong { 
+        .absen-info strong {
             display: flex; align-items: center; gap: 8px;
-            color: #333; margin-bottom: 8px; font-size: 14px;
+            color: #333; margin-bottom: clamp(4px, 1vh, 8px); font-size: clamp(12.5px, 1.7vh, 14px);
         }
-        .absen-info span { 
-            color: #667eea; font-weight: bold; font-size: 20px;
+        .absen-info span {
+            color: #667eea; font-weight: bold; font-size: clamp(16px, 2.8vh, 20px);
             display: block; margin-left: 28px;
         }
         .absen-info .status-normal { color: #23aa42ff !important; }
@@ -264,8 +306,8 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
         .absen-info .status-setengah { color: #d86315ff !important; }
         .info-disabled {
             background: #fff3cd; border: 1px solid #ffc107; border-radius: 10px;
-            padding: 12px 15px; margin-bottom: 15px; display: flex;
-            align-items: center; gap: 10px; font-size: 13px;
+            padding: clamp(9px, 1.6vh, 12px) 15px; margin-bottom: clamp(8px, 1.8vh, 15px); display: flex;
+            align-items: center; gap: 10px; font-size: clamp(11.5px, 1.6vh, 13px);
             color: #856404; line-height: 1.4;
         }
         .info-disabled i { font-size: 20px; color: #ffc107; }
@@ -350,22 +392,22 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                     <div class="logo-subtitle">Java Abadi Gemilang</div>
                 </div>
             </div>
-            <div class="greeting-wrapper" style="margin-bottom: 24px;">
-                <span style="display: block; font-size: 14px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 6px;">Hallo,</span>
-                <h2 style="margin: 0; font-size: 24px; color: #1e293b; font-weight: 800; letter-spacing: -0.5px; line-height: 1.2;"><?php echo htmlspecialchars($nama_karyawan); ?></h2>
+            <div class="greeting-wrapper">
+                <span class="greeting-label">Hallo,</span>
+                <h2 class="greeting-name"><?php echo htmlspecialchars($nama_karyawan); ?></h2>
             </div>
             <?php if ($izin_dinas_hari_ini): ?>
-            <div style="background: #e0f2fe; border: 2px solid #0ea5e9; padding: 15px; border-radius: 12px; margin-bottom: 20px;">
-                <div style="display: flex; align-items: start; gap: 12px;">
-                    <i class="fas fa-briefcase" style="color: #0284c7; font-size: 22px; margin-top: 2px;"></i>
+            <div class="banner-box" style="background: #e0f2fe; border: 2px solid #0ea5e9;">
+                <div style="display: flex; align-items: start; gap: 8px;">
+                    <i class="fas fa-briefcase" style="color: #0284c7; font-size: clamp(16px, 2.4vh, 22px); margin-top: 2px;"></i>
                     <div style="text-align: left;">
-                        <strong style="color: #075985; font-size: 15px; display: block; margin-bottom: 6px;">Dinas Luar Disetujui</strong>
-                        <small style="color: #075985; line-height: 1.6; display: block;">
-                            <?php echo htmlspecialchars($izin_dinas_hari_ini['keperluan']); ?><br>
+                        <strong style="color: #075985; font-size: clamp(12px, 1.7vh, 15px); display: block; margin-bottom: clamp(2px, 0.6vh, 6px);">Dinas Luar Disetujui</strong>
+                        <small style="color: #075985; line-height: 1.4; display: block; font-size: clamp(10.5px, 1.5vh, 12px);">
+                            <?php echo htmlspecialchars($izin_dinas_hari_ini['keperluan']); ?> &middot;
                             <span style="opacity: .85;"><?php echo formatRentangTanggal($izin_dinas_hari_ini['tanggal_mulai'], $izin_dinas_hari_ini['tanggal_selesai']); ?></span>
                         </small>
-                        <small style="color: #075985; display: block; margin-top: 8px; font-weight: 600;">
-                            Absensi Anda hari ini tidak dibatasi radius lokasi. Verifikasi wajah tetap diperlukan.
+                        <small style="color: #075985; display: block; margin-top: clamp(3px, 0.8vh, 8px); font-weight: 600; font-size: clamp(10.5px, 1.5vh, 12px);">
+                            Radius lokasi tidak dibatasi hari ini. Verifikasi wajah tetap diperlukan.
                         </small>
                     </div>
                 </div>
@@ -373,18 +415,17 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
             <?php endif; ?>
 
             <?php if (!$has_face_data): ?>
-            <div style="background: #ffe5e5; border: 2px solid #dc3545; padding: 15px; border-radius: 12px; margin-bottom: 20px;">
-                <div style="display: flex; align-items: start; gap: 12px;">
-                    <i class="fas fa-exclamation-circle" style="color: #dc3545; font-size: 24px; margin-top: 2px;"></i>
+            <div class="banner-box" style="background: #ffe5e5; border: 2px solid #dc3545;">
+                <div style="display: flex; align-items: start; gap: 8px;">
+                    <i class="fas fa-exclamation-circle" style="color: #dc3545; font-size: clamp(17px, 2.6vh, 24px); margin-top: 2px;"></i>
                     <div style="text-align: left;">
-                        <strong style="color: #721c24; font-size: 15px; display: block; margin-bottom: 8px;">⚠️ Registrasi Wajah Diperlukan</strong>
-                        <small style="color: #721c24; line-height: 1.6; display: block; margin-bottom: 10px;">
-                            Untuk absensi <strong>HADIR</strong>, Anda wajib registrasi wajah terlebih dahulu melalui akun Anda.
+                        <strong style="color: #721c24; font-size: clamp(12px, 1.7vh, 15px); display: block; margin-bottom: clamp(3px, 0.8vh, 8px);">⚠️ Registrasi Wajah Diperlukan</strong>
+                        <small style="color: #721c24; line-height: 1.4; display: block; margin-bottom: clamp(4px, 1vh, 10px); font-size: clamp(10.5px, 1.5vh, 12px);">
+                            Untuk absensi <strong>HADIR</strong>, registrasi wajah dulu lewat akun Anda.
                         </small>
-                        <div style="background: rgba(220, 53, 69, 0.1); padding: 10px; border-radius: 8px; margin-top: 8px;">
-                            <small style="color: #721c24; display: block; line-height: 1.5; font-size: 12px; font-weight: 500;">
-                                Silakan Bisa Buat Akun Terlebih Dahulu.<br>
-                                Jika sudah buat akun, bisa Login ke Akun dan klik ikon garis tiga (<i class="fas fa-bars"></i>) di bagian kiri Pojok atas. lalu pilih "Registrasi Wajah" dan ikuti instruksi selanjutnya.
+                        <div style="background: rgba(220, 53, 69, 0.1); padding: clamp(6px, 1.2vh, 10px); border-radius: 8px; margin-top: clamp(3px, 0.8vh, 8px);">
+                            <small style="color: #721c24; display: block; line-height: 1.4; font-size: clamp(10px, 1.4vh, 12px); font-weight: 500;">
+                                Belum punya akun? Buat akun terlebih dahulu. Sudah punya? Login, buka menu (<i class="fas fa-bars"></i>) pojok kiri atas, lalu pilih "Registrasi Wajah".
                             </small>
                         </div>
                     </div>
@@ -393,26 +434,29 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
             <?php endif; ?>
             <p>Silakan pilih status kehadiran Anda untuk hari ini</p>
             <p class="date-text"><?php echo formatTanggalIndonesia($today); ?></p>
-            <form id="form-absen">
-                <button type="button" class="btn btn-hadir" onclick="submitAbsen('Hadir')"><i class="fas fa-check-circle"></i> HADIR</button>
-                <div class="action-grid">
-                    <button type="button" class="btn btn-sakit" onclick="submitAbsenWithConfirm('Sakit', 'Apakah Anda yakin hari ini izin SAKIT?')"><i class="fas fa-heartbeat"></i> SAKIT</button>
-                    <button type="button" class="btn btn-cuti" onclick="submitAbsenWithConfirm('Cuti', 'Apakah Anda yakin hari ini izin CUTI?')"><i class="fas fa-calendar-check"></i> CUTI</button>
+            <!-- grid-cols-1 (default/portrait, mis. HP tegak) menumpuk Masuk
+                 di atas Pulang seperti sebelumnya; landscape:grid-cols-2
+                 (HP miring/layar lebar) menaruh keduanya berdampingan supaya
+                 kartu tidak terlalu memanjang ke bawah. -->
+            <div class="grid grid-cols-1 landscape:grid-cols-2 landscape:gap-4">
+                <form id="form-absen">
+                    <button type="button" class="btn btn-hadir" onclick="submitAbsen('Hadir')"><i class="fas fa-check-circle"></i> HADIR</button>
+                        <button type="button" class="btn btn-sakit" onclick="submitAbsenWithConfirm('Sakit', 'Apakah Anda yakin hari ini izin SAKIT?')"><i class="fas fa-heartbeat"></i> SAKIT</button>
+                </form>
+                <div class="divider-section-tight landscape:mt-0 landscape:border-t-0 landscape:pt-0 landscape:border-l landscape:border-dashed landscape:border-slate-200 landscape:pl-4 landscape:flex landscape:flex-col landscape:justify-center">
+                    <button type="button" class="btn btn-pulang" onclick="submitAbsenPulangAwal()"><i class="fas fa-sign-out-alt"></i> Absen Pulang</button>
+                       <button type="button" class="btn btn-cuti" onclick="submitAbsenWithConfirm('Cuti', 'Apakah Anda yakin hari ini izin CUTI?')"><i class="fas fa-calendar-check"></i> CUTI</button>
                 </div>
-            </form>
-            <div style="margin-top: 4px; border-top: 1px dashed #e2e8f0; padding-top: 16px;">
-                <p style="font-size: 12px; color: #94a3b8; margin-bottom: 10px;">Sudah bekerja tapi lupa absen masuk tadi? Anda tetap bisa absen pulang - datanya akan ditandai untuk ditinjau.</p>
-                <button type="button" class="btn btn-pulang" onclick="submitAbsenPulangAwal()"><i class="fas fa-sign-out-alt"></i> Absen Pulang</button>
             </div>
 
             <?php if (!empty($username_karyawan)): ?>
-            <div style="margin-top: 25px; border-top: 1px dashed #cbd5e1; padding-top: 20px;">
+            <div class="divider-section">
                 <a href="login.php?username=<?php echo urlencode($username_karyawan); ?>" class="btn" style="background: #f1f5f9; color: #3b82f6; border: 2px solid #e2e8f0; font-weight: 600; text-decoration: none; box-shadow: none;">
                     <i class="fas fa-user-circle"></i> Login ke Akun
                 </a>
             </div>
             <?php else: ?>
-            <div style="margin-top: 25px; border-top: 1px dashed #cbd5e1; padding-top: 20px;">
+            <div class="divider-section">
                 <button type="button" onclick="document.getElementById('modal-buat-akun').style.display='flex'" class="btn" style="background: #1e293b; color: white; box-shadow: 0 5px 0 #0f172a; font-weight: 800; letter-spacing: 0.5px;">
                     <i class="fas fa-user-plus"></i> Buat Akun Karyawan
                 </button>
@@ -434,9 +478,9 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                     <div class="logo-subtitle">Java Abadi Gemilang</div>
                 </div>
             </div>
-            <div class="greeting-wrapper" style="margin-bottom: 16px;">
-                <span style="display: block; font-size: 14px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 6px;">Menunggu Persetujuan,</span>
-                <h2 style="margin: 0; font-size: 24px; color: #1e293b; font-weight: 800; letter-spacing: -0.5px; line-height: 1.2;"><?php echo htmlspecialchars($nama_karyawan); ?></h2>
+            <div class="greeting-wrapper">
+                <span class="greeting-label">Menunggu Persetujuan,</span>
+                <h2 class="greeting-name"><?php echo htmlspecialchars($nama_karyawan); ?></h2>
             </div>
             <p class="date-text"><?php echo formatTanggalIndonesia($today); ?></p>
             <div class="info-disabled" style="background-color: #fff3cd; border-color: #ffeeba; color: #856404;">
@@ -448,7 +492,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                 </div>
             </div>
             <?php if (!empty($username_karyawan)): ?>
-            <div style="margin-top: 25px; border-top: 1px dashed #cbd5e1; padding-top: 20px;">
+            <div class="divider-section">
                 <a href="login.php?username=<?php echo urlencode($username_karyawan); ?>" class="btn" style="background: #f1f5f9; color: #3b82f6; border: 2px solid #e2e8f0; font-weight: 600; text-decoration: none; box-shadow: none;">
                     <i class="fas fa-user-circle"></i> Login ke Akun
                 </a>
@@ -477,9 +521,9 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                     case 'Alpha': $judul_halaman = "Alphamu Tercatat!,"; break;
                 }
             ?>
-            <div class="greeting-wrapper" style="margin-bottom: 16px;">
-                <span style="display: block; font-size: 14px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 6px;"><?php echo $judul_halaman; ?></span>
-                <h2 style="margin: 0; font-size: 24px; color: #1e293b; font-weight: 800; letter-spacing: -0.5px; line-height: 1.2;"><?php echo htmlspecialchars($nama_karyawan); ?></h2>
+            <div class="greeting-wrapper">
+                <span class="greeting-label"><?php echo $judul_halaman; ?></span>
+                <h2 class="greeting-name"><?php echo htmlspecialchars($nama_karyawan); ?></h2>
             </div>
             <p class="date-text"><?php echo formatTanggalIndonesia($today); ?></p>
             <?php if (!$disable_pulang): ?>
@@ -554,13 +598,13 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
             <?php endif; ?>
 
             <?php if (!empty($username_karyawan)): ?>
-            <div style="margin-top: 25px; border-top: 1px dashed #cbd5e1; padding-top: 20px;">
+            <div class="divider-section">
                 <a href="login.php?username=<?php echo urlencode($username_karyawan); ?>" class="btn" style="background: #f1f5f9; color: #3b82f6; border: 2px solid #e2e8f0; font-weight: 600; text-decoration: none; box-shadow: none;">
                     <i class="fas fa-user-circle"></i> Login ke Akun
                 </a>
             </div>
             <?php else: ?>
-            <div style="margin-top: 25px; border-top: 1px dashed #cbd5e1; padding-top: 20px;">
+            <div class="divider-section">
                 <button type="button" onclick="document.getElementById('modal-buat-akun').style.display='flex'" class="btn" style="background: #1e293b; color: white; box-shadow: 0 5px 0 #0f172a; font-weight: 800; letter-spacing: 0.5px;">
                     <i class="fas fa-user-plus"></i> Buat Akun Karyawan
                 </button>
@@ -584,14 +628,14 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                     <div class="logo-subtitle">Java Abadi Gemilang</div>
                 </div>
             </div>
-            <div class="greeting-wrapper" style="margin-bottom: 20px;">
-                <span style="display: block; font-size: 14px; color: #10b981; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 6px;">Absensi Selesai!</span>
-                <h2 style="margin: 0; font-size: 24px; color: #1e293b; font-weight: 800; letter-spacing: -0.5px; line-height: 1.2;">Terima Kasih,<br><?php echo htmlspecialchars($nama_karyawan); ?></h2>
+            <div class="greeting-wrapper">
+                <span class="greeting-label" style="color: #10b981;">Absensi Selesai!</span>
+                <h2 class="greeting-name">Terima Kasih,<br><?php echo htmlspecialchars($nama_karyawan); ?></h2>
             </div>
             <p>Anda telah menyelesaikan absensi untuk hari ini.</p>
             <div class="absen-info">
                 <strong><i class="fas fa-sign-in-alt"></i> Jam Masuk:</strong>
-                <span><?php echo date('H:i:s', strtotime($absen_hari_ini['jam_masuk'])); ?></span>
+                <span><?php echo !empty($absen_hari_ini['jam_masuk']) ? date('H:i:s', strtotime($absen_hari_ini['jam_masuk'])) : 'Tidak Absen Masuk'; ?></span>
             </div>
             <div class="absen-info">
                 <strong><i class="fas fa-sign-out-alt"></i> Jam Pulang:</strong>
@@ -616,13 +660,13 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
             <p style="margin-top:25px; font-size: 16px; color: #667eea;"><i class="fas fa-home"></i> Selamat rehat, jumpa lagi besok...</p>
             
             <?php if (!empty($username_karyawan)): ?>
-            <div style="margin-top: 25px; border-top: 1px dashed #cbd5e1; padding-top: 20px;">
+            <div class="divider-section">
                 <a href="login.php?username=<?php echo urlencode($username_karyawan); ?>" class="btn" style="background: #f1f5f9; color: #3b82f6; border: 2px solid #e2e8f0; font-weight: 600; text-decoration: none; box-shadow: none;">
                     <i class="fas fa-user-circle"></i> Login ke Akun
                 </a>
             </div>
             <?php else: ?>
-            <div style="margin-top: 25px; border-top: 1px dashed #cbd5e1; padding-top: 20px;">
+            <div class="divider-section">
                 <button type="button" onclick="document.getElementById('modal-buat-akun').style.display='flex'" class="btn" style="background: #1e293b; color: white; box-shadow: 0 5px 0 #0f172a; font-weight: 800; letter-spacing: 0.5px;">
                     <i class="fas fa-user-plus"></i> Buat Akun Karyawan
                 </button>
