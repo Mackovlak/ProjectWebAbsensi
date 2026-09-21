@@ -59,6 +59,8 @@ if ($_SESSION['role'] === 'staff') {
         exit();
     }
 }
+$force_internal = in_array($_SESSION['role'], ['admin', 'owner'], true)
+    && ($_GET['detail_potongan'] ?? '') === '1';
 
 if ($tipe === 'cetak_slip_batch') {
     if (empty($user_id)) {
@@ -323,6 +325,10 @@ function ribuan($angka) {
 
         $bulan = (int)$slip['bulan'];
         $tahun = (int)$slip['tahun'];
+        $tampilkan_potongan = $force_internal || !empty($slip['tampilkan_potongan']);
+        $judul_dokumen = $force_internal
+            ? 'Rincian Payroll Internal'
+            : ($tampilkan_potongan ? 'Slip Gaji' : 'Rincian Penghasilan');
 
         // --- FILTER BPJS DARI EXTRA ---
         $bpjs_inc = [];
@@ -375,7 +381,7 @@ function ribuan($angka) {
         <!-- HEADER (Logo & Judul) -->
         <div class="flex flex-col items-center mb-6">
             <img src="/assets/images/logo.png" alt="" class="h-16 mb-2" onerror="this.style.display='none'"> 
-            <h1 class="font-bold text-base tracking-wide uppercase">GAJI KARYAWAN</h1>
+            <h1 class="font-bold text-base tracking-wide uppercase"><?php echo htmlspecialchars(strtoupper($judul_dokumen)); ?></h1>
             <p class="text-[10px]">Periode: <?php echo $months[$bulan] . " " . $tahun; ?></p>
         </div>
 
@@ -441,6 +447,24 @@ function ribuan($angka) {
                     <td class="pl-2 uppercase">GAJI POKOK</td>
                     <td></td><td></td><td></td><td></td>
                     <td class="px-2"><div class="flex-rp"><span>Rp</span> <span><?php echo ribuan($slip['gaji_pokok']); ?></span></div></td>
+                </tr>
+                <?php endif; ?>
+
+                <?php if (($slip['payroll_scheme'] ?? '') === 'JAVAG_FLAT' && $slip['transport_tetap'] > 0): ?>
+                <tr>
+                    <td class="text-center"><?php echo $no++; ?></td>
+                    <td class="pl-2 uppercase">TRANSPORT TETAP</td>
+                    <td></td><td></td><td></td><td></td>
+                    <td class="px-2"><div class="flex-rp"><span>Rp</span> <span><?php echo ribuan($slip['transport_tetap']); ?></span></div></td>
+                </tr>
+                <?php endif; ?>
+
+                <?php if (($slip['payroll_scheme'] ?? '') === 'JAVAG_FLAT' && $slip['uang_makan_tetap'] > 0): ?>
+                <tr>
+                    <td class="text-center"><?php echo $no++; ?></td>
+                    <td class="pl-2 uppercase">UANG MAKAN TETAP</td>
+                    <td></td><td></td><td></td><td></td>
+                    <td class="px-2"><div class="flex-rp"><span>Rp</span> <span><?php echo ribuan($slip['uang_makan_tetap']); ?></span></div></td>
                 </tr>
                 <?php endif; ?>
                 
@@ -552,6 +576,7 @@ function ribuan($angka) {
                     <td class="px-2"><div class="flex-rp"><span>RP</span> <span><?php echo ribuan($slip['total_penghasilan']); ?></span></div></td>
                 </tr>
 
+                <?php if ($tampilkan_potongan): ?>
                 <!-- HEADER: POTONGAN -->
                 <tr>
                     <th colspan="7" class="bg-pink-header text-center py-1.5 uppercase text-xs tracking-wider border border-black">POTONGAN</th>
@@ -646,6 +671,12 @@ function ribuan($angka) {
                     <td colspan="6" class="text-center py-1.5 uppercase">DIGENAPKAN</td>
                     <td class="px-2"><div class="flex-rp"><span>RP</span> <span><?php echo ribuan($slip['gaji_bersih']); ?></span></div></td>
                 </tr>
+                <?php else: ?>
+                <tr class="font-bold text-xs bg-pink-header border border-black">
+                    <td colspan="6" class="text-center py-1.5 uppercase">TOTAL RINCIAN PENGHASILAN</td>
+                    <td class="px-2 border-l border-black"><div class="flex-rp"><span>RP</span> <span><?php echo ribuan($slip['total_penghasilan']); ?></span></div></td>
+                </tr>
+                <?php endif; ?>
 
                 <!-- QUOTES -->
                 <tr class="bg-pink-header">

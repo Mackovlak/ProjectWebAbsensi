@@ -36,6 +36,12 @@ if (!$slip) {
     die("Slip gaji tidak ditemukan.");
 }
 
+$mode_internal = ($_GET['mode'] ?? '') === 'internal';
+$tampilkan_potongan = $mode_internal || !empty($slip['tampilkan_potongan']);
+$judul_dokumen = $mode_internal
+    ? 'Rincian Payroll Internal'
+    : ($tampilkan_potongan ? 'Slip Gaji' : 'Rincian Penghasilan');
+
 // Get Owner Name
 $stmt = $conn->prepare("SELECT nama FROM users WHERE role = 'owner' LIMIT 1");
 $stmt->execute();
@@ -119,7 +125,7 @@ $no = 1;
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cetak Slip Gaji - <?php echo htmlspecialchars($slip['nama_karyawan']); ?></title>
+    <title><?php echo $judul_dokumen; ?> - <?php echo htmlspecialchars($slip['nama_karyawan']); ?></title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Arial:wght@400;700&display=swap" rel="stylesheet">
@@ -184,7 +190,7 @@ $no = 1;
         <!-- HEADER (Logo & Judul) -->
         <div class="flex flex-col items-center mb-6">
             <img src="/assets/images/logo.png" alt="" class="h-16 mb-2" onerror="this.style.display=\'none\'"> 
-            <h1 class="font-bold text-base tracking-wide uppercase">GAJI KARYAWAN</h1>
+            <h1 class="font-bold text-base tracking-wide uppercase"><?php echo htmlspecialchars(strtoupper($judul_dokumen)); ?></h1>
             <p class="text-[10px]">Periode: <?php echo $months[$bulan] . " " . $tahun; ?></p>
         </div>
 
@@ -250,6 +256,24 @@ $no = 1;
                     <td class="pl-2 uppercase">GAJI POKOK</td>
                     <td></td><td></td><td></td><td></td>
                     <td class="px-2"><div class="flex-rp"><span>Rp</span> <span><?php echo ribuan($slip['gaji_pokok']); ?></span></div></td>
+                </tr>
+                <?php endif; ?>
+
+                <?php if (($slip['payroll_scheme'] ?? '') === 'JAVAG_FLAT' && $slip['transport_tetap'] > 0): ?>
+                <tr>
+                    <td class="text-center"><?php echo $no++; ?></td>
+                    <td class="pl-2 uppercase">TRANSPORT TETAP</td>
+                    <td></td><td></td><td></td><td></td>
+                    <td class="px-2"><div class="flex-rp"><span>Rp</span> <span><?php echo ribuan($slip['transport_tetap']); ?></span></div></td>
+                </tr>
+                <?php endif; ?>
+
+                <?php if (($slip['payroll_scheme'] ?? '') === 'JAVAG_FLAT' && $slip['uang_makan_tetap'] > 0): ?>
+                <tr>
+                    <td class="text-center"><?php echo $no++; ?></td>
+                    <td class="pl-2 uppercase">UANG MAKAN TETAP</td>
+                    <td></td><td></td><td></td><td></td>
+                    <td class="px-2"><div class="flex-rp"><span>Rp</span> <span><?php echo ribuan($slip['uang_makan_tetap']); ?></span></div></td>
                 </tr>
                 <?php endif; ?>
                 
@@ -361,6 +385,7 @@ $no = 1;
                     <td class="px-2"><div class="flex-rp"><span>RP</span> <span><?php echo ribuan($slip['total_penghasilan']); ?></span></div></td>
                 </tr>
 
+                <?php if ($tampilkan_potongan): ?>
                 <!-- HEADER: POTONGAN -->
                 <tr>
                     <th colspan="7" class="bg-pink-header text-center py-1.5 uppercase text-xs tracking-wider border border-black">POTONGAN</th>
@@ -455,6 +480,12 @@ $no = 1;
                     <td colspan="6" class="text-center py-1.5 uppercase">DIGENAPKAN</td>
                     <td class="px-2"><div class="flex-rp"><span>RP</span> <span><?php echo ribuan($slip['gaji_bersih']); ?></span></div></td>
                 </tr>
+                <?php else: ?>
+                <tr class="font-bold text-xs bg-pink-header border border-black">
+                    <td colspan="6" class="text-center py-1.5 uppercase">TOTAL RINCIAN PENGHASILAN</td>
+                    <td class="px-2 border-l border-black"><div class="flex-rp"><span>RP</span> <span><?php echo ribuan($slip['total_penghasilan']); ?></span></div></td>
+                </tr>
+                <?php endif; ?>
 
                 <!-- QUOTES -->
                 <tr class="bg-pink-header">

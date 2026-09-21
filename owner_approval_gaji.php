@@ -20,7 +20,8 @@ $tahun = isset($_GET['tahun']) ? (int)$_GET['tahun'] : date('Y');
 // Ambil semua slip gaji yang sudah di-ACC Admin
 $query_karyawan = "SELECT k.id_karyawan, k.nama_karyawan, j.nama_jabatan, c.nama_cabang,
                           s.id as id_slip, s.status_admin_acc, s.status_owner_acc,
-                          s.gaji_pokok, s.tunjangan_cs, s.akomodasi, s.transport_total,
+                          s.payroll_scheme, s.gaji_pokok, s.tunjangan_cs, s.akomodasi,
+                          s.transport_tetap, s.uang_makan_tetap, s.penghasilan_tetap, s.transport_total,
                           s.overtime_total, s.insentif_ahad_total, s.keterlambatan_total,
                           s.total_penghasilan, s.total_potongan, s.digenapkan, s.gaji_bersih
                    FROM karyawan k
@@ -182,7 +183,7 @@ $stmt_export->close();
                                     <?php endif; ?>
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-center text-sm font-medium flex justify-center gap-2">
-                                    <a href="laporan_slip_batch.php?tipe=cetak_slip_batch&user_id=<?php echo urlencode($row['id_karyawan']); ?>&start_date=<?php echo date('Y-m-d', strtotime("$tahun-$bulan-01")); ?>&end_date=<?php echo date('Y-m-t', strtotime("$tahun-$bulan-01")); ?>" target="_blank" class="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600 rounded-lg transition-colors border border-slate-200 dark:border-slate-600">
+                                    <a href="laporan_slip_batch.php?tipe=cetak_slip_batch&detail_potongan=1&user_id=<?php echo urlencode($row['id_karyawan']); ?>&start_date=<?php echo date('Y-m-d', strtotime("$tahun-$bulan-01")); ?>&end_date=<?php echo date('Y-m-t', strtotime("$tahun-$bulan-01")); ?>" target="_blank" class="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600 rounded-lg transition-colors border border-slate-200 dark:border-slate-600">
                                         <i class="fa-solid fa-eye"></i> Lihat Slip
                                     </a>
                                     <?php if (!$row['status_owner_acc']): ?>
