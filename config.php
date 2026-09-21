@@ -15,15 +15,18 @@ ob_start();
 // Start session if not already started
 if (session_status() === PHP_SESSION_NONE) {
     // Deteksi environment (localhost atau production)
+    // Pada cron/CLI SERVER_NAME dan SERVER_PORT memang tidak disediakan.
+    $serverName = $_SERVER['SERVER_NAME'] ?? 'localhost';
+    $serverPort = (int)($_SERVER['SERVER_PORT'] ?? 0);
     $isLocalhost = (
-        $_SERVER['SERVER_NAME'] === 'localhost' || 
-        $_SERVER['SERVER_NAME'] === '127.0.0.1' ||
-        strpos($_SERVER['SERVER_NAME'], '192.168.') === 0 ||
-        strpos($_SERVER['SERVER_NAME'], '10.') === 0
+        $serverName === 'localhost' ||
+        $serverName === '127.0.0.1' ||
+        strpos($serverName, '192.168.') === 0 ||
+        strpos($serverName, '10.') === 0
     );
-    
-    $isHTTPS = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || 
-        $_SERVER['SERVER_PORT'] == 443;
+
+    $isHTTPS = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ||
+        $serverPort === 443;
     
     // PHP's default session.gc_maxlifetime (1440s/24min) is shorter than the
     // 3600s (1hr) cookie lifetime below. Without this, the server silently

@@ -19,7 +19,7 @@
  *      DIACAK per akun, ditampilkan sekali di akhir, WAJIB diganti.
  *   5. Riwayat absensi ~90 hari ke belakang untuk SEMUA karyawan status
  *      'aktif' (termasuk yang sudah ada sebelumnya di DB), dengan status
- *      bervariasi: Hadir (termasuk Terlambat), Sakit, Izin, Cuti, Alpha,
+ *      bervariasi: Hadir (termasuk Terlambat), Sakit, Izin, Cuti, UNPAID/Alpha,
  *      pulang cepat disetujui, konversi izin setengah hari, lembur Sabtu
  *      untuk jabatan yang eligible, serta lembur hari kerja beserta approval
  *      pendampingnya. Tanggal yang SUDAH

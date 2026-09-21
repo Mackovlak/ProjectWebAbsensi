@@ -65,7 +65,7 @@ try {
     if (!validateIDKaryawan($id_karyawan)) {
         outputJSON(['success' => false, 'message' => 'Format ID Karyawan tidak valid.']);
     }
-    if (!in_array($keterangan_param, ['Hadir', 'pulang', 'OFF', 'Sakit', 'Cuti', 'Alpha'], true)) {
+    if (!in_array($keterangan_param, ['Hadir', 'pulang', 'OFF', 'Sakit', 'Cuti', 'UNPAID/Alpha'], true)) {
         outputJSON(['success' => false, 'message' => 'Jenis absensi tidak valid.']);
     }
 
@@ -258,14 +258,14 @@ try {
     }
     // =======================================================================
 
-    // OFF & Alpha tidak lagi bisa diajukan sendiri lewat kiosk - keduanya
-    // butuh keputusan Admin (OFF lewat hari libur/entri manual, Alpha lewat
+    // OFF & UNPAID/Alpha tidak lagi bisa diajukan sendiri lewat kiosk - keduanya
+    // butuh keputusan Admin (OFF lewat hari libur/entri manual, UNPAID/Alpha lewat
     // entri manual histori_absensi.php), bukan tombol self-service tanpa
     // alasan/persetujuan. Guard sisi server, bukan sekadar sembunyikan tombol.
     // Cuti khusus (Menikah dkk) juga harus lewat pengajuan_izin resmi
     // (staff_pengajuan_izin.php) supaya direview, bukan diinsert langsung
     // dari kiosk yang sessionless/tanpa autentikasi kuat.
-    if (!$is_absen_pulang && !$is_dinas_luar && !$izin_dinas_hari_ini && in_array($keterangan_param, array_merge(['OFF', 'Alpha'], IZIN_JENIS_KHUSUS), true)) {
+    if (!$is_absen_pulang && !$is_dinas_luar && !$izin_dinas_hari_ini && in_array($keterangan_param, array_merge(['OFF', 'UNPAID/Alpha'], IZIN_JENIS_KHUSUS), true)) {
         $stmt_check->close();
         outputJSON(['success' => false, 'message' => 'Opsi ini sudah tidak tersedia untuk pengajuan mandiri. Gunakan menu Pengajuan Izin, atau hubungi Admin.']);
     }
@@ -653,9 +653,9 @@ try {
                         $judul_sukses = "Selamat Libur!";
                         $pesan_sukses = "Absensi OFF telah dicatat. Selamat menikmati hari libur.";
                         break;
-                    case 'Alpha':
+                    case 'UNPAID/Alpha':
                         $judul_sukses = "Konfirmasi Absen";
-                        $pesan_sukses = "Status ALPHA telah dicatat. Silakan konfirmasi dengan atasan jika ada kendala.";
+                        $pesan_sukses = "Status UNPAID/Alpha telah dicatat. Silakan konfirmasi dengan atasan jika ada kendala.";
                         break;
                     case 'Pending Dinas':
                         $judul_sukses = "Permintaan Dinas Terkirim";

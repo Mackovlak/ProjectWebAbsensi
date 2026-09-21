@@ -49,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         fputcsv($output, [''], ';');
         
         // PERBAIKAN: Menambahkan kolom 'Setengah Hari', 'Overtime', dan 'Minggu'
-        fputcsv($output, ['No', 'Nama Karyawan', 'Total Hadir', 'Tepat Waktu', 'Terlambat', 'Setengah Hari', 'Overtime', $label_hari_overtime, 'OFF', 'Sakit', 'Cuti', 'Alpha'], ';');
+        fputcsv($output, ['No', 'Nama Karyawan', 'Total Hadir', 'Tepat Waktu', 'Terlambat', 'Setengah Hari', 'Overtime', $label_hari_overtime, 'OFF', 'Sakit', 'Cuti', 'UNPAID/Alpha'], ';');
         
         if (!empty($data)) {
             foreach ($data as $row) {
@@ -277,7 +277,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                             <th rowspan="2">OFF</th>
                             <th rowspan="2">Sakit</th>
                             <th rowspan="2">Cuti</th>
-                            <th rowspan="2">Alpha</th>
+                            <th rowspan="2">UNPAID/Alpha</th>
                         </tr>
                         <tr>
                             <th>Total</th>

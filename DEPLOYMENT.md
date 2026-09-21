@@ -443,7 +443,7 @@ sudo systemctl restart php8.1-fpm
 
 ---
 
-## 11. Cron: the WhatsApp check-in reminder
+## 11. Cron: reminder and end-of-day attendance closing
 
 `cron_reminder_absensi.php` is meant to run outside the request cycle,
 documented for **18:15 WIB** (`Asia/Jakarta`). It needs a `wa_token`
@@ -459,7 +459,12 @@ Add:
 ```cron
 # AbsenKita Javag - remind staff who haven't checked in yet, 18:15 WIB
 15 18 * * * /usr/bin/php8.2 /var/www/absenslip/cron_reminder_absensi.php >> /var/log/absenslip-cron.log 2>&1
+
+# Materialise UNPAID/Alpha after the work day has ended, 23:55 WIB
+55 23 * * * /usr/bin/php8.2 /var/www/absenslip/cron_tutup_absensi.php >> /var/log/absenslip-cron.log 2>&1
 ```
+
+The closing script is CLI-only and idempotent. It follows the configured workweek and branch holidays, so it is safe to schedule every day. To rerun a missed date manually, pass it as an argument, for example `php8.2 cron_tutup_absensi.php 2026-09-21`.
 
 Make sure the server's system timezone matches, or adjust the cron
 schedule to compensate:

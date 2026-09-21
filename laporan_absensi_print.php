@@ -239,7 +239,7 @@ if ($tipe === 'statistik_karyawan' && !empty($user_id)) {
                         <th rowspan="2" class="border border-gray-400 px-2 py-2 text-xs font-bold text-gray-800 text-center align-middle">OFF</th>
                         <th rowspan="2" class="border border-gray-400 px-2 py-2 text-xs font-bold text-gray-800 text-center align-middle">Sakit</th>
                         <th rowspan="2" class="border border-gray-400 px-2 py-2 text-xs font-bold text-gray-800 text-center align-middle">Cuti</th>
-                        <th rowspan="2" class="border border-gray-400 px-2 py-2 text-xs font-bold text-gray-800 text-center align-middle">Alpha</th>
+                        <th rowspan="2" class="border border-gray-400 px-2 py-2 text-xs font-bold text-gray-800 text-center align-middle">UNPAID/Alpha</th>
                     </tr>
                     <tr class="bg-gray-300">
                         <th class="border border-gray-400 px-2 py-2 text-xs font-bold text-gray-800 text-center">Total</th>
@@ -280,7 +280,7 @@ if ($tipe === 'statistik_karyawan' && !empty($user_id)) {
                               SUM(CASE WHEN a.keterangan = 'Sakit' THEN 1 ELSE 0 END) as total_sakit,
                               SUM(CASE WHEN a.keterangan = 'Cuti' THEN 1 ELSE 0 END) as total_cuti,
                               SUM(CASE WHEN a.keterangan = 'Dinas Luar' THEN 1 ELSE 0 END) as total_dinas_luar,
-                              SUM(CASE WHEN a.keterangan = 'Alpha' THEN 1 ELSE 0 END) as total_alpha
+                              SUM(CASE WHEN a.keterangan = 'UNPAID/Alpha' THEN 1 ELSE 0 END) as total_alpha
                               FROM karyawan k 
                               LEFT JOIN absensi a ON k.id_karyawan = a.id_karyawan AND a.tanggal BETWEEN ? AND ? 
                               WHERE 1=1";
@@ -356,7 +356,7 @@ if ($tipe === 'statistik_karyawan' && !empty($user_id)) {
                     'Cuti' => [],
                     'Sakit' => [],
                     'Dinas Luar' => [],
-                    'Alpha' => [],
+                    'UNPAID/Alpha' => [],
                     'OFF' => [],
                     'Hadir (Tepat Waktu)' => [],
                     'Hadir (Terlambat)' => []
@@ -402,8 +402,8 @@ if ($tipe === 'statistik_karyawan' && !empty($user_id)) {
                         $data_karyawan['Cuti'][] = $row;
                     } elseif ($row['keterangan'] === 'Sakit') {
                         $data_karyawan['Sakit'][] = $row;
-                    } elseif ($row['keterangan'] === 'Alpha') {
-                        $data_karyawan['Alpha'][] = $row;
+                    } elseif ($row['keterangan'] === 'UNPAID/Alpha') {
+                        $data_karyawan['UNPAID/Alpha'][] = $row;
                     } elseif ($row['keterangan'] === 'OFF') {
                         $data_karyawan['OFF'][] = $row;
                     } elseif ($row['keterangan'] === 'Dinas Luar') {
@@ -451,8 +451,8 @@ if ($tipe === 'statistik_karyawan' && !empty($user_id)) {
                     <p class="text-2xl font-bold text-amber-800"><?php echo count($data_karyawan['Sakit']); ?></p>
                 </div>
                 <div class="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
-                    <p class="text-xs text-red-600 font-semibold mb-1">Total Alpha</p>
-                    <p class="text-2xl font-bold text-red-800"><?php echo count($data_karyawan['Alpha']); ?></p>
+                    <p class="text-xs text-red-600 font-semibold mb-1">Total UNPAID/Alpha</p>
+                    <p class="text-2xl font-bold text-red-800"><?php echo count($data_karyawan['UNPAID/Alpha']); ?></p>
                 </div>
                 <div class="bg-sky-50 border border-sky-200 rounded-lg p-4 text-center">
                     <p class="text-xs text-sky-600 font-semibold mb-1">Total Dinas Luar</p>
