@@ -320,8 +320,9 @@ if (isset($_POST['tambah_karyawan'])) {
     $id_jabatan = intval($_POST['id_jabatan']);
     $id_cabang = intval($_POST['id_cabang']);
     $jenis_kelamin = $conn->real_escape_string($_POST['jenis_kelamin'] ?? 'L');
-    $stmt = $conn->prepare("INSERT INTO karyawan (id_karyawan, nama_karyawan, id_jabatan, id_cabang, jenis_kelamin) VALUES (?, ?, ?, ?, ?)");
-    $stmt->bind_param("ssiis", $id_karyawan, $nama_karyawan, $id_jabatan, $id_cabang, $jenis_kelamin);
+    $mode_absen = in_array($_POST['mode_absen'] ?? 'tetap', ['tetap', 'onsite'], true) ? $_POST['mode_absen'] : 'tetap';
+    $stmt = $conn->prepare("INSERT INTO karyawan (id_karyawan, nama_karyawan, id_jabatan, id_cabang, jenis_kelamin, mode_absen) VALUES (?, ?, ?, ?, ?, ?)");
+    $stmt->bind_param("ssiiss", $id_karyawan, $nama_karyawan, $id_jabatan, $id_cabang, $jenis_kelamin, $mode_absen);
     if ($stmt->execute()) {
         if (isset($_POST['is_ajax'])) {
             echo json_encode(['status' => 'success', 'message' => 'Karyawan berhasil ditambahkan!']);
@@ -346,8 +347,9 @@ if (isset($_POST['edit_karyawan'])) {
     $id_jabatan = intval($_POST['id_jabatan']);
     $id_cabang = intval($_POST['id_cabang']);
     $jenis_kelamin = $conn->real_escape_string($_POST['jenis_kelamin'] ?? 'L');
-    $stmt = $conn->prepare("UPDATE karyawan SET nama_karyawan = ?, id_jabatan = ?, id_cabang = ?, jenis_kelamin = ? WHERE id = ?");
-    $stmt->bind_param("siisi", $nama_karyawan, $id_jabatan, $id_cabang, $jenis_kelamin, $id);
+    $mode_absen = in_array($_POST['mode_absen'] ?? 'tetap', ['tetap', 'onsite'], true) ? $_POST['mode_absen'] : 'tetap';
+    $stmt = $conn->prepare("UPDATE karyawan SET nama_karyawan = ?, id_jabatan = ?, id_cabang = ?, jenis_kelamin = ?, mode_absen = ? WHERE id = ?");
+    $stmt->bind_param("siissi", $nama_karyawan, $id_jabatan, $id_cabang, $jenis_kelamin, $mode_absen, $id);
     if ($stmt->execute()) {
         if (isset($_POST['is_ajax'])) {
             echo json_encode(['status' => 'success', 'message' => 'Data karyawan berhasil diperbarui!']);
