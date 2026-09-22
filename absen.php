@@ -378,6 +378,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
         <input type="hidden" id="global-id-karyawan" value="<?php echo htmlspecialchars($id_karyawan); ?>">
         <input type="hidden" id="lokasi" value="">
         <input type="hidden" id="lokasi-pulang" value="">
+        <input type="hidden" id="akurasi-lokasi" value="">
     </div>
 
     <div id="main-container">
@@ -874,6 +875,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
             const statusLokasi = document.getElementById('status-lokasi');
             const lokasiInput = document.getElementById('lokasi');
             const lokasiPulangInput = document.getElementById('lokasi-pulang');
+            const akurasiInput = document.getElementById('akurasi-lokasi');
             if (!statusLokasi) return;
             if (!navigator.geolocation) {
                 statusLokasi.innerHTML = `<i class="fas fa-exclamation-triangle" style="color: #dc3545;"></i><span>Browser Anda tidak mendukung deteksi lokasi</span>`;
@@ -888,6 +890,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                     const lokasiValue = `${latitude},${longitude}`;
                     if (lokasiInput) lokasiInput.value = lokasiValue;
                     if (lokasiPulangInput) lokasiPulangInput.value = lokasiValue;
+                    if (akurasiInput) akurasiInput.value = accuracy;
                     statusLokasi.innerHTML = `<i class="fas fa-check-circle" style="color: #28a745;"></i> <span>Lokasi terdeteksi (Akurasi: ${Math.round(accuracy)}m)</span>`;
                     statusLokasi.className = 'lokasi-berhasil';
                 },
@@ -1139,6 +1142,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                 const formData = new FormData();
                 formData.append('id_karyawan', document.getElementById('global-id-karyawan').value);
                 formData.append('lokasi', document.getElementById('lokasi').value);
+                formData.append('akurasi_lokasi', document.getElementById('akurasi-lokasi').value);
                 formData.append('keterangan', keterangan);
                 if (alasan) formData.append('alasan', alasan);
                 if (fotoFile) formData.append('foto_bukti', fotoFile);
@@ -1214,6 +1218,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                 const formData = new FormData();
                 formData.append('id_karyawan', document.getElementById('global-id-karyawan').value);
                 formData.append('lokasi', document.getElementById('lokasi-pulang').value);
+                formData.append('akurasi_lokasi', document.getElementById('akurasi-lokasi').value);
                 formData.append('keterangan', 'pulang');
                 formData.append('aksi', 'pulang');
                 if (alasanTidakMasuk) {

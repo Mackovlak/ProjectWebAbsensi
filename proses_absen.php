@@ -44,6 +44,11 @@ try {
 
     $id_karyawan = isset($_POST['id_karyawan']) ? sanitizeInput($_POST['id_karyawan']) : '';
     $lokasi = isset($_POST['lokasi']) ? sanitizeInput($_POST['lokasi']) : 'Lokasi tidak terdeteksi';
+    // Akurasi GPS (meter) dari GeolocationCoordinates.accuracy - dipakai sebagai
+    // toleransi jarak di validateLokasiAbsen(), bukan sumber kebenaran lokasi
+    // itu sendiri. filter_var menolak nilai non-numerik dari klien nakal.
+    $akurasi_lokasi = isset($_POST['akurasi_lokasi']) ? filter_var($_POST['akurasi_lokasi'], FILTER_VALIDATE_FLOAT) : false;
+    if ($akurasi_lokasi === false) $akurasi_lokasi = null;
     $keterangan_param = isset($_POST['keterangan']) ? sanitizeInput($_POST['keterangan']) : '';
     $is_dinas_luar = isset($_POST['is_dinas_luar']) && $_POST['is_dinas_luar'] === 'true';
     
@@ -112,7 +117,7 @@ try {
         }
         
         // 1. VALIDASI LOKASI GPS (wajib untuk Hadir, kecuali request Dinas Luar atau karyawan onsite)
-        $validasi_lokasi = validateLokasiAbsen($lokasi, $id_karyawan, $conn);
+        $validasi_lokasi = validateLokasiAbsen($lokasi, $id_karyawan, $conn, $akurasi_lokasi);
         if (!$is_dinas_luar && !$is_onsite_karyawan && !$validasi_lokasi['valid'] && !isset($validasi_lokasi['bypass'])) {
             outputJSON([
                 'success' => false,
@@ -307,7 +312,7 @@ try {
                 ]);
             }
 
-            $validasi_lokasi = validateLokasiAbsen($lokasi, $id_karyawan, $conn);
+            $validasi_lokasi = validateLokasiAbsen($lokasi, $id_karyawan, $conn, $akurasi_lokasi);
             if (!$is_onsite_karyawan && !$validasi_lokasi['valid'] && !isset($validasi_lokasi['bypass'])) {
                 $stmt_check->close();
                 outputJSON([
@@ -394,7 +399,7 @@ try {
         
         if ($is_hadir_masuk) {
             // Validasi GPS untuk pulang
-            $validasi_lokasi = validateLokasiAbsen($lokasi, $id_karyawan, $conn);
+            $validasi_lokasi = validateLokasiAbsen($lokasi, $id_karyawan, $conn, $akurasi_lokasi);
             if (!$is_onsite_karyawan && !$validasi_lokasi['valid'] && !isset($validasi_lokasi['bypass'])) {
                 $stmt_check->close();
                 outputJSON([
