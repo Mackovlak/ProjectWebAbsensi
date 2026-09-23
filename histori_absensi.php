@@ -732,7 +732,7 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
                         </select>
                     </div>
 
-                    <div class="grid grid-cols-2 gap-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">Dari Tanggal <span class="text-red-500">*</span></label>
                             <input type="date" name="tanggal_mulai" required class="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:ring-2 focus:ring-teal-500 outline-none text-sm">
@@ -794,7 +794,7 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
                         </select>
                     </div>
 
-                    <div class="grid grid-cols-2 gap-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">Dari Tanggal <span class="text-red-500">*</span></label>
                             <input type="date" name="tanggal_mulai" required class="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:ring-2 focus:ring-rose-500 outline-none text-sm">
@@ -838,7 +838,7 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
                 <input type="hidden" name="id_absensi" id="edit-id-absensi">
                 <input type="hidden" name="redirect_cabang" value="<?php echo $id_cabang; ?>">
 
-                <div class="grid grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">Nama Karyawan</label>
                         <input type="text" id="edit-nama-karyawan" readonly class="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-100 dark:bg-slate-900 text-slate-500 dark:text-slate-400 focus:outline-none text-sm cursor-not-allowed">
@@ -849,7 +849,7 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">Jam Masuk</label>
                         <input type="time" name="jam_masuk" id="edit-jam-masuk" step="1" class="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:ring-2 focus:ring-fuchsia-500 outline-none text-sm">

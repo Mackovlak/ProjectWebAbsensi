@@ -347,7 +347,7 @@ const exportDataArray = <?php echo json_encode(isset($dataForExport) ? $dataForE
 
 function exportToPDF() {
     if(exportDataArray.length === 0) {
-        alert("Tidak ada data untuk di-export.");
+        Swal.fire({ icon: 'info', title: 'Tidak Ada Data', text: 'Tidak ada data untuk di-export.', confirmButtonColor: '#c026d3' });
         return;
     }
     document.getElementById('exportData').value = JSON.stringify(exportDataArray);
@@ -357,7 +357,7 @@ function exportToPDF() {
 
 function exportToExcel() {
     if(exportDataArray.length === 0) {
-        alert("Tidak ada data untuk di-export.");
+        Swal.fire({ icon: 'info', title: 'Tidak Ada Data', text: 'Tidak ada data untuk di-export.', confirmButtonColor: '#c026d3' });
         return;
     }
     document.getElementById('exportData').value = JSON.stringify(exportDataArray);

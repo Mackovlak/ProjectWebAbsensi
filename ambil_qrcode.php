@@ -404,7 +404,7 @@ sort($cabangs);
         });
         
         if (filteredRows.length === 0) {
-            alert("Tidak ada data karyawan yang sesuai filter untuk dicetak.");
+            Swal.fire({ icon: 'info', title: 'Tidak Ada Data', text: 'Tidak ada data karyawan yang sesuai filter untuk dicetak.', confirmButtonColor: '#c026d3' });
             btn.innerHTML = originalHTML; btn.disabled = false;
             return;
         }

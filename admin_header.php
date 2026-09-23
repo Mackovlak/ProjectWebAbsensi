@@ -575,7 +575,6 @@ $total_notif = count($notif_dinas) + count($notif_pulang_cepat) + count($notif_i
                          style="display: none;">
                         
                         <div class="px-5 py-3 border-b border-slate-100 dark:border-slate-700/50">
-                <div class="px-5 py-3 border-b border-slate-100 dark:border-slate-700/50">
                             <p class="text-sm font-bold text-slate-800 dark:text-white"><?php echo htmlspecialchars($_SESSION['nama_lengkap'] ?? $_SESSION['username']); ?></p>
                             <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Administrator</p>
                         </div>
