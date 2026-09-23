@@ -4,7 +4,7 @@ This is a step-by-step guide to deploy this app on a bare Linux VPS with
 **Nginx + PHP-FPM + MySQL**, systemd-managed, with HTTPS. The Docker setup
 (`DOCKER.md`) is for local dev only — this document is the production path.
 
-Target stack: **Ubuntu 22.04/24.04 LTS**, **Nginx**, **PHP 8.1-FPM**,
+Target stack: **Ubuntu 22.04/24.04 LTS**, **Nginx**, **PHP 8.3-FPM**,
 **MySQL 8.0**, **Let's Encrypt/Certbot**. Commands assume `apt`; adapt for
 other distros.
 
@@ -74,19 +74,35 @@ setup (see §5).
 
 ## 3. Install Nginx, PHP-FPM, MySQL
 
-```bash
-sudo apt install -y nginx mysql-server \
-  php8.1-fpm php8.1-mysqli php8.1-mbstring php8.1-xml php8.1-curl \
-  php8.1-gd php8.1-zip php8.1-opcache
+**Ubuntu 24.04** ships PHP 8.3 in its default repos. **Ubuntu 22.04** ships
+PHP 8.1 — add the community PPA first to get 8.3 there too, so both target
+OS versions in this guide run the same PHP version as the Docker dev setup
+(`DOCKER.md`, also PHP 8.3):
 
-php -v            # sanity check: should report PHP 8.1.x
-systemctl status nginx php8.1-fpm mysql
+```bash
+# Ubuntu 22.04 only - skip this block on 24.04, which already has php8.3-*
+sudo apt install -y software-properties-common
+sudo add-apt-repository -y ppa:ondrej/php
+sudo apt update
+```
+
+```bash
+sudo apt install -y nginx mysql-server composer \
+  php8.3-fpm php8.3-mysqli php8.3-mbstring php8.3-xml php8.3-curl \
+  php8.3-gd php8.3-zip php8.3-opcache
+
+php -v            # sanity check: should report PHP 8.3.x
+composer --version
+systemctl status nginx php8.3-fpm mysql
 ```
 
 Notes:
-- `php8.1-mysqli` is the only *required* extension the app calls directly
+- `php8.3-mysqli` is the only *required* extension the app calls directly
   (`config.php` opens the DB via `mysqli`). The others above are common
   PHP hygiene/perf extras, safe defaults.
+- `composer` is required, not optional — see §6, the app's single Composer
+  dependency (`vlucas/phpdotenv`) has to be installed on the server; there
+  are no vendored/committed `vendor/` files to fall back on.
 - Use **MySQL**, not MariaDB. The real schema (`db_absensi_qr_schema.sql`)
   uses `utf8mb4_0900_ai_ci` on a couple of tables (`face_recognition_logs`,
   `system_settings`), a MySQL 8.0+-only collation that MariaDB doesn't
@@ -116,10 +132,12 @@ FLUSH PRIVILEGES;
 EXIT;
 ```
 
-`SELECT/INSERT/UPDATE/DELETE` only — the app never runs DDL at runtime
-(schema changes are applied by hand, per `CLAUDE.md`), so the app account
-doesn't need `CREATE`/`ALTER`/`DROP`. Keep a separate admin login (root,
-or another account with DDL rights) for you to run migrations with.
+`SELECT/INSERT/UPDATE/DELETE` only — the app never runs DDL as part of a
+normal request; schema changes go through the separate tracked migration
+system (`migrate.php` + `migrations/`, see `MIGRATIONS.md`), which you run
+explicitly and which needs its own DDL-capable DB login. So the day-to-day
+app account doesn't need `CREATE`/`ALTER`/`DROP`. Keep a separate admin
+login (root, or another account with DDL rights) for running migrations.
 
 ---
 
@@ -146,36 +164,18 @@ sudo mysql -u root 'db_absensi.kry' < db_absensi_qr_schema.sql
 > privileged account once; `absensi_app` only needs to exist for the app's
 > normal runtime queries afterward, which is what §4 already set up.
 
-**Before you do**, check one known gap: `toggle_face_reset_permission.php`
-writes to a table called `face_admin_logs` on every face-reset admin
-action, but that table was **absent** from the real dump this repo's
-Docker setup was built against (see `docker/mysql-init/01-schema.sql` for
-the exact `CREATE TABLE` this project used to patch that gap locally).
-Run this against your production DB before going live:
+**Known gap in the dump**: `toggle_face_reset_permission.php` writes to a
+table called `face_admin_logs` on every face-reset admin action, but that
+table was **absent** from the real dump this repo's Docker setup was
+originally built against. Without it, every "allow reset / delete face /
+lock face" admin action throws and rolls back (it's inside a transaction
+with no silent-catch, per `toggle_face_reset_permission.php`).
 
-```sql
-SHOW TABLES LIKE 'face_admin_logs';
-```
-
-If it returns nothing, create it (matches what `toggle_face_reset_permission.php`
-inserts — `admin_id`, `target_id_karyawan`, `action_type`, `ip_address`):
-
-```sql
-CREATE TABLE `face_admin_logs` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `admin_id` varchar(20) COLLATE utf8mb4_general_ci DEFAULT NULL,
-  `target_id_karyawan` varchar(20) COLLATE utf8mb4_general_ci DEFAULT NULL,
-  `action_type` varchar(30) COLLATE utf8mb4_general_ci NOT NULL,
-  `ip_address` varchar(45) COLLATE utf8mb4_general_ci DEFAULT NULL,
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `idx_face_admin_logs_target` (`target_id_karyawan`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-```
-
-Without this table, every "allow reset / delete face / lock face" admin
-action will throw and roll back (it's inside a transaction with no
-silent-catch, per `toggle_face_reset_permission.php`).
+You no longer need to patch this by hand: `migrations/012_face_admin_logs.php`
+creates the table (idempotently — safe even if it already exists) the next
+time you run `migrate.php`. Just don't skip §15 after this initial import —
+run `php migrate.php status` then `php migrate.php migrate --yes` once the
+app code is deployed, **before** you rely on the face-reset admin feature.
 
 **After importing this dump**, once the application code is deployed (§6)
 and `config.php` can reach the database, run `migrate.php` (see §15 and
@@ -199,11 +199,28 @@ cd /var/www/absenslip
 (Or `rsync -a --exclude .git ./ deploy@your-vps:/var/www/absenslip/` from
 your machine if you're not pulling from a remote.)
 
-There is **no build step** — no `composer install`, no `npm install`, no
-compiled assets. The checked-out PHP files are served as-is. All frontend
-libraries (Tailwind, SweetAlert2, Chart.js/ApexCharts, DataTables,
-face-api.js, html2canvas, jsPDF) load from public CDNs at request time —
-no local vendoring to worry about.
+There is **no frontend build step** — no `npm install`, no compiled assets.
+The checked-out PHP files are served as-is, and all frontend libraries
+(Tailwind, SweetAlert2, Chart.js/ApexCharts, DataTables, face-api.js,
+html2canvas, jsPDF) load from public CDNs at request time — no local JS
+vendoring to worry about.
+
+There **is** one required backend step, though: `composer install`. The app
+has a single PHP dependency (`vlucas/phpdotenv`, declared in
+`assets/composer.json`) used to load `.env` into `$_ENV`. Its installed
+files (`assets/vendor/`) are gitignored — not shipped in the repo — so a
+fresh `git clone`/`rsync` will be **missing `assets/vendor/autoload.php`**
+until you run this:
+
+```bash
+composer install --working-dir=/var/www/absenslip/assets --no-dev --optimize-autoloader
+```
+
+This is not optional or best-effort: `config.php` and
+`security_functions.php` both do a bare
+`require __DIR__ . '/assets/vendor/autoload.php'` with no existence check
+and no fallback — skip this step and **every single page in the app**
+fatal-errors, not just the ones that touch environment variables.
 
 ### File ownership & permissions
 
@@ -227,47 +244,58 @@ directory outright, so `775`/`664` is enough and is the safer default.
 
 ---
 
-## 7. Wire up environment variables for PHP-FPM
+## 7. Create `.env`
 
-`config.php` already reads DB credentials from environment variables with
-hardcoded-default fallbacks:
+`config.php` (and `security_functions.php`) load configuration via
+`vlucas/phpdotenv`, not raw `getenv()`:
 
 ```php
-$host = getenv('DB_HOST') ?: "localhost";
-$username = getenv('DB_USER') ?: "root";
-$password = getenv('DB_PASS') ?: "";
-$database = getenv('DB_NAME') ?: "db_absensi.kry";
+require __DIR__ . '/assets/vendor/autoload.php';
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
+$dotenv->load();   // <- throws if .env doesn't exist at __DIR__, i.e. the repo root
 ```
 
-On a bare VPS (no Docker Compose to inject these), set them in the
-**PHP-FPM pool** so `getenv()` picks them up for every request. Edit the
-pool config:
+That `->load()` call (as opposed to `->safeLoad()`) **throws an uncaught
+exception if `.env` is missing** — so unlike some frameworks, setting
+environment variables some other way (PHP-FPM pool `env[]` lines, systemd
+`Environment=`, etc.) is **not enough on its own**: you need an actual
+`.env` file sitting at the project root, or every request fatal-errors
+before it gets anywhere near your DB settings.
 
 ```bash
-sudo nano /etc/php/8.1/fpm/pool.d/www.conf
+cd /var/www/absenslip
+cp .env.example .env
+nano .env
 ```
 
-Add (or create a dedicated pool file — either works):
+Fill in for production:
 
 ```ini
-env[DB_HOST] = localhost
-env[DB_USER] = absensi_app
-env[DB_PASS] = CHANGE_ME_TO_A_LONG_RANDOM_PASSWORD
-env[DB_NAME] = db_absensi.kry
+DB_HOST=localhost
+DB_USER=absensi_app
+DB_PASS=CHANGE_ME_TO_A_LONG_RANDOM_PASSWORD
+DB_NAME=db_absensi.kry
+
+# Required - security_functions.php's getRegistrationKey() throws if this
+# is missing or under 32 characters. It derives the admin/owner/supervisor
+# self-registration codes (see README.md §3), so treat it like a password.
+REGISTRATION_MASTER_KEY=CHANGE_ME_TO_A_LONG_RANDOM_SECRET_AT_LEAST_32_CHARS
 ```
 
-**PHP-FPM strips the environment by default** — `env[]` lines in the pool
-file are the fix; just exporting shell env vars before starting the
-service will *not* work. Restart to apply:
+Leave out `WEB_PORT`/`DB_PORT`/`PHPMYADMIN_PORT`/`FACE_BYPASS_TEST_ID` —
+those are Docker Compose/local-dev-only knobs (`docker-compose.yml`,
+`seed_test_no_camera.local.php`) that this bare-VPS setup doesn't use.
 
 ```bash
-sudo systemctl restart php8.1-fpm
+chmod 640 .env
+chown deploy:www-data .env
 ```
 
-(Alternative, if you'd rather not touch pool config: hardcode the four
-values directly in `config.php`'s fallback defaults instead. Either is
-fine for this app — there's no secrets manager/vault integration to wire
-up, this is a single-VPS deployment.)
+`.env` contains a live DB password and the registration master key, so it
+must **never** be world-readable and must **never** be committed — it's
+already covered by `.gitignore` and by the nginx `location ~ /\.` dotfile
+deny rule in §8, but double-check both after copying the file onto a new
+server.
 
 ---
 
@@ -337,6 +365,12 @@ server {
         deny all;
     }
 
+    # Composer's installed package sources have no reason to be
+    # web-servable (nothing under here is a request entrypoint).
+    location ^~ /assets/vendor/ {
+        deny all;
+    }
+
     # Uploaded content: serve as static files, never execute as PHP.
     location ^~ /assets/uploads/ {
         location ~ \.php$ { deny all; }
@@ -348,7 +382,7 @@ server {
 
     location ~ \.php$ {
         include snippets/fastcgi-php.conf;
-        fastcgi_pass unix:/run/php/php8.1-fpm.sock;
+        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
         # Matches docker/php/uploads.ini so overtime/manual-entry photo
         # uploads (up to ~6MB per proses_absen.php) actually go through.
@@ -412,13 +446,13 @@ welcome page.
 
 ## 10. PHP hardening
 
-Edit `/etc/php/8.1/fpm/php.ini`:
+Edit `/etc/php/8.3/fpm/php.ini`:
 
 ```ini
 expose_php = Off
 display_errors = Off
 log_errors = On
-error_log = /var/log/php8.1-fpm-absenslip-error.log
+error_log = /var/log/php8.3-fpm-absenslip-error.log
 
 ; Matches docker/php/uploads.ini -- proses_absen.php accepts up to ~6MB
 ; photo uploads (overtime/manual-entry proof); leave headroom.
@@ -438,7 +472,7 @@ the `php.ini` changes above are the server-level backstop for the same
 intent, not a replacement for it.
 
 ```bash
-sudo systemctl restart php8.1-fpm
+sudo systemctl restart php8.3-fpm
 ```
 
 ---
@@ -458,7 +492,7 @@ Add:
 
 ```cron
 # AbsenKita Javag - remind staff who haven't checked in yet, 18:15 WIB
-15 18 * * * /usr/bin/php8.2 /var/www/absenslip/cron_reminder_absensi.php >> /var/log/absenslip-cron.log 2>&1
+15 18 * * * /usr/bin/php8.3 /var/www/absenslip/cron_reminder_absensi.php >> /var/log/absenslip-cron.log 2>&1
 ```
 
 Make sure the server's system timezone matches, or adjust the cron
@@ -522,7 +556,7 @@ that matter more once the app is on the public internet:
        allow 203.0.113.10;   # your office/home IP
        deny all;
        include snippets/fastcgi-php.conf;
-       fastcgi_pass unix:/run/php/php8.1-fpm.sock;
+       fastcgi_pass unix:/run/php/php8.3-fpm.sock;
        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
    }
    ```
@@ -537,7 +571,7 @@ that matter more once the app is on the public internet:
    location = /absen.php {
        limit_req zone=absen burst=5 nodelay;
        include snippets/fastcgi-php.conf;
-       fastcgi_pass unix:/run/php/php8.1-fpm.sock;
+       fastcgi_pass unix:/run/php/php8.3-fpm.sock;
        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
    }
    ```
@@ -578,7 +612,7 @@ Run through this once, on the real domain, over HTTPS:
 7. Confirm uploaded photos actually land in `assets/uploads/absensi/` on
    the server with `www-data` ownership.
 8. Trigger `cron_reminder_absensi.php` manually once
-   (`sudo -u www-data php8.1 cron_reminder_absensi.php`) to confirm the
+   (`sudo -u www-data php8.3 cron_reminder_absensi.php`) to confirm the
    Fonnte WhatsApp token works before trusting the cron schedule.
 9. Run the full payroll path once: build a slip gaji (Admin), ACC as
    Admin (requires TTD upload first), ACC as Owner (requires TTD + stempel
@@ -588,13 +622,18 @@ Run through this once, on the real domain, over HTTPS:
 
 ## 15. Deploying updates later
 
-No build step means updates are just a file sync + (occasionally) a
-tracked schema migration via `migrate.php` (see **`MIGRATIONS.md`** for the
-full guide):
+No frontend build step means updates are mostly a file sync + (occasionally)
+a tracked schema migration via `migrate.php` (see **`MIGRATIONS.md`** for the
+full guide), plus a `composer install` if `assets/composer.json` changed:
 
 ```bash
 cd /var/www/absenslip
 git pull
+
+# If assets/composer.json or assets/composer.lock changed in this pull -
+# check with `git diff HEAD@{1} HEAD -- assets/composer.json assets/composer.lock`,
+# or just run it unconditionally, it's a fast no-op otherwise:
+composer install --working-dir=assets --no-dev --optimize-autoloader
 
 # If the change includes a schema migration (new files under migrations/):
 #  1. BACK UP THE DATABASE FIRST - see §12. MySQL DDL (ALTER/CREATE TABLE)
@@ -607,7 +646,7 @@ sudo -u www-data php migrate.php migrate --yes
 #     (or log in as Admin and use migrate.php's web UI, which shows the
 #     same pending-migrations preview before you confirm)
 
-sudo systemctl reload php8.1-fpm   # only needed if opcache is enabled and
+sudo systemctl reload php8.3-fpm   # only needed if opcache is enabled and
                                     # you want to force a cache bust
 ```
 
@@ -617,9 +656,9 @@ status` any time to confirm what state a given environment is actually in,
 rather than guessing from memory.
 
 If you enabled `opcache` (recommended for perf — install
-`php8.1-opcache`, it's in the §3 install list), either set a short
+`php8.3-opcache`, it's in the §3 install list), either set a short
 `opcache.revalidate_freq` in dev-adjacent environments or reload
-`php8.1-fpm` after every deploy so changed files are picked up
+`php8.3-fpm` after every deploy so changed files are picked up
 immediately.
 
 ---
@@ -629,11 +668,12 @@ immediately.
 | Symptom | Likely cause |
 |---|---|
 | `ERROR 1142 ... DROP/CREATE command denied to user 'absensi_app'@...` while importing the schema | You imported with the restricted app user instead of `root` — see §5. Re-run the import as `root`, then let `absensi_app` handle runtime queries only. |
-| Blank page / 500 | Check `/var/log/nginx/absenslip.error.log` and `error_log` from php.ini — `display_errors` is off in production by design. |
-| "Connection failed" on every page | PHP-FPM pool `env[DB_*]` not set/not reloaded, or MySQL user/password/privileges wrong (§4/§7). |
+| Blank page / 500 on **every** page, including the login screen | Missing `assets/vendor/autoload.php` (composer dependency not installed, §6) or missing `.env` (§7) — both make `config.php` fatal-error unconditionally. Check `/var/log/nginx/absenslip.error.log` and php.ini's `error_log` (`display_errors` is off in production by design) for `Dotenv\Exception\InvalidPathException` or `Failed opening required '.../assets/vendor/autoload.php'`. |
+| "Connection failed" on every page (but the app otherwise loads) | Wrong values *inside* `.env` (§7), or MySQL user/password/privileges wrong (§4). |
 | Camera or GPS prompt never appears | Not actually on HTTPS, or on an `www.`/bare-domain mismatch vs. the cert's SANs. |
 | Uploads fail / "Nonaktifkan" photo actions error | `assets/uploads/` not owned by `www-data`, or `client_max_body_size`/`upload_max_filesize`/`post_max_size` too small (§8/§10). |
-| Face-reset admin actions fail every time | Missing `face_admin_logs` table — see §5. |
-| `Class "ZipArchive" not found` on slip gaji / report Excel export | `php-zip` extension not installed. §3's install line already includes `php8.1-zip` for a fresh server; if this VPS was provisioned before the Excel-export feature existed, run `sudo apt install -y php8.1-zip && sudo systemctl restart php8.1-fpm`. |
+| Face-reset admin actions fail every time | Missing `face_admin_logs` table — run `php migrate.php migrate --yes` (migration `012_face_admin_logs.php` creates it, see §5/§15). |
+| Self-registration links (`daftar_admin.php`, `buat_akun_owner.php`, admin's "generate link" flows) throw `RuntimeException: REGISTRATION_MASTER_KEY belum dikonfigurasi dengan aman` | `.env`'s `REGISTRATION_MASTER_KEY` is missing or shorter than 32 characters — see §7. |
+| `Class "ZipArchive" not found` on slip gaji / report Excel export | `php-zip` extension not installed. §3's install line already includes `php8.3-zip` for a fresh server; if this VPS was provisioned before the Excel-export feature existed, run `sudo apt install -y php8.3-zip && sudo systemctl restart php8.3-fpm`. |
 | WhatsApp reminders never send | No `wa_token` saved on any `users` row, or the Fonnte account/token is invalid — test manually per §14 step 8. |
 | `migrate.php migrate --yes` stopped partway with an error | Fix whatever the reported error says (often a data issue, e.g. duplicate rows blocking a new `UNIQUE` key), then just run it again — migrations already applied stay recorded in `schema_migrations` and won't re-run; only the failed one and anything after it will retry. |

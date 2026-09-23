@@ -5,9 +5,11 @@ This is a local **testing/dev** setup, not a production deployment (see the
 
 ## What's included
 
-- `web` — PHP 8.2 + Apache (mysqli, zip, mod_rewrite, mod_headers, `.htaccess`
+- `web` — PHP 8.3 + Apache (mysqli, zip, mod_rewrite, mod_headers, `.htaccess`
   support enabled), serving this repo directly via a bind mount so edits on
-  the host show up immediately, no rebuild needed.
+  the host show up immediately, no rebuild needed. PHP 8.3 is also the
+  target version for production (see `DEPLOYMENT.md`), so dev and prod stay
+  on the same runtime.
 - `db` — MySQL 8.0, auto-initialized on first start from
   `docker/mysql-init/01-schema.sql` (copied from a real `mysqldump` of the
   production database, `db_absensi_qr_schema.sql` at the repo root — not
@@ -19,9 +21,13 @@ This is a local **testing/dev** setup, not a production deployment (see the
 ## Quick start
 
 ```bash
-cp .env.example .env      # optional — defaults work as-is
+cp .env.example .env      # required — see "Composer & .env" below, not just optional defaults
 docker compose up -d --build
 ```
+
+No separate `composer install` step needed: `docker/php/entrypoint.sh` runs it
+automatically against the bind-mounted `assets/` folder every time the `web`
+container starts (see "How the pieces connect" below).
 
 Then open:
 - **App**: http://localhost:8080
@@ -45,6 +51,18 @@ docker compose down -v            # stop AND wipe the database
 
 ## How the pieces connect
 
+- **Composer & `.env`**: `config.php` (and `security_functions.php`)
+  unconditionally `require assets/vendor/autoload.php` and call
+  `Dotenv::createImmutable(__DIR__)->load()` — if `assets/vendor/` is
+  missing, or if a `.env` file doesn't exist at the repo root, **every
+  page in the app fatal-errors**, not just the ones that use env vars.
+  `assets/vendor/` is gitignored (along with `assets/composer.lock`), so
+  `docker/php/entrypoint.sh` runs `composer install --working-dir=assets`
+  on every container start to (re)create it against whatever
+  `assets/composer.json` currently declares (today, just
+  `vlucas/phpdotenv`). `.env` itself is *not* auto-created — you must
+  `cp .env.example .env` yourself before first run, or every page will die
+  with an uncaught `Dotenv\Exception\InvalidPathException`.
 - `config.php` now reads `DB_HOST`/`DB_USER`/`DB_PASS`/`DB_NAME` from the
   environment, falling back to the original hardcoded
   `localhost`/`root`/``/`db_absensi.kry` values if unset — so this change is
@@ -69,6 +87,10 @@ This setup optimizes for "get the app running to click around in it":
 - The schema in `docker/mysql-init/01-schema.sql` is copied from a real
   production dump, with one addition: `face_admin_logs`, which
   `toggle_face_reset_permission.php` requires but which was absent from
-  the dump (see the comment at the top of the file). If the running app
-  ever errors with "Unknown column" or "Table doesn't exist", trust the
-  PHP code over this file and patch the schema to match.
+  the dump (see the comment at the top of the file). This same table is
+  now also created by the tracked migration
+  `migrations/012_face_admin_logs.php`, so a database seeded from an older
+  dump (without this file's addition) still ends up correct after running
+  `migrate.php`. If the running app ever errors with "Unknown column" or
+  "Table doesn't exist", trust the PHP code over this file and patch the
+  schema to match.

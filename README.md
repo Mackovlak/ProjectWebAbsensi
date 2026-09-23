@@ -8,13 +8,14 @@ This document explains **how the whole system fits together** and then gives a *
 
 ## 1. Tech stack
 
-- **Backend**: plain procedural PHP (mysqli), one `.php` file per page/action — no router, no framework, no Composer packages.
+- **Backend**: plain procedural PHP (mysqli), one `.php` file per page/action — no router, no framework. One Composer package (`vlucas/phpdotenv`, for loading `.env`) — see `CLAUDE.md`'s "Composer & environment setup" for why it's required, not optional.
 - **Database**: MySQL/MariaDB, database name `db_absensi.kry` (see `config.php`).
 - **Frontend**: server-rendered HTML + Tailwind CSS (via CDN) + vanilla JS, sprinkled with SweetAlert2 (dialogs), Chart.js (dashboard charts), DataTables (sortable tables), and `davidshimjs-qrcodejs` (QR codes).
 - **Face recognition**: 100% client-side, via `face-api.js` (loaded from a CDN) — the browser computes a numeric "face descriptor" and confidence score and sends only those numbers to the server; there is no server-side ML.
 - **"PDF" exports**: there is no PDF library. "Print" pages are plain HTML styled for the browser's print dialog, and "Excel" exports are actually CSV files with a UTF-8 BOM.
 - **WhatsApp notifications**: via the third-party **Fonnte** API (`https://api.fonnte.com/send`), using a per-installation `wa_token` stored on a `users` row.
 - **No test suite or linter.** Schema changes go through a small tracked migration system (`migrate.php` + `migrations/`) — see `MIGRATIONS.md`.
+- **Running it**: target PHP is **8.3**. For local dev, `docker compose up -d --build` (see `DOCKER.md`) or a bare XAMPP/Laragon/`php -S` stack. For a production VPS, see `DEPLOYMENT.md`. Either way, `.env` (from `.env.example`) and `composer install --working-dir=assets` are required first — see `CLAUDE.md`'s "Composer & environment setup".
 
 ---
 

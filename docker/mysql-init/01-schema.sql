@@ -12,8 +12,11 @@
 --      `INSERT INTO face_admin_logs (...)` inside a transaction with no
 --      error handling — the live app requires this table to exist or that
 --      admin action throws and rolls back. Either the dump predates the
---      table, or production is actually missing it (worth checking there
---      independently). Definition here matches what the app's INSERT needs.
+--      table, or production was actually missing it. As of
+--      `migrations/012_face_admin_logs.php`, `migrate.php` now creates this
+--      table automatically in any environment (including production) — the
+--      definition below just saves a first-boot `migrate.php` run for local
+--      Docker testing, and must stay in sync with that migration's shape.
 --
 -- If the running app ever errors with "Unknown column" or "Table doesn't
 -- exist" against this schema, trust the PHP code / the real dump over this

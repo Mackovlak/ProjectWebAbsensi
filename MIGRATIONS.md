@@ -41,6 +41,9 @@ migrations/
   004_kalender_hari_libur_dan_hari_kerja.php
   005_izin_khusus_dan_pulang_cepat.php
   006_hari_libur_unique_key_fix.php
+  007_foto_capture_absensi.php
+  ...                    <- numbered sequentially; `ls migrations/` for the
+                             current full list and highest number in use
 ```
 
 Each file in `migrations/` returns an array:
@@ -81,8 +84,9 @@ button.
 ## Writing a new migration
 
 1. Pick the next number: look at the highest-numbered file in `migrations/`
-   and add one (`006_...` exists → your new file is `007_...`).
-2. Name it descriptively: `007_short_description.php`.
+   and add one (e.g. if `012_...` is currently the highest, your new file is
+   `013_...`).
+2. Name it descriptively: `013_short_description.php`.
 3. Use the helpers already in `migration_helpers.php` — don't redefine your
    own column/table checks in the migration file:
    - `tabelAda($conn, 'nama_tabel')`
@@ -149,6 +153,17 @@ and clock-out photos together. Verify both roles, clock-in, clock-out, and the o
 follow-up form after deployment. See `ATTENDANCE_VERIFICATION.md` for the
 server-side confidence check and short-lived verification tokens (no additional
 migration required).
+
+### face_admin_logs table (012)
+
+Migration `012_face_admin_logs.php` creates the `face_admin_logs` table that
+`toggle_face_reset_permission.php` writes to on every face-reset admin
+action (allow reset / delete face / lock face). It was absent from the
+original production schema dump (`db_absensi_qr_schema.sql`); without it,
+those admin actions throw and roll back inside their own transaction. Pure
+`CREATE TABLE IF NOT EXISTS`-style addition (idempotent via `tabelAda()`),
+no existing data touched — safe to apply any time, no special downtime
+window needed. See `DEPLOYMENT.md` §5/§16 for the production angle.
 
 This is the part that matters if a past update caused instability. Do these
 in order, every time:

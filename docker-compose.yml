@@ -37,7 +37,7 @@ services:
       - "${WEB_PORT:-8080}:80"
 
   phpmyadmin:
-    image: phpmyadmin:latest
+    image: phpmyadmin:5.2
     restart: unless-stopped
     depends_on:
       - db
