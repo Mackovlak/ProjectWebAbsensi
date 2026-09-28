@@ -59,8 +59,10 @@ if ($_SESSION['role'] === 'staff') {
         exit();
     }
 }
-$force_internal = in_array($_SESSION['role'], ['admin', 'owner'], true)
-    && ($_GET['detail_potongan'] ?? '') === '1';
+$document_type = ($_GET['document_type'] ?? 'lengkap') === 'disnaker' ? 'disnaker' : 'lengkap';
+$document_filename_prefix = $document_type === 'disnaker'
+    ? 'Rincian_Penghasilan_Disnaker'
+    : 'Slip_Gaji_Lengkap';
 
 if ($tipe === 'cetak_slip_batch') {
     if (empty($user_id)) {
@@ -325,10 +327,8 @@ function ribuan($angka) {
 
         $bulan = (int)$slip['bulan'];
         $tahun = (int)$slip['tahun'];
-        $tampilkan_potongan = $force_internal || !empty($slip['tampilkan_potongan']);
-        $judul_dokumen = $force_internal
-            ? 'Rincian Payroll Internal'
-            : ($tampilkan_potongan ? 'Slip Gaji' : 'Rincian Penghasilan');
+        $tampilkan_potongan = $document_type === 'lengkap';
+        $judul_dokumen = $tampilkan_potongan ? 'Slip Gaji Lengkap' : 'Rincian Penghasilan Disnaker';
 
         // --- FILTER BPJS DARI EXTRA ---
         $bpjs_inc = [];
@@ -376,13 +376,16 @@ function ribuan($angka) {
         $no = 1;
     ?>
     <!-- KERTAS A4 -->
-    <div class="a4-paper text-black" data-filename="Slip_Gaji_<?php echo htmlspecialchars($slip['nama_karyawan']); ?>-<?php echo $months[$bulan] . ' ' . $tahun; ?>">
+    <div class="a4-paper text-black" data-filename="<?php echo $document_filename_prefix; ?>_<?php echo htmlspecialchars($slip['nama_karyawan']); ?>-<?php echo $months[$bulan] . ' ' . $tahun; ?>">
         
         <!-- HEADER (Logo & Judul) -->
         <div class="flex flex-col items-center mb-6">
             <img src="/assets/images/logo.png" alt="" class="h-16 mb-2" onerror="this.style.display='none'"> 
             <h1 class="font-bold text-base tracking-wide uppercase"><?php echo htmlspecialchars(strtoupper($judul_dokumen)); ?></h1>
             <p class="text-[10px]">Periode: <?php echo $months[$bulan] . " " . $tahun; ?></p>
+            <?php if (!$tampilkan_potongan): ?>
+            <p class="text-[9px] text-slate-600 mt-1">Dokumen rincian penghasilan bruto — bukan bukti pembayaran upah.</p>
+            <?php endif; ?>
         </div>
 
         <!-- INFO KARYAWAN (Kop Surat) -->
@@ -571,8 +574,8 @@ function ribuan($angka) {
                 <?php endif; ?>
 
                 <!-- TOTAL PENGHASILAN -->
-                <tr class="font-bold text-xs">
-                    <td colspan="6" class="text-center py-1.5 uppercase">TOTAL DI TERIMA (A)</td>
+                <tr class="font-bold text-xs <?php echo !$tampilkan_potongan ? 'bg-pink-header border border-black' : ''; ?>">
+                    <td colspan="6" class="text-center py-1.5 uppercase"><?php echo $tampilkan_potongan ? 'TOTAL PENGHASILAN (A)' : 'TOTAL PENGHASILAN BRUTO'; ?></td>
                     <td class="px-2"><div class="flex-rp"><span>RP</span> <span><?php echo ribuan($slip['total_penghasilan']); ?></span></div></td>
                 </tr>
 
@@ -671,11 +674,6 @@ function ribuan($angka) {
                     <td colspan="6" class="text-center py-1.5 uppercase">DIGENAPKAN</td>
                     <td class="px-2"><div class="flex-rp"><span>RP</span> <span><?php echo ribuan($slip['gaji_bersih']); ?></span></div></td>
                 </tr>
-                <?php else: ?>
-                <tr class="font-bold text-xs bg-pink-header border border-black">
-                    <td colspan="6" class="text-center py-1.5 uppercase">TOTAL RINCIAN PENGHASILAN</td>
-                    <td class="px-2 border-l border-black"><div class="flex-rp"><span>RP</span> <span><?php echo ribuan($slip['total_penghasilan']); ?></span></div></td>
-                </tr>
                 <?php endif; ?>
 
                 <!-- QUOTES -->
@@ -752,7 +750,7 @@ function ribuan($angka) {
             // Jika hanya 1 halaman, langsung download PNG
             if (total === 1) {
                 const paper = papers[0];
-                let filename = paper.getAttribute('data-filename') || 'Slip_Gaji_1';
+                let filename = paper.getAttribute('data-filename') || '<?php echo $document_filename_prefix; ?>_1';
                 
                 await new Promise(r => setTimeout(r, 100));
                 
@@ -787,7 +785,7 @@ function ribuan($angka) {
                 const paper = papers[i];
                 let filename = paper.getAttribute('data-filename');
                 if (!filename) {
-                    filename = 'Slip_Gaji_' + (i + 1);
+                    filename = '<?php echo $document_filename_prefix; ?>_' + (i + 1);
                 }
                 
                 // Tambahkan delay kecil agar browser tidak freeze
@@ -822,7 +820,7 @@ function ribuan($angka) {
             
             // Generate Zip
             const content = await zip.generateAsync({type: "blob"});
-            saveAs(content, "Slip_Gaji_<?php echo date('F Y', strtotime($start_date)); ?>.zip");
+            saveAs(content, "<?php echo $document_filename_prefix; ?>_<?php echo date('F Y', strtotime($start_date)); ?>.zip");
             
             loader.style.display = 'none';
         }
@@ -896,7 +894,7 @@ function ribuan($angka) {
             // Jika hanya 1 halaman, langsung download PDF tunggal
             if (total === 1) {
                 const paper = papers[0];
-                let filename = paper.getAttribute('data-filename') || 'Slip_Gaji_1';
+                let filename = paper.getAttribute('data-filename') || '<?php echo $document_filename_prefix; ?>_1';
 
                 const pdfBuffer = await renderPdf(paper);
                 const blob = new Blob([pdfBuffer], { type: 'application/pdf' });
@@ -914,7 +912,7 @@ function ribuan($angka) {
                 const paper = papers[i];
                 let filename = paper.getAttribute('data-filename');
                 if (!filename) {
-                    filename = 'Slip_Gaji_' + (i + 1);
+                    filename = '<?php echo $document_filename_prefix; ?>_' + (i + 1);
                 }
 
                 const pdfBuffer = await renderPdf(paper);
@@ -928,7 +926,7 @@ function ribuan($angka) {
 
             // Generate & Download ZIP
             const content = await zip.generateAsync({ type: 'blob' });
-            saveAs(content, "Slip_Gaji_<?php echo date('F Y', strtotime($start_date)); ?>.zip");
+            saveAs(content, "<?php echo $document_filename_prefix; ?>_<?php echo date('F Y', strtotime($start_date)); ?>.zip");
 
             loader.style.display = 'none';
         }

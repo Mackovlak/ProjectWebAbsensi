@@ -31,7 +31,9 @@ $akomodasi = 0; // Removed from UI, always 0
 $payroll_scheme = normalisasiSkemaPayroll($_POST['payroll_scheme'] ?? PAYROLL_SCHEME_STANDARD);
 $transport_tetap = max(0, (float)($_POST['transport_tetap'] ?? 0));
 $uang_makan_tetap = max(0, (float)($_POST['uang_makan_tetap'] ?? 0));
-$tampilkan_potongan = isset($_POST['tampilkan_potongan']) && (string)$_POST['tampilkan_potongan'] !== '0' ? 1 : 0;
+// Potongan selalu menjadi bagian snapshot payroll. Variasi dokumen dipilih
+// saat export, bukan disimpan sebagai konfigurasi slip.
+$tampilkan_potongan = 1;
 
 // Transport (AUTO)
 $transport_nominal = (float)$_POST['transport_nominal'];
