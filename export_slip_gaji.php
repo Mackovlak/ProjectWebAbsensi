@@ -218,6 +218,10 @@ $no = 1;
             <div class="w-1/2 flex flex-col items-end">
                 <table class="table-noborder w-auto text-xs">
                     <tr>
+                        <td class="w-20 uppercase">ID</td>
+                        <td class="uppercase">: <?php echo htmlspecialchars($slip['id_karyawan']); ?></td>
+                    </tr>
+                    <tr>
                         <td class="w-20 uppercase">TANGGAL</td>
                         <td class="uppercase">: <?php echo $tanggal_cetak; ?></td>
                     </tr>
@@ -226,10 +230,10 @@ $no = 1;
                         <td class="uppercase">: <?php echo $no_rev; ?></td>
                     </tr>
                 </table>
-                <div class="mt-2 text-red-600 italic font-bold text-[11px] tracking-wider pr-1">
-                    " BERSIFAT CONFIDENTIAL "
-                </div>
             </div>
+        </div>
+        <div class="flex justify-center mt-2 text-red-600 italic font-bold text-[11px] tracking-wider pr-1">
+            " BERSIFAT CONFIDENTIAL "
         </div>
 
         <!-- TABEL RINCIAN GAJI -->

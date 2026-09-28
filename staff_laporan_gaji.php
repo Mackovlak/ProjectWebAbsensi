@@ -113,12 +113,12 @@ require 'staff_header.php';
                     <div>
                         <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Jenis Dokumen</label>
                         <div class="grid grid-cols-1 gap-2">
-                            <label class="flex items-start gap-3 p-3 rounded-xl border border-brand-300 bg-brand-50 dark:bg-brand-900/20 dark:border-brand-700 cursor-pointer has-[:checked]:ring-2 has-[:checked]:ring-brand-500">
-                                <input type="radio" name="document_type" value="lengkap" checked class="mt-0.5 text-brand-600">
+                            <label class="flex items-start gap-3 p-3 rounded-xl border border-brand-300 bg-white-50 dark:bg-slate-900/20 dark:border-brand-700 cursor-pointer has-[:checked]:ring-2 has-[:checked]:ring-brand-500">
+                                <input type="radio" name="document_type" value="lengkap" checked class="mt-0.5 text-brand-600 bg-brand-50 dark:bg-brand-900/20">
                                 <span><span class="block text-sm font-bold text-slate-800 dark:text-white">Slip Gaji Lengkap</span><span class="block text-xs text-slate-500 dark:text-slate-400">Penghasilan, rincian potongan, dan THP.</span></span>
                             </label>
                             <label class="flex items-start gap-3 p-3 rounded-xl border border-slate-200 bg-white dark:bg-slate-900/30 dark:border-slate-700 cursor-pointer has-[:checked]:ring-2 has-[:checked]:ring-brand-500">
-                                <input type="radio" name="document_type" value="disnaker" class="mt-0.5 text-brand-600">
+                                <input type="radio" name="document_type" value="disnaker" class="mt-0.5 text-brand-600 bg-brand-50 dark:bg-brand-900/20">
                                 <span><span class="block text-sm font-bold text-slate-800 dark:text-white">Rincian Penghasilan Disnaker</span><span class="block text-xs text-slate-500 dark:text-slate-400">Penghasilan bruto tanpa bagian potongan.</span></span>
                             </label>
                         </div>
