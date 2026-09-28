@@ -126,7 +126,6 @@ $payroll_scheme = normalisasiSkemaPayroll($existing['payroll_scheme'] ?? $salary
 $profile_gaji_pokok = $salary_profile['gaji_pokok'] ?? $karyawan['gaji_pokok'] ?? 0;
 $transport_tetap = $existing['transport_tetap'] ?? $salary_profile['transport_tetap'] ?? 0;
 $uang_makan_tetap = $existing['uang_makan_tetap'] ?? $salary_profile['uang_makan_tetap'] ?? 0;
-$tampilkan_potongan = isset($existing['tampilkan_potongan']) ? (int)$existing['tampilkan_potongan'] : 1;
 
 $is_locked = false;
 if ($is_edit && !empty($existing['created_at'])) {
@@ -224,8 +223,8 @@ require 'admin_header.php';
                 <i class="fa-solid fa-arrow-left"></i> Kembali
             </a>
             <?php if($is_edit): ?>
-            <button onclick="exportPDF()" type="button" class="flex-1 sm:flex-none flex justify-center items-center gap-2 px-4 py-2.5 bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-900/30 dark:text-rose-400 dark:hover:bg-rose-800/50 border border-rose-200 dark:border-rose-800 rounded-xl transition-colors font-medium text-sm shadow-sm">
-                <i class="fa-solid fa-file-pdf"></i> PDF
+            <button onclick="exportPDF('lengkap')" type="button" class="flex-1 sm:flex-none flex justify-center items-center gap-2 px-4 py-2.5 bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-900/30 dark:text-rose-400 dark:hover:bg-rose-800/50 border border-rose-200 dark:border-rose-800 rounded-xl transition-colors font-medium text-sm shadow-sm">
+                <i class="fa-solid fa-file-pdf"></i> Slip Lengkap
             </button>
             <?php endif; ?>
         </div>
@@ -724,14 +723,6 @@ require 'admin_header.php';
                 </div>
                 
                 <div class="p-6 space-y-4">
-                    <label class="flex items-start gap-3 rounded-xl border border-slate-600 bg-slate-900/40 p-3 cursor-pointer">
-                        <input type="checkbox" name="tampilkan_potongan" value="1" <?php echo $tampilkan_potongan ? 'checked' : ''; ?> <?php echo $is_locked ? 'disabled' : ''; ?> class="mt-0.5 rounded border-slate-500 text-brand-500">
-                        <span>
-                            <span class="block text-sm font-semibold text-white">Tampilkan rincian potongan</span>
-                            <span class="block text-[11px] text-slate-400 mt-0.5">Jika tidak dicentang, hasil cetak diberi judul “Rincian Penghasilan”, bukan Slip Gaji.</span>
-                        </span>
-                    </label>
-                    <?php if ($is_locked): ?><input type="hidden" name="tampilkan_potongan" value="<?php echo $tampilkan_potongan; ?>"><?php endif; ?>
                     <div class="flat-payroll-field flex justify-between items-center text-sm rounded-lg bg-brand-900/30 px-3 py-2">
                         <span class="text-brand-200">Penghasilan Tetap</span>
                         <span class="text-brand-100 font-mono font-bold" id="txtFixedIncome">Rp 0</span>
@@ -778,12 +769,17 @@ require 'admin_header.php';
                     </button>
                     <?php endif; ?>
                     <?php if($is_edit): ?>
-                    <button type="button" onclick="exportPDF(false)" class="w-full py-2.5 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded-xl transition-colors text-sm flex items-center justify-center gap-2">
-                        <i class="fa-solid fa-print"></i> Cetak Dokumen Karyawan
-                    </button>
-                    <button type="button" onclick="exportPDF(true)" class="w-full py-2.5 bg-amber-700 hover:bg-amber-600 text-white font-semibold rounded-xl transition-colors text-sm flex items-center justify-center gap-2">
-                        <i class="fa-solid fa-user-shield"></i> Rincian Payroll Internal
-                    </button>
+                    <div class="pt-2 border-t border-slate-700">
+                        <p class="px-1 mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">Dokumen Payroll</p>
+                        <button type="button" onclick="exportPDF('lengkap')" class="w-full p-3 mb-2 bg-brand-600 hover:bg-brand-500 text-white rounded-xl transition-colors text-left flex items-start gap-3">
+                            <i class="fa-solid fa-file-invoice-dollar mt-0.5"></i>
+                            <span><span class="block text-sm font-bold">Slip Gaji Lengkap</span><span class="block text-[11px] text-brand-100 mt-0.5">Penghasilan, potongan, dan THP.</span></span>
+                        </button>
+                        <button type="button" onclick="exportPDF('disnaker')" class="w-full p-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl transition-colors text-left flex items-start gap-3 border border-slate-600">
+                            <i class="fa-solid fa-building-shield mt-0.5 text-amber-300"></i>
+                            <span><span class="block text-sm font-bold">Rincian Penghasilan Disnaker</span><span class="block text-[11px] text-slate-300 mt-0.5">Penghasilan bruto tanpa bagian potongan.</span></span>
+                        </button>
+                    </div>
                     <?php endif; ?>
                 </div>
             </div>
@@ -1307,12 +1303,11 @@ require 'admin_header.php';
     document.getElementById('selectTahun').addEventListener('change', reloadPeriod);
 
     // Export PDF Function
-    function exportPDF(internal = false) {
+    function exportPDF(documentType = 'lengkap') {
         const bulan = document.getElementById("selectBulan").value;
         const tahun = document.getElementById("selectTahun").value;
         const id_karyawan = "<?php echo $id_karyawan; ?>";
-        const mode = internal ? '&mode=internal' : '';
-        const url = `export_slip_gaji.php?id_karyawan=${id_karyawan}&bulan=${bulan}&tahun=${tahun}${mode}`;
+        const url = `export_slip_gaji.php?id_karyawan=${id_karyawan}&bulan=${bulan}&tahun=${tahun}&document_type=${encodeURIComponent(documentType)}`;
         window.open(url, "_blank");
     }
 

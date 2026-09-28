@@ -182,9 +182,12 @@ $stmt_export->close();
                                         </span>
                                     <?php endif; ?>
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-center text-sm font-medium flex justify-center gap-2">
-                                    <a href="laporan_slip_batch.php?tipe=cetak_slip_batch&detail_potongan=1&user_id=<?php echo urlencode($row['id_karyawan']); ?>&start_date=<?php echo date('Y-m-d', strtotime("$tahun-$bulan-01")); ?>&end_date=<?php echo date('Y-m-t', strtotime("$tahun-$bulan-01")); ?>" target="_blank" class="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600 rounded-lg transition-colors border border-slate-200 dark:border-slate-600">
-                                        <i class="fa-solid fa-eye"></i> Lihat Slip
+                                <td class="px-6 py-4 whitespace-nowrap text-center text-sm font-medium flex justify-center gap-2 flex-wrap">
+                                    <a href="laporan_slip_batch.php?tipe=cetak_slip_batch&document_type=lengkap&user_id=<?php echo urlencode($row['id_karyawan']); ?>&start_date=<?php echo date('Y-m-d', strtotime("$tahun-$bulan-01")); ?>&end_date=<?php echo date('Y-m-t', strtotime("$tahun-$bulan-01")); ?>" target="_blank" class="inline-flex items-center gap-2 px-3 py-1.5 bg-brand-50 text-brand-600 hover:bg-brand-100 dark:bg-brand-500/20 dark:text-brand-300 rounded-lg transition-colors border border-brand-200 dark:border-brand-500/30">
+                                        <i class="fa-solid fa-file-invoice-dollar"></i> Slip Lengkap
+                                    </a>
+                                    <a href="laporan_slip_batch.php?tipe=cetak_slip_batch&document_type=disnaker&user_id=<?php echo urlencode($row['id_karyawan']); ?>&start_date=<?php echo date('Y-m-d', strtotime("$tahun-$bulan-01")); ?>&end_date=<?php echo date('Y-m-t', strtotime("$tahun-$bulan-01")); ?>" target="_blank" class="inline-flex items-center gap-2 px-3 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-500/20 dark:text-amber-300 rounded-lg transition-colors border border-amber-200 dark:border-amber-500/30">
+                                        <i class="fa-solid fa-building-shield"></i> Disnaker
                                     </a>
                                     <?php if (!$row['status_owner_acc']): ?>
                                         <button onclick="accSlip(<?php echo $row['id_slip']; ?>)" class="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 dark:bg-emerald-500/20 dark:text-emerald-400 dark:hover:bg-emerald-500/30 rounded-lg transition-colors border border-emerald-200 dark:border-emerald-500/30">

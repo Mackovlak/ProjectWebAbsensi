@@ -110,6 +110,19 @@ require 'staff_header.php';
                             </select>
                         </div>
                     </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Jenis Dokumen</label>
+                        <div class="grid grid-cols-1 gap-2">
+                            <label class="flex items-start gap-3 p-3 rounded-xl border border-brand-300 bg-brand-50 dark:bg-brand-900/20 dark:border-brand-700 cursor-pointer has-[:checked]:ring-2 has-[:checked]:ring-brand-500">
+                                <input type="radio" name="document_type" value="lengkap" checked class="mt-0.5 text-brand-600">
+                                <span><span class="block text-sm font-bold text-slate-800 dark:text-white">Slip Gaji Lengkap</span><span class="block text-xs text-slate-500 dark:text-slate-400">Penghasilan, rincian potongan, dan THP.</span></span>
+                            </label>
+                            <label class="flex items-start gap-3 p-3 rounded-xl border border-slate-200 bg-white dark:bg-slate-900/30 dark:border-slate-700 cursor-pointer has-[:checked]:ring-2 has-[:checked]:ring-brand-500">
+                                <input type="radio" name="document_type" value="disnaker" class="mt-0.5 text-brand-600">
+                                <span><span class="block text-sm font-bold text-slate-800 dark:text-white">Rincian Penghasilan Disnaker</span><span class="block text-xs text-slate-500 dark:text-slate-400">Penghasilan bruto tanpa bagian potongan.</span></span>
+                            </label>
+                        </div>
+                    </div>
                     <div class="pt-2">
                         <button type="submit" class="w-full flex items-center justify-center gap-2 px-5 py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-medium transition-colors shadow-sm">
                             <i class="fa-solid fa-print"></i> Cetak / Preview Slip
@@ -256,8 +269,11 @@ require 'staff_header.php';
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-center text-sm font-medium flex justify-center gap-2">
                                 <?php if ($row['status_owner_acc']): ?>
-                                    <a href="laporan_slip_batch.php?tipe=cetak_slip_batch&user_id=<?php echo urlencode($id_karyawan); ?>&start_date=<?php echo date('Y-m-d', strtotime("{$row['tahun']}-{$row['bulan']}-01")); ?>&end_date=<?php echo date('Y-m-t', strtotime("{$row['tahun']}-{$row['bulan']}-01")); ?>" target="_blank" class="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600 rounded-lg transition-colors border border-slate-200 dark:border-slate-600">
-                                        <i class="fa-solid fa-eye"></i> Lihat Slip
+                                    <a href="laporan_slip_batch.php?tipe=cetak_slip_batch&document_type=lengkap&user_id=<?php echo urlencode($id_karyawan); ?>&start_date=<?php echo date('Y-m-d', strtotime("{$row['tahun']}-{$row['bulan']}-01")); ?>&end_date=<?php echo date('Y-m-t', strtotime("{$row['tahun']}-{$row['bulan']}-01")); ?>" target="_blank" class="inline-flex items-center gap-2 px-3 py-1.5 bg-brand-50 text-brand-600 hover:bg-brand-100 dark:bg-brand-500/20 dark:text-brand-300 rounded-lg transition-colors border border-brand-200 dark:border-brand-500/30">
+                                        <i class="fa-solid fa-file-invoice-dollar"></i> Slip Lengkap
+                                    </a>
+                                    <a href="laporan_slip_batch.php?tipe=cetak_slip_batch&document_type=disnaker&user_id=<?php echo urlencode($id_karyawan); ?>&start_date=<?php echo date('Y-m-d', strtotime("{$row['tahun']}-{$row['bulan']}-01")); ?>&end_date=<?php echo date('Y-m-t', strtotime("{$row['tahun']}-{$row['bulan']}-01")); ?>" target="_blank" class="inline-flex items-center gap-2 px-3 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-500/20 dark:text-amber-300 rounded-lg transition-colors border border-amber-200 dark:border-amber-500/30">
+                                        <i class="fa-solid fa-building-shield"></i> Disnaker
                                     </a>
                                     <?php if (!$row['status_karyawan_acc']): ?>
                                     <button onclick="accSlipKaryawan(<?php echo $row['id']; ?>)" class="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 dark:bg-emerald-500/20 dark:text-emerald-400 dark:hover:bg-emerald-500/30 rounded-lg transition-colors border border-emerald-200 dark:border-emerald-500/30">
