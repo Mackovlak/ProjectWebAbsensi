@@ -305,6 +305,26 @@ CREATE TABLE `face_admin_logs` (
 -- Table structure for table `slip_gaji`
 --
 
+DROP TABLE IF EXISTS `employee_salary_profile`;
+CREATE TABLE `employee_salary_profile` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `id_karyawan` varchar(20) COLLATE utf8mb4_general_ci NOT NULL,
+  `scheme_code` varchar(30) COLLATE utf8mb4_general_ci NOT NULL DEFAULT 'STANDARD_ATTENDANCE',
+  `effective_from` date NOT NULL,
+  `effective_to` date DEFAULT NULL,
+  `gaji_pokok` decimal(15,2) NOT NULL DEFAULT '0.00',
+  `transport_tetap` decimal(15,2) NOT NULL DEFAULT '0.00',
+  `uang_makan_tetap` decimal(15,2) NOT NULL DEFAULT '0.00',
+  `approved_by` int DEFAULT NULL,
+  `approved_at` datetime DEFAULT NULL,
+  `catatan` varchar(255) COLLATE utf8mb4_general_ci DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_salary_profile_period` (`id_karyawan`,`effective_from`),
+  KEY `idx_salary_profile_active` (`id_karyawan`,`effective_from`,`effective_to`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 DROP TABLE IF EXISTS `slip_gaji`;
 CREATE TABLE `slip_gaji` (
   `id` int NOT NULL AUTO_INCREMENT,
@@ -312,9 +332,14 @@ CREATE TABLE `slip_gaji` (
   `bulan` int NOT NULL COMMENT '1-12',
   `tahun` int NOT NULL,
   `tanggal_cetak` datetime DEFAULT CURRENT_TIMESTAMP,
+  `payroll_scheme` varchar(30) COLLATE utf8mb4_general_ci NOT NULL DEFAULT 'STANDARD_ATTENDANCE',
+  `salary_profile_id` int DEFAULT NULL,
   `gaji_pokok` decimal(15,2) DEFAULT '0.00',
   `tunjangan_cs` decimal(15,2) DEFAULT '0.00',
   `akomodasi` decimal(15,2) DEFAULT '0.00',
+  `transport_tetap` decimal(15,2) NOT NULL DEFAULT '0.00',
+  `uang_makan_tetap` decimal(15,2) NOT NULL DEFAULT '0.00',
+  `penghasilan_tetap` decimal(15,2) NOT NULL DEFAULT '0.00',
   `transport_nominal` decimal(15,2) DEFAULT '0.00',
   `transport_hari` decimal(5,1) DEFAULT '0.0',
   `transport_multiplier` decimal(5,1) DEFAULT '25.5',
@@ -335,6 +360,7 @@ CREATE TABLE `slip_gaji` (
   `total_potongan` decimal(15,2) DEFAULT '0.00',
   `digenapkan` decimal(15,2) DEFAULT '0.00',
   `gaji_bersih` decimal(15,2) DEFAULT '0.00',
+  `tampilkan_potongan` tinyint(1) NOT NULL DEFAULT '1',
   `dibuat_oleh` varchar(100) COLLATE utf8mb4_general_ci DEFAULT NULL,
   `disetujui_oleh` varchar(100) COLLATE utf8mb4_general_ci DEFAULT NULL,
   `diterima_oleh` varchar(100) COLLATE utf8mb4_general_ci DEFAULT NULL,

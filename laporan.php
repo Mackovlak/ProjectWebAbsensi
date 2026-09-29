@@ -309,6 +309,20 @@ if (isAdmin()) {
                         <input type="text" id="selected_user_name" readonly placeholder="- Pilih Karyawan -" onclick="openKaryawanModal('gaji')" class="w-full pl-10 pr-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-xl text-sm bg-white dark:bg-slate-800 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-brand-500 transition-colors cursor-pointer" autocomplete="off">
                     </div>
                 </div>
+
+                <div id="filterJenisDokumenPayroll" style="display:none;" class="p-4 bg-slate-50 dark:bg-slate-900/30 rounded-xl border border-slate-100 dark:border-slate-700/50 mt-2">
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Jenis Dokumen Payroll</label>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <label class="flex items-start gap-3 p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl cursor-pointer has-[:checked]:border-brand-500 has-[:checked]:ring-1 has-[:checked]:ring-brand-500">
+                            <input type="radio" name="document_type" value="lengkap" checked class="mt-0.5 text-brand-600">
+                            <span><span class="block text-sm font-bold text-slate-800 dark:text-white">Slip Gaji Lengkap</span><span class="block text-xs text-slate-500 dark:text-slate-400">Penghasilan, potongan, dan THP.</span></span>
+                        </label>
+                        <label class="flex items-start gap-3 p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl cursor-pointer has-[:checked]:border-amber-500 has-[:checked]:ring-1 has-[:checked]:ring-amber-500">
+                            <input type="radio" name="document_type" value="disnaker" class="mt-0.5 text-amber-600">
+                            <span><span class="block text-sm font-bold text-slate-800 dark:text-white">Rincian Penghasilan Disnaker</span><span class="block text-xs text-slate-500 dark:text-slate-400">Penghasilan bruto tanpa bagian potongan.</span></span>
+                        </label>
+                    </div>
+                </div>
                 
                 <div class="pt-6 mt-6 border-t border-slate-100 dark:border-slate-700 flex flex-col sm:flex-row gap-3">
                     <button type="submit" name="action" value="preview" class="flex-1 flex items-center justify-center gap-2 px-6 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-medium transition-colors shadow-sm shadow-brand-500/30">
@@ -483,7 +497,10 @@ function toggleGajiFilters() {
     const tipe = document.querySelector('#formLapGaji input[name="tipe"]:checked').value;
     const fDiv = document.getElementById('filterDivisi');
     const fKar = document.getElementById('filterKaryawan');
+    const fDokumen = document.getElementById('filterJenisDokumenPayroll');
     const formLapGaji = document.getElementById('formLapGaji');
+    const isSlip = tipe === 'cetak_slip_batch' || tipe === 'cetak_slip_divisi';
+    fDokumen.style.display = isSlip ? 'block' : 'none';
     
     if (tipe === 'lap_gaji_divisi' || tipe === 'rekap_gaji_divisi') {
         fDiv.style.display = 'block';
