@@ -4,6 +4,7 @@
  * Auto-calculation from attendance data
  */
 require 'config.php';
+require_once 'payroll_functions.php';
 requireAdmin();
 
 // Validate karyawan ID
@@ -127,6 +128,12 @@ $stmt->close();
 
 $is_edit = !empty($existing);
 
+$salary_profile = getSalaryProfileForPeriod($conn, $id_karyawan, $bulan, $tahun);
+$payroll_scheme = normalisasiSkemaPayroll($existing['payroll_scheme'] ?? $salary_profile['scheme_code'] ?? PAYROLL_SCHEME_STANDARD);
+$profile_gaji_pokok = $salary_profile['gaji_pokok'] ?? $karyawan['gaji_pokok'] ?? 0;
+$transport_tetap = $existing['transport_tetap'] ?? $salary_profile['transport_tetap'] ?? 0;
+$uang_makan_tetap = $existing['uang_makan_tetap'] ?? $salary_profile['uang_makan_tetap'] ?? 0;
+
 $is_locked = false;
 if ($is_edit && !empty($existing['created_at'])) {
     if ((time() - strtotime($existing['created_at'])) > (5 * 24 * 60 * 60)) {
@@ -223,8 +230,8 @@ require 'admin_header.php';
                 <i class="fa-solid fa-arrow-left"></i> Kembali
             </a>
             <?php if($is_edit): ?>
-            <button onclick="exportPDF()" type="button" class="flex-1 sm:flex-none flex justify-center items-center gap-2 px-4 py-2.5 bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-900/30 dark:text-rose-400 dark:hover:bg-rose-800/50 border border-rose-200 dark:border-rose-800 rounded-xl transition-colors font-medium text-sm shadow-sm">
-                <i class="fa-solid fa-file-pdf"></i> PDF
+            <button onclick="exportPDF('lengkap')" type="button" class="flex-1 sm:flex-none flex justify-center items-center gap-2 px-4 py-2.5 bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-900/30 dark:text-rose-400 dark:hover:bg-rose-800/50 border border-rose-200 dark:border-rose-800 rounded-xl transition-colors font-medium text-sm shadow-sm">
+                <i class="fa-solid fa-file-pdf"></i> Slip Lengkap
             </button>
             <?php endif; ?>
         </div>
@@ -311,14 +318,32 @@ require 'admin_header.php';
                 </div>
                 
                 <div class="p-6 space-y-4" id="penghasilanContainer">
+                    <div class="rounded-xl border border-brand-200 dark:border-brand-800 bg-brand-50/60 dark:bg-brand-900/20 p-4 space-y-3">
+                        <div>
+                            <label for="payrollScheme" class="block text-sm font-bold text-slate-800 dark:text-white mb-1">Skema Payroll</label>
+                            <select name="payroll_scheme" id="payrollScheme" class="w-full px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-xl text-sm bg-white dark:bg-slate-900 text-slate-800 dark:text-white" <?php echo $is_locked ? 'disabled' : ''; ?>>
+                                <option value="STANDARD_ATTENDANCE" <?php echo $payroll_scheme === PAYROLL_SCHEME_STANDARD ? 'selected' : ''; ?>>Standard — Transport berdasarkan kehadiran</option>
+                                <option value="JAVAG_FLAT" <?php echo $payroll_scheme === PAYROLL_SCHEME_JAVAG_FLAT ? 'selected' : ''; ?>>Javag Flat — Gaji Pokok + Transport + Uang Makan tetap</option>
+                            </select>
+                            <?php if ($is_locked): ?><input type="hidden" name="payroll_scheme" value="<?php echo htmlspecialchars($payroll_scheme); ?>"><?php endif; ?>
+                            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Nilai skema dan komponennya disimpan sebagai snapshot pada slip.</p>
+                        </div>
+                        <?php if(!$is_locked): ?>
+                        <label class="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-300 cursor-pointer">
+                            <input type="checkbox" name="save_salary_profile" value="1" <?php echo (!$is_edit && $payroll_scheme === PAYROLL_SCHEME_JAVAG_FLAT) ? 'checked' : ''; ?> class="mt-0.5 rounded border-slate-300 text-brand-600">
+                            <span>Simpan komponen tetap ini sebagai profil gaji untuk tahun <?php echo $tahun; ?>.</span>
+                        </label>
+                        <?php endif; ?>
+                    </div>
+
                     <!-- Gaji Pokok -->
                     <div class="flex items-center gap-4">
                         <div class="w-1/3 text-sm font-semibold text-slate-700 dark:text-slate-300">Gaji Pokok</div>
                         <div class="w-2/3 flex items-center gap-1.5">
                             <div class="relative flex-1 group">
                                 <span class="absolute left-3 top-2.5 text-slate-400 text-sm group-focus-within:text-brand-500 transition-colors">Rp</span>
-                                <input type="text" id="gajiPokokInput" inputmode="numeric" value="<?php echo number_format($existing['gaji_pokok'] ?? $karyawan['gaji_pokok'] ?? 0, 0, ',', '.'); ?>" class="format-rp inc-input hidden-real-input w-full pl-10 pr-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-xl text-right text-sm outline-none focus:ring-2 focus:ring-brand-500 bg-white dark:bg-slate-900/50 text-slate-800 dark:text-white font-mono transition-colors">
-                                <input type="hidden" id="gajiPokokValue" name="gaji_pokok" value="<?php echo $existing['gaji_pokok'] ?? $karyawan['gaji_pokok'] ?? 0; ?>">
+                                <input type="text" id="gajiPokokInput" inputmode="numeric" value="<?php echo number_format($existing['gaji_pokok'] ?? $profile_gaji_pokok, 0, ',', '.'); ?>" class="format-rp inc-input hidden-real-input w-full pl-10 pr-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-xl text-right text-sm outline-none focus:ring-2 focus:ring-brand-500 bg-white dark:bg-slate-900/50 text-slate-800 dark:text-white font-mono transition-colors">
+                                <input type="hidden" id="gajiPokokValue" name="gaji_pokok" value="<?php echo $existing['gaji_pokok'] ?? $profile_gaji_pokok; ?>">
                             </div>
                             <?php if(!$is_locked): ?>
                             <button type="button" onclick="saveRate('gaji_pokok', 'gajiPokokValue', this)" class="shrink-0 px-3 py-2.5 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-800/50 border border-emerald-200 dark:border-emerald-800 rounded-xl text-sm font-semibold transition-colors" title="Simpan sebagai Default Karyawan">
@@ -329,7 +354,7 @@ require 'admin_header.php';
                     </div>
                     
                     <!-- Tunjangan CS -->
-                    <div class="flex items-center gap-4">
+                    <div class="flex items-center gap-4 standard-payroll-field">
                         <div class="w-1/3 text-sm font-semibold text-slate-700 dark:text-slate-300">Tunjangan Jabatan</div>
                         <div class="w-2/3 flex items-center gap-2">
                             <div class="relative flex-1 group">
@@ -345,12 +370,37 @@ require 'admin_header.php';
                         </div>
                     </div>
 
+                    <div class="flat-payroll-field space-y-4">
+                        <div class="flex items-center gap-4">
+                            <div class="w-1/3">
+                                <p class="text-sm font-semibold text-slate-700 dark:text-slate-300">Transport Tetap</p>
+                                <p class="text-[10px] text-brand-600 dark:text-brand-400 mt-1">Flat, tidak dikali kehadiran</p>
+                            </div>
+                            <div class="w-2/3 relative">
+                                <span class="absolute left-3 top-2.5 text-slate-400 text-sm">Rp</span>
+                                <input type="text" id="transportTetapDisplay" inputmode="numeric" value="<?php echo number_format($transport_tetap, 0, ',', '.'); ?>" class="format-rp inc-input hidden-real-input w-full pl-10 pr-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-xl text-right text-sm bg-white dark:bg-slate-900/50 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-brand-500 font-mono">
+                                <input type="hidden" id="transportTetapValue" name="transport_tetap" value="<?php echo $transport_tetap; ?>">
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <div class="w-1/3">
+                                <p class="text-sm font-semibold text-slate-700 dark:text-slate-300">Uang Makan Tetap</p>
+                                <p class="text-[10px] text-brand-600 dark:text-brand-400 mt-1">Flat, tidak dikali kehadiran</p>
+                            </div>
+                            <div class="w-2/3 relative">
+                                <span class="absolute left-3 top-2.5 text-slate-400 text-sm">Rp</span>
+                                <input type="text" id="uangMakanTetapDisplay" inputmode="numeric" value="<?php echo number_format($uang_makan_tetap, 0, ',', '.'); ?>" class="format-rp inc-input hidden-real-input w-full pl-10 pr-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-xl text-right text-sm bg-white dark:bg-slate-900/50 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-brand-500 font-mono">
+                                <input type="hidden" id="uangMakanTetapValue" name="uang_makan_tetap" value="<?php echo $uang_makan_tetap; ?>">
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Removed Akomodasi -->
 
                     <hr class="border-dashed border-slate-200 dark:border-slate-700 my-4">
 
                     <!-- Transport (Otomatis Absen) -->
-                    <div class="flex items-start gap-4">
+                    <div class="flex items-start gap-4 standard-payroll-field">
                         <div class="w-1/3">
                             <p class="text-sm font-semibold text-slate-700 dark:text-slate-300">Transport</p>
                             <p class="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1"><i class="fa-solid fa-link"></i> Auto x Hadir (<?php echo $absensi['total_hari_hadir'] ?? 0; ?>)</p>
@@ -745,6 +795,10 @@ require 'admin_header.php';
                 </div>
                 
                 <div class="p-6 space-y-4">
+                    <div class="flat-payroll-field flex justify-between items-center text-sm rounded-lg bg-brand-900/30 px-3 py-2">
+                        <span class="text-brand-200">Penghasilan Tetap</span>
+                        <span class="text-brand-100 font-mono font-bold" id="txtFixedIncome">Rp 0</span>
+                    </div>
                     <div class="flex justify-between items-center text-sm">
                         <span class="text-slate-400">Total Penghasilan</span>
                         <span class="text-emerald-400 font-mono font-bold" id="txtTotalInc">Rp 0</span>
@@ -787,9 +841,17 @@ require 'admin_header.php';
                     </button>
                     <?php endif; ?>
                     <?php if($is_edit): ?>
-                    <button type="button" onclick="exportPDF()" class="w-full py-2.5 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded-xl transition-colors text-sm flex items-center justify-center gap-2">
-                        <i class="fa-solid fa-print"></i> Cetak PDF
-                    </button>
+                    <div class="pt-2 border-t border-slate-700">
+                        <p class="px-1 mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">Dokumen Payroll</p>
+                        <button type="button" onclick="exportPDF('lengkap')" class="w-full p-3 mb-2 bg-brand-600 hover:bg-brand-500 text-white rounded-xl transition-colors text-left flex items-start gap-3">
+                            <i class="fa-solid fa-file-invoice-dollar mt-0.5"></i>
+                            <span><span class="block text-sm font-bold">Slip Gaji Lengkap</span><span class="block text-[11px] text-brand-100 mt-0.5">Penghasilan, potongan, dan THP.</span></span>
+                        </button>
+                        <button type="button" onclick="exportPDF('disnaker')" class="w-full p-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl transition-colors text-left flex items-start gap-3 border border-slate-600">
+                            <i class="fa-solid fa-building-shield mt-0.5 text-amber-300"></i>
+                            <span><span class="block text-sm font-bold">Rincian Penghasilan Disnaker</span><span class="block text-[11px] text-slate-300 mt-0.5">Penghasilan bruto tanpa bagian potongan.</span></span>
+                        </button>
+                    </div>
                     <?php endif; ?>
                 </div>
             </div>
@@ -888,6 +950,7 @@ require 'admin_header.php';
             }
         }
         
+        updatePayrollSchemeUI();
         calculateAll();
     });
 
@@ -952,6 +1015,8 @@ require 'admin_header.php';
         }
 
         // 1. Kalkulasi Auto dari Rate x Absensi (calcAbsen)
+        const payrollScheme = document.getElementById('payrollScheme').value;
+        const isFlatPayroll = payrollScheme === 'JAVAG_FLAT';
         const rateTransport = parseFloat(document.querySelector('[name="transport_nominal"]').value) || 0;
         const resTransport = rateTransport * calcAbsen.hadir;
         document.getElementById('resTransport').value = formatRibuan(resTransport);
@@ -974,12 +1039,21 @@ require 'admin_header.php';
         document.getElementById('inKeterlambatanTotalManual').value = resTelat;
 
         // 2. Jumlahkan Semua Penghasilan
-        let totalPenghasilan = resTransport + resOvertime + resAhad;
+        let totalPenghasilan = (isFlatPayroll ? 0 : resTransport) + resOvertime + resAhad;
         
-        // Dari hidden inputs untuk penghasilan statis & dinamis
-        document.querySelectorAll('input[name="gaji_pokok"], input[name="tunjangan_cs"]').forEach(input => {
-            totalPenghasilan += parseFloat(input.value) || 0;
-        });
+        totalPenghasilan += parseFloat(document.querySelector('[name="gaji_pokok"]').value) || 0;
+        if (isFlatPayroll) {
+            totalPenghasilan += parseFloat(document.querySelector('[name="transport_tetap"]').value) || 0;
+            totalPenghasilan += parseFloat(document.querySelector('[name="uang_makan_tetap"]').value) || 0;
+        } else {
+            totalPenghasilan += parseFloat(document.querySelector('[name="tunjangan_cs"]').value) || 0;
+        }
+        const fixedIncome = isFlatPayroll
+            ? (parseFloat(document.querySelector('[name="gaji_pokok"]').value) || 0)
+                + (parseFloat(document.querySelector('[name="transport_tetap"]').value) || 0)
+                + (parseFloat(document.querySelector('[name="uang_makan_tetap"]').value) || 0)
+            : 0;
+        document.getElementById('txtFixedIncome').textContent = formatRupiah(fixedIncome);
         
         document.querySelectorAll('input[name="penghasilan_nom[]"]').forEach(input => {
             totalPenghasilan += parseFloat(input.value) || 0;
@@ -999,6 +1073,17 @@ require 'admin_header.php';
         const netSalary = (totalPenghasilan - totalPotongan) + adj;
         document.getElementById('txtNetSalary').textContent = formatRupiah(netSalary);
     }
+
+    function updatePayrollSchemeUI() {
+        const isFlat = document.getElementById('payrollScheme').value === 'JAVAG_FLAT';
+        document.querySelectorAll('.flat-payroll-field').forEach(el => el.classList.toggle('hidden', !isFlat));
+        document.querySelectorAll('.standard-payroll-field').forEach(el => el.classList.toggle('hidden', isFlat));
+    }
+
+    document.getElementById('payrollScheme').addEventListener('change', function () {
+        updatePayrollSchemeUI();
+        calculateAll();
+    });
 
     // --- FUNGSI TAMBAH BLOK BPJS PENGHASILAN ---
     function addBpjsPenghasilan() {
@@ -1290,11 +1375,11 @@ require 'admin_header.php';
     document.getElementById('selectTahun').addEventListener('change', reloadPeriod);
 
     // Export PDF Function
-    function exportPDF() {
+    function exportPDF(documentType = 'lengkap') {
         const bulan = document.getElementById("selectBulan").value;
         const tahun = document.getElementById("selectTahun").value;
         const id_karyawan = "<?php echo $id_karyawan; ?>";
-        const url = `export_slip_gaji.php?id_karyawan=${id_karyawan}&bulan=${bulan}&tahun=${tahun}`;
+        const url = `export_slip_gaji.php?id_karyawan=${id_karyawan}&bulan=${bulan}&tahun=${tahun}&document_type=${encodeURIComponent(documentType)}`;
         window.open(url, "_blank");
     }
 

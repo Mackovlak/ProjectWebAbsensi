@@ -5,6 +5,7 @@
  */
 
 require 'config.php';
+require_once 'payroll_functions.php';
 requireAdmin();
 
 if ($_SERVER['REQUEST_METHOD'] != 'POST') {
@@ -27,6 +28,12 @@ $tahun = (int)$_POST['tahun'];
 $gaji_pokok = (float)$_POST['gaji_pokok'];
 $tunjangan_cs = isset($_POST['tunjangan_cs']) ? (float)$_POST['tunjangan_cs'] : 0;
 $akomodasi = 0; // Removed from UI, always 0
+$payroll_scheme = normalisasiSkemaPayroll($_POST['payroll_scheme'] ?? PAYROLL_SCHEME_STANDARD);
+$transport_tetap = max(0, (float)($_POST['transport_tetap'] ?? 0));
+$uang_makan_tetap = max(0, (float)($_POST['uang_makan_tetap'] ?? 0));
+// Potongan selalu menjadi bagian snapshot payroll. Variasi dokumen dipilih
+// saat export, bukan disimpan sebagai konfigurasi slip.
+$tampilkan_potongan = 1;
 
 // Transport (AUTO)
 $transport_nominal = (float)$_POST['transport_nominal'];
@@ -92,6 +99,18 @@ $absensi = [
 $transport_hari = isset($_POST['transport_hari']) ? (float)$_POST['transport_hari'] : ($absensi['total_hari_hadir'] ?? 0);
 $transport_total = $transport_nominal * $transport_hari;
 
+if ($payroll_scheme === PAYROLL_SCHEME_JAVAG_FLAT) {
+    // Pada skema flat, transport dan uang makan tidak pernah dipengaruhi absensi.
+    $tunjangan_cs = 0;
+    $transport_nominal = 0;
+    $transport_hari = 0;
+    $transport_total = 0;
+} else {
+    $transport_tetap = 0;
+    $uang_makan_tetap = 0;
+}
+$penghasilan_tetap = $gaji_pokok + $tunjangan_cs + $transport_total + $transport_tetap + $uang_makan_tetap;
+
 // Overtime (AUTO)
 $overtime_nominal = (float)$_POST['overtime_nominal'];
 $overtime_jam = isset($_POST['overtime_jam']) ? (float)$_POST['overtime_jam'] : ($absensi['total_overtime'] ?? 0);
@@ -146,8 +165,8 @@ if (!empty($_POST['potongan_nom'])) {
 }
 
 // Total penghasilan
-$total_penghasilan = $gaji_pokok + $tunjangan_cs + $akomodasi + 
-                     $transport_total + $overtime_total + $insentif_ahad_total +
+$total_penghasilan = $penghasilan_tetap + $akomodasi +
+                     $overtime_total + $insentif_ahad_total +
                      $penghasilan_extra_total;
 
 // Total potongan
@@ -160,6 +179,21 @@ $gaji_bersih = $total_penghasilan - $total_potongan + $digenapkan;
 $conn->begin_transaction();
 
 try {
+    $profile = getSalaryProfileForPeriod($conn, $id_karyawan, $bulan, $tahun);
+    $salary_profile_id = isset($profile['id']) ? (int)$profile['id'] : 0;
+    if (!empty($_POST['save_salary_profile'])) {
+        $salary_profile_id = (int)saveAnnualSalaryProfile(
+            $conn,
+            $id_karyawan,
+            $tahun,
+            $payroll_scheme,
+            $gaji_pokok,
+            $transport_tetap,
+            $uang_makan_tetap,
+            (int)$_SESSION['user_id']
+        );
+    }
+
     if ($is_edit && $slip_id) {
         // Cek lock 5 hari
         $stmt_check = $conn->prepare("SELECT created_at FROM slip_gaji WHERE id = ?");
@@ -178,25 +212,31 @@ try {
         $stmt = $conn->prepare("
             UPDATE slip_gaji SET
                 bulan = ?, tahun = ?, tanggal_cetak = NOW(),
+                payroll_scheme = ?, salary_profile_id = ?,
                 gaji_pokok = ?, tunjangan_cs = ?, akomodasi = ?,
+                transport_tetap = ?, uang_makan_tetap = ?, penghasilan_tetap = ?,
                 transport_nominal = ?, transport_hari = ?, transport_total = ?,
                 overtime_nominal = ?, overtime_jam = ?, overtime_total = ?,
                 insentif_ahad_nominal = ?, insentif_ahad_hari = ?, insentif_ahad_total = ?,
                 keterlambatan_nominal = ?, keterlambatan_jumlah = ?, keterlambatan_total = ?,
                 total_penghasilan = ?, total_potongan = ?,
-                digenapkan = ?, gaji_bersih = ?,
+                digenapkan = ?, gaji_bersih = ?, tampilkan_potongan = ?,
                 updated_at = NOW()
             WHERE id = ?
         ");
-        $stmt->bind_param("iidddddddddddddddddddi",
+        $types = 'iisi' . str_repeat('d', 22) . 'ii';
+        $stmt->bind_param($types,
             $bulan, $tahun,
+            $payroll_scheme, $salary_profile_id,
             $gaji_pokok, $tunjangan_cs, $akomodasi,
+            $transport_tetap, $uang_makan_tetap, $penghasilan_tetap,
             $transport_nominal, $transport_hari, $transport_total,
             $overtime_nominal, $overtime_jam, $overtime_total,
             $insentif_ahad_nominal, $insentif_ahad_hari, $insentif_ahad_total,
             $keterlambatan_nominal, $keterlambatan_jumlah, $keterlambatan_total,
             $total_penghasilan, $total_potongan,
             $digenapkan, $gaji_bersih,
+            $tampilkan_potongan,
             $slip_id
         );
         $stmt->execute();
@@ -218,38 +258,46 @@ try {
         $stmt = $conn->prepare("
             INSERT INTO slip_gaji (
                 id_karyawan, bulan, tahun,
+                payroll_scheme, salary_profile_id,
                 gaji_pokok, tunjangan_cs, akomodasi,
+                transport_tetap, uang_makan_tetap, penghasilan_tetap,
                 transport_nominal, transport_hari, transport_total,
                 overtime_nominal, overtime_jam, overtime_total,
                 insentif_ahad_nominal, insentif_ahad_hari, insentif_ahad_total,
                 keterlambatan_nominal, keterlambatan_jumlah, keterlambatan_total,
                 total_penghasilan, total_potongan,
-                digenapkan, gaji_bersih,
+                digenapkan, gaji_bersih, tampilkan_potongan,
                 created_by, dibuat_oleh
             ) VALUES (
                 ?, ?, ?,
+                ?, ?,
+                ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?,
                 ?, ?,
-                ?, ?,
+                ?, ?, ?,
                 ?, ?
             )
         ");
         $user_id = $_SESSION['user_id'];
         $username = $_SESSION['username'];
         
-        $stmt->bind_param("siidddddddddddddddddddis",
+        $types = 'siisi' . str_repeat('d', 22) . 'iis';
+        $stmt->bind_param($types,
             $id_karyawan, $bulan, $tahun,
+            $payroll_scheme, $salary_profile_id,
             $gaji_pokok, $tunjangan_cs, $akomodasi,
+            $transport_tetap, $uang_makan_tetap, $penghasilan_tetap,
             $transport_nominal, $transport_hari, $transport_total,
             $overtime_nominal, $overtime_jam, $overtime_total,
             $insentif_ahad_nominal, $insentif_ahad_hari, $insentif_ahad_total,
             $keterlambatan_nominal, $keterlambatan_jumlah, $keterlambatan_total,
             $total_penghasilan, $total_potongan,
             $digenapkan, $gaji_bersih,
+            $tampilkan_potongan,
             $user_id, $username
         );
         $stmt->execute();

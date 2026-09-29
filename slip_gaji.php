@@ -22,7 +22,8 @@ $tahun = isset($_GET['tahun']) ? (int)$_GET['tahun'] : date('Y');
 // Ambil semua karyawan beserta status slip gaji bulan terpilih
 $query_karyawan = "SELECT k.id_karyawan, k.nama_karyawan, j.nama_jabatan, c.nama_cabang,
                           s.id as id_slip, s.status_admin_acc, s.status_owner_acc,
-                          s.gaji_pokok, s.tunjangan_cs, s.akomodasi, s.transport_total,
+                          s.payroll_scheme, s.gaji_pokok, s.tunjangan_cs, s.akomodasi,
+                          s.transport_tetap, s.uang_makan_tetap, s.penghasilan_tetap, s.transport_total,
                           s.overtime_total, s.insentif_ahad_total, s.keterlambatan_total,
                           s.total_penghasilan, s.total_potongan, s.digenapkan, s.gaji_bersih
                    FROM karyawan k

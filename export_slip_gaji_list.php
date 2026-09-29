@@ -31,18 +31,20 @@ $nama_bulan = $months[$bulan] ?? (string)$bulan;
 
 $headers = [
     'No', 'ID Karyawan', 'Nama Karyawan', 'Jabatan', 'Cabang',
-    'Gaji Pokok', 'Tunjangan', 'Akomodasi', 'Transport', 'Lembur', 'Insentif Hari ' . labelHariOvertime($conn),
+    'Skema', 'Gaji Pokok', 'Tunjangan', 'Akomodasi', 'Transport Tetap', 'Uang Makan Tetap',
+    'Penghasilan Tetap', 'Transport Kehadiran', 'Lembur', 'Insentif Hari ' . labelHariOvertime($conn),
     'Potongan Keterlambatan', 'Total Penghasilan', 'Total Potongan', 'Pembulatan',
     'Gaji Bersih (THP)', 'ACC Admin', 'ACC Owner'
 ];
 $currencyKeys = [
-    'gaji_pokok', 'tunjangan_cs', 'akomodasi', 'transport_total', 'overtime_total',
+    'gaji_pokok', 'tunjangan_cs', 'akomodasi', 'transport_tetap', 'uang_makan_tetap',
+    'penghasilan_tetap', 'transport_total', 'overtime_total',
     'insentif_ahad_total', 'keterlambatan_total', 'total_penghasilan', 'total_potongan',
     'digenapkan', 'gaji_bersih',
 ];
 
 $xlsx = new SimpleXLSXWriter('Slip Gaji ' . $nama_bulan . ' ' . $tahun);
-$xlsx->setColumnWidths([6, 14, 24, 18, 16, 13, 13, 13, 13, 13, 13, 15, 15, 13, 12, 15, 11, 11]);
+$xlsx->setColumnWidths([6, 14, 24, 18, 16, 18, 13, 13, 13, 15, 15, 15, 17, 13, 13, 15, 15, 13, 12, 15, 11, 11]);
 $xlsx->addTitleRow('DAFTAR SLIP GAJI KARYAWAN', count($headers));
 $xlsx->addRow(['Periode: ' . $nama_bulan . ' ' . $tahun]);
 $xlsx->addRow(['Tanggal Cetak: ' . date('d-m-Y H:i')]);
@@ -63,9 +65,13 @@ if (!empty($data)) {
             html_entity_decode($row['nama_karyawan'] ?? '', ENT_QUOTES, 'UTF-8'),
             html_entity_decode($row['nama_jabatan'] ?? '-', ENT_QUOTES, 'UTF-8'),
             html_entity_decode($row['nama_cabang'] ?? '-', ENT_QUOTES, 'UTF-8'),
+            ($row['payroll_scheme'] ?? '') === 'JAVAG_FLAT' ? 'Javag Flat' : 'Standard',
             ['value' => (float)($row['gaji_pokok'] ?? 0), 'style' => 'currency'],
             ['value' => (float)($row['tunjangan_cs'] ?? 0), 'style' => 'currency'],
             ['value' => (float)($row['akomodasi'] ?? 0), 'style' => 'currency'],
+            ['value' => (float)($row['transport_tetap'] ?? 0), 'style' => 'currency'],
+            ['value' => (float)($row['uang_makan_tetap'] ?? 0), 'style' => 'currency'],
+            ['value' => (float)($row['penghasilan_tetap'] ?? 0), 'style' => 'currency'],
             ['value' => (float)($row['transport_total'] ?? 0), 'style' => 'currency'],
             ['value' => (float)($row['overtime_total'] ?? 0), 'style' => 'currency'],
             ['value' => (float)($row['insentif_ahad_total'] ?? 0), 'style' => 'currency'],
@@ -84,10 +90,13 @@ if (!empty($data)) {
         ['value' => '', 'style' => 'normal'],
         ['value' => '', 'style' => 'normal'],
         ['value' => 'TOTAL', 'style' => 'bold'],
-        '', '',
+        '', '', '',
         ['value' => $totals['gaji_pokok'], 'style' => 'currency_bold'],
         ['value' => $totals['tunjangan_cs'], 'style' => 'currency_bold'],
         ['value' => $totals['akomodasi'], 'style' => 'currency_bold'],
+        ['value' => $totals['transport_tetap'], 'style' => 'currency_bold'],
+        ['value' => $totals['uang_makan_tetap'], 'style' => 'currency_bold'],
+        ['value' => $totals['penghasilan_tetap'], 'style' => 'currency_bold'],
         ['value' => $totals['transport_total'], 'style' => 'currency_bold'],
         ['value' => $totals['overtime_total'], 'style' => 'currency_bold'],
         ['value' => $totals['insentif_ahad_total'], 'style' => 'currency_bold'],
