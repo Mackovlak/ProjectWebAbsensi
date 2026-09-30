@@ -177,7 +177,7 @@ $csrf_token = generateCSRFToken();
                             case 'OFF': $ket_class = 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600'; $ket_icon = 'fa-calendar-xmark'; break;
                             case 'Sakit': $ket_class = 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800/50'; $ket_icon = 'fa-bed-pulse'; break;
                             case 'Cuti': $ket_class = 'bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200 dark:bg-fuchsia-900/30 dark:text-fuchsia-400 dark:border-fuchsia-800/50'; $ket_icon = 'fa-plane-departure'; break;
-                            case 'Alpha': $ket_class = 'bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-400 dark:border-rose-800/50'; $ket_icon = 'fa-triangle-exclamation'; break;
+                            case 'UNPAID/Alpha': $ket_class = 'bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-400 dark:border-rose-800/50'; $ket_icon = 'fa-triangle-exclamation'; break;
                         }
                     ?>
                     <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border <?php echo $ket_class; ?> uppercase tracking-wide">
@@ -345,7 +345,7 @@ $csrf_token = generateCSRFToken();
                                     case 'OFF': $ket_class = 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-700 dark:text-slate-300 dark:border-slate-600'; $ket_icon = 'fa-calendar-xmark'; break;
                                     case 'Sakit': $ket_class = 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800/50'; $ket_icon = 'fa-bed-pulse'; break;
                                     case 'Cuti': $ket_class = 'bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200 dark:bg-fuchsia-900/30 dark:text-fuchsia-400 dark:border-fuchsia-800/50'; $ket_icon = 'fa-plane-departure'; break;
-                                    case 'Alpha': $ket_class = 'bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-400 dark:border-rose-800/50'; $ket_icon = 'fa-triangle-exclamation'; break;
+                                    case 'UNPAID/Alpha': $ket_class = 'bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-400 dark:border-rose-800/50'; $ket_icon = 'fa-triangle-exclamation'; break;
                                 }
                                 ?>
                                 <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border <?php echo $ket_class; ?> uppercase tracking-wide shadow-sm">

@@ -125,7 +125,7 @@ if ($id_cabang > 0) {
         COUNT(DISTINCT CASE WHEN a.keterangan = 'Sakit' THEN a.id END) as total_sakit,
         COUNT(DISTINCT CASE WHEN a.keterangan = 'Cuti' THEN a.id END) as total_cuti,
         COUNT(DISTINCT CASE WHEN a.keterangan = 'Dinas Luar' THEN a.id END) as total_dinas_luar,
-        COUNT(DISTINCT CASE WHEN a.keterangan = 'Alpha' THEN a.id END) as total_alpha
+        COUNT(DISTINCT CASE WHEN a.keterangan = 'UNPAID/Alpha' THEN a.id END) as total_alpha
     FROM karyawan k
     LEFT JOIN absensi a ON k.id_karyawan = a.id_karyawan AND a.tanggal BETWEEN ? AND ?
     WHERE k.id_cabang = ?
@@ -207,7 +207,7 @@ require 'admin_header.php';
                         <th class="px-4 py-4 font-bold text-center">OFF</th>
                         <th class="px-4 py-4 font-bold text-center">Sakit</th>
                         <th class="px-4 py-4 font-bold text-center">Cuti</th>
-                        <th class="px-4 py-4 font-bold text-center">Alpha</th>
+                        <th class="px-4 py-4 font-bold text-center">UNPAID/Alpha</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-200 dark:divide-slate-700 text-sm" id="tableBody">

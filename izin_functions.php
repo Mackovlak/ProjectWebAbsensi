@@ -104,13 +104,13 @@ function hitungHariIzin($conn, $id_karyawan, $tanggal_mulai, $tanggal_selesai) {
     // Ambil sekali semua tanggal yang sudah punya baris absensi dalam rentang,
     // supaya tidak melakukan query di dalam loop harian.
     $sudah_terisi = [];
-    $stmt = $conn->prepare("SELECT tanggal, keterangan FROM absensi
+    $stmt = $conn->prepare("SELECT tanggal, keterangan, input_method FROM absensi
                             WHERE id_karyawan = ? AND tanggal BETWEEN ? AND ?");
     $stmt->bind_param("sss", $id_karyawan, $tanggal_mulai, $tanggal_selesai);
     $stmt->execute();
     $res = $stmt->get_result();
     while ($row = $res->fetch_assoc()) {
-        $sudah_terisi[$row['tanggal']] = $row['keterangan'];
+        $sudah_terisi[$row['tanggal']] = $row;
     }
     $stmt->close();
 
@@ -139,7 +139,15 @@ function hitungHariIzin($conn, $id_karyawan, $tanggal_mulai, $tanggal_selesai) {
 
         // Sudah ada baris absensi (libur bersama, OFF, atau sudah absen).
         if (isset($sudah_terisi[$tgl])) {
-            $ket = $sudah_terisi[$tgl] ?: 'sudah tercatat';
+            // Penutupan hari dapat terjadi sebelum atasan memproses pengajuan.
+            // Status otomatis boleh diganti saat pengajuan akhirnya disetujui.
+            if ($sudah_terisi[$tgl]['keterangan'] === 'UNPAID/Alpha'
+                && $sudah_terisi[$tgl]['input_method'] === 'system_auto') {
+                $hasil['tanggal_efektif'][] = $tgl;
+                $hasil['hari_efektif']++;
+                continue;
+            }
+            $ket = $sudah_terisi[$tgl]['keterangan'] ?: 'sudah tercatat';
             $hasil['tanggal_dilewati'][] = ['tanggal' => $tgl, 'alasan' => 'Sudah ada absensi (' . $ket . ')'];
             continue;
         }
@@ -250,6 +258,13 @@ function materialisasiIzin($conn, $pengajuan) {
 
     // is_manual_entry sengaja 0: baris ini lahir dari approval, bukan bulk entry
     // admin, sehingga tidak boleh ikut terhapus oleh hapus_libur_bersama.php.
+    $stmt_update_otomatis = $conn->prepare(
+        "UPDATE absensi
+         SET keterangan = ?, alasan = ?, waktu_alasan = ?, id_pengajuan = ?,
+             input_reason = 'Diganti oleh persetujuan pengajuan izin'
+         WHERE id_karyawan = ? AND tanggal = ?
+           AND keterangan = 'UNPAID/Alpha' AND input_method = 'system_auto'"
+    );
     $stmt = $conn->prepare(
         "INSERT INTO absensi (id_karyawan, tanggal, keterangan, alasan, waktu_alasan, is_manual_entry, id_pengajuan)
          VALUES (?, ?, ?, ?, ?, 0, ?)"
@@ -257,13 +272,30 @@ function materialisasiIzin($conn, $pengajuan) {
 
     $jumlah = 0;
     foreach ($rincian['tanggal_efektif'] as $tgl) {
+        $stmt_update_otomatis->bind_param(
+            "sssiss",
+            $keterangan, $alasan, $waktu_alasan, $id_pengajuan,
+            $pengajuan['id_karyawan'], $tgl
+        );
+        if (!$stmt_update_otomatis->execute()) {
+            $stmt_update_otomatis->close();
+            $stmt->close();
+            throw new Exception("Gagal memperbarui absensi otomatis tanggal {$tgl}: " . $conn->error);
+        }
+        if ($stmt_update_otomatis->affected_rows === 1) {
+            $jumlah++;
+            continue;
+        }
+
         $stmt->bind_param("sssssi", $pengajuan['id_karyawan'], $tgl, $keterangan, $alasan, $waktu_alasan, $id_pengajuan);
         if (!$stmt->execute()) {
+            $stmt_update_otomatis->close();
             $stmt->close();
             throw new Exception("Gagal membuat absensi tanggal {$tgl}: " . $conn->error);
         }
         $jumlah++;
     }
+    $stmt_update_otomatis->close();
     $stmt->close();
 
     return $jumlah;

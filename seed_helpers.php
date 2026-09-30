@@ -415,7 +415,7 @@ function backfillRiwayatAbsensi($conn, $confirmed, MigrationLog $log, string $su
                         $stmt_khusus->bind_param("ssss", $id_karyawan, $tanggal, $ket, $sumberLabel);
                         $ok = $stmt_khusus->execute();
                     } else if ($roll <= 97) {
-                        $ket = 'Alpha';
+                        $ket = 'UNPAID/Alpha';
                         $stmt_khusus->bind_param("ssss", $id_karyawan, $tanggal, $ket, $sumberLabel);
                         $ok = $stmt_khusus->execute();
                     } else {

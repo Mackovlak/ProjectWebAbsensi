@@ -417,7 +417,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                     case 'off': $total_off++; break;
                                     case 'sakit': $total_sakit++; break;
                                     case 'cuti': $total_cuti++; break;
-                                    case 'alpha': $total_alpha++; break;
+                                    case 'unpaid/alpha': $total_alpha++; break;
                                 }
                     ?>
                         <tr>
@@ -497,7 +497,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         </div>
                         
                         <div class="summary-item">
-                            <div class="label">Alpha</div>
+                            <div class="label">UNPAID/Alpha</div>
                             <div class="value" style="color: #fa709a;"><?php echo $total_alpha; ?></div>
                         </div>
                         

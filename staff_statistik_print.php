@@ -70,7 +70,7 @@ if ($row = $res->fetch_assoc()) {
                 'Cuti' => [],
                 'Sakit' => [],
                 'Dinas Luar' => [],
-                'Alpha' => [],
+                'UNPAID/Alpha' => [],
                 'OFF' => [],
                 'Hadir (Tepat Waktu)' => [],
                 'Hadir (Terlambat)' => []
@@ -90,8 +90,8 @@ if ($row = $res->fetch_assoc()) {
                     $data_karyawan['Cuti'][] = $row;
                 } elseif ($row['keterangan'] === 'Sakit') {
                     $data_karyawan['Sakit'][] = $row;
-                } elseif ($row['keterangan'] === 'Alpha') {
-                    $data_karyawan['Alpha'][] = $row;
+                } elseif ($row['keterangan'] === 'UNPAID/Alpha') {
+                    $data_karyawan['UNPAID/Alpha'][] = $row;
                 } elseif ($row['keterangan'] === 'OFF') {
                     $data_karyawan['OFF'][] = $row;
                 } elseif ($row['keterangan'] === 'Dinas Luar') {
@@ -131,8 +131,8 @@ if ($row = $res->fetch_assoc()) {
                 <p class="text-2xl font-bold text-amber-800"><?php echo count($data_karyawan['Sakit']); ?></p>
             </div>
             <div class="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
-                <p class="text-xs text-red-600 font-semibold mb-1">Total Alpha</p>
-                <p class="text-2xl font-bold text-red-800"><?php echo count($data_karyawan['Alpha']); ?></p>
+                <p class="text-xs text-red-600 font-semibold mb-1">Total UNPAID/Alpha</p>
+                <p class="text-2xl font-bold text-red-800"><?php echo count($data_karyawan['UNPAID/Alpha']); ?></p>
             </div>
             <div class="bg-purple-50 border border-purple-200 rounded-lg p-4 text-center">
                 <p class="text-xs text-purple-600 font-semibold mb-1">Total Dinas Luar</p>

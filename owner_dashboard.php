@@ -26,7 +26,10 @@ $stmt->execute();
 $result = $stmt->get_result();
 
 while ($row = $result->fetch_assoc()) {
-    $stats_today[strtolower($row['keterangan'])] = $row['jumlah'];
+    $kunci_status = $row['keterangan'] === 'UNPAID/Alpha'
+        ? 'alpha'
+        : strtolower($row['keterangan']);
+    $stats_today[$kunci_status] = $row['jumlah'];
 }
 
 // Hitung yang belum absen
@@ -206,11 +209,11 @@ if ($result_best) {
                 <span class="text-xs font-semibold text-fuchsia-600 dark:text-fuchsia-400 uppercase tracking-wide">Cuti</span>
             </div>
 
-            <!-- Alpha -->
+            <!-- UNPAID/Alpha -->
             <div class="bg-rose-50 dark:bg-rose-900/20 p-4 rounded-xl border border-rose-100 dark:border-rose-800/30 flex flex-col items-center justify-center text-center transition-transform hover:scale-105 col-span-2">
                 <i class="fa-solid fa-triangle-exclamation text-rose-500 text-2xl mb-2"></i>
                 <span class="text-2xl font-bold text-slate-800 dark:text-white mb-1"><?php echo $stats_today['alpha']; ?></span>
-                <span class="text-xs font-semibold text-rose-600 dark:text-rose-400 uppercase tracking-wide">Alpha</span>
+                <span class="text-xs font-semibold text-rose-600 dark:text-rose-400 uppercase tracking-wide">UNPAID/Alpha</span>
             </div>
         </div>
     </div>

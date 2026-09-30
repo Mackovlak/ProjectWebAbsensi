@@ -101,7 +101,7 @@ $sql_statistik = "SELECT
     COUNT(DISTINCT CASE WHEN a.keterangan = 'OFF' THEN a.id END) as total_off,
     COUNT(DISTINCT CASE WHEN a.keterangan = 'Sakit' THEN a.id END) as total_sakit,
     COUNT(DISTINCT CASE WHEN a.keterangan = 'Cuti' THEN a.id END) as total_cuti,
-    COUNT(DISTINCT CASE WHEN a.keterangan = 'Alpha' THEN a.id END) as total_alpha
+    COUNT(DISTINCT CASE WHEN a.keterangan = 'UNPAID/Alpha' THEN a.id END) as total_alpha
 FROM karyawan k
 LEFT JOIN absensi a ON k.id_karyawan = a.id_karyawan AND a.tanggal BETWEEN ? AND ?
 WHERE k.id_cabang = ?
@@ -367,7 +367,7 @@ table.dataTable.order-column.stripe tbody tr.even > .sorting_1 {
                     <th class="px-4 py-4 font-bold text-center border-b">OFF</th>
                     <th class="px-4 py-4 font-bold text-center border-b">Sakit</th>
                     <th class="px-4 py-4 font-bold text-center border-b">Cuti</th>
-                    <th class="px-4 py-4 font-bold text-center border-b">Alpha</th>
+                    <th class="px-4 py-4 font-bold text-center border-b">UNPAID/Alpha</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50 text-sm">

@@ -257,7 +257,7 @@ require 'owner_header.php';
                             $tr_class = "hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors";
                             if ($row['keterangan'] == 'Sakit') $tr_class .= " bg-rose-50/30 dark:bg-rose-900/5";
                             else if ($row['keterangan'] == 'Cuti') $tr_class .= " bg-purple-50/30 dark:bg-purple-900/5";
-                            else if ($row['keterangan'] == 'Alpha') $tr_class .= " bg-red-50/30 dark:bg-red-900/5";
+                            else if ($row['keterangan'] == 'UNPAID/Alpha') $tr_class .= " bg-red-50/30 dark:bg-red-900/5";
                             else if ($row['keterangan'] == 'OFF') $tr_class .= " bg-slate-50/30 dark:bg-slate-800/30";
                         ?>
                             <tr class="<?php echo $tr_class; ?>">
@@ -320,7 +320,7 @@ require 'owner_header.php';
                                                     'OFF' => 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-600',
                                                     'Sakit' => 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-400 dark:border-rose-800/50',
                                                     'Cuti' => 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800/50',
-                                                    'Alpha' => 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800/50',
+                                                    'UNPAID/Alpha' => 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800/50',
                                                     'Dinas Luar' => 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800/50'
                                                 ];
                                                 
@@ -328,7 +328,7 @@ require 'owner_header.php';
                                                     'OFF' => 'fa-calendar-times',
                                                     'Sakit' => 'fa-file-medical',
                                                     'Cuti' => 'fa-calendar-check',
-                                                    'Alpha' => 'fa-xmark',
+                                                    'UNPAID/Alpha' => 'fa-xmark',
                                                     'Dinas Luar' => 'fa-briefcase'
                                                 ];
                                                 

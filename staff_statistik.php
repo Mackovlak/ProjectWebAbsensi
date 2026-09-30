@@ -115,7 +115,7 @@ $sql_statistik = "SELECT
     COUNT(DISTINCT CASE WHEN a.keterangan = 'Sakit' THEN a.id END) as total_sakit,
     COUNT(DISTINCT CASE WHEN a.keterangan = 'Cuti' THEN a.id END) as total_cuti,
     COUNT(DISTINCT CASE WHEN a.keterangan = 'Dinas Luar' THEN a.id END) as total_dinas_luar,
-    COUNT(DISTINCT CASE WHEN a.keterangan = 'Alpha' THEN a.id END) as total_alpha
+    COUNT(DISTINCT CASE WHEN a.keterangan = 'UNPAID/Alpha' THEN a.id END) as total_alpha
 FROM karyawan k
 LEFT JOIN absensi a ON k.id_karyawan = a.id_karyawan AND a.tanggal BETWEEN ? AND ?
 WHERE k.id_karyawan = ?
@@ -322,7 +322,7 @@ $csrf_token = generateCSRFToken();
         </div>
     </div>
 
-    <!-- Alpha / Sakit / OFF -->
+    <!-- UNPAID/Alpha / Sakit / OFF -->
     <div class="bg-white dark:bg-slate-800 rounded-2xl p-4 sm:p-5 border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden group hover:shadow-md transition-all">
         <div class="relative z-10 h-full flex flex-col justify-center gap-2">
             <div class="flex items-center justify-between">
@@ -338,7 +338,7 @@ $csrf_token = generateCSRFToken();
                 <span class="font-bold text-purple-600 dark:text-purple-400"><?php echo $stats['total_dinas_luar'] ?? 0; ?></span>
             </div>
             <div class="flex items-center justify-between border-t border-slate-100 dark:border-slate-700 pt-1 mt-1">
-                <span class="text-xs font-semibold text-rose-500 dark:text-rose-400"><i class="fa-solid fa-triangle-exclamation text-rose-500 w-4"></i> Alpha</span>
+                <span class="text-xs font-semibold text-rose-500 dark:text-rose-400"><i class="fa-solid fa-triangle-exclamation text-rose-500 w-4"></i> UNPAID/Alpha</span>
                 <span class="font-bold text-rose-600 dark:text-rose-400"><?php echo $stats['total_alpha'] ?? 0; ?></span>
             </div>
         </div>
@@ -383,7 +383,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <?php echo $stats['total_alpha'] ?? 0; ?>
     ];
     
-    const labels = ['Hadir', 'Stngh. Hari', 'Over Time', <?php echo json_encode($label_hari_overtime); ?>, 'OFF', 'Sakit', 'Cuti', 'Dinas Luar', 'Alpha'];
+    const labels = ['Hadir', 'Stngh. Hari', 'Over Time', <?php echo json_encode($label_hari_overtime); ?>, 'OFF', 'Sakit', 'Cuti', 'Dinas Luar', 'UNPAID/Alpha'];
     const colors = ['#d946ef', '#f59e0b', '#a855f7', '#eab308', '#64748b', '#ec4899', '#06b6d4', '#6366f1', '#ef4444'];
     
     const totalData = chartData.reduce((a, b) => a + b, 0);

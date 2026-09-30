@@ -518,7 +518,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                     case 'Sakit': $judul_halaman = "Semoga Lekas Sembuh,"; break;
                     case 'Cuti': $judul_halaman = "Selamat Menikmati Hari Cuti,"; break;
                     case 'OFF': $judul_halaman = "Selamat Berlibur,"; break;
-                    case 'Alpha': $judul_halaman = "Alphamu Tercatat!,"; break;
+                    case 'UNPAID/Alpha': $judul_halaman = "UNPAID/Alpha Tercatat!,"; break;
                 }
             ?>
             <div class="greeting-wrapper">
