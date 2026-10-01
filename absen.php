@@ -1298,9 +1298,8 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                 await faceSystem.startCamera('face-video');
                 checkCancelled();
                 let challenge = await request('start');
-                const currentChallenge = Math.random() < 0.5 ? 'blink' : 'mouth';
-                instructionEl.textContent = currentChallenge === 'blink'
-                    ? 'TANTANGAN: Tolong Kedipkan Mata Anda' : 'TANTANGAN: Tolong Buka Mulut / Senyum';
+                const currentChallenge = 'blink';
+                instructionEl.textContent = 'TANTANGAN: Tolong Kedipkan Mata Anda';
                 instructionEl.style.color = '#e11d48';
                 let challengePassed = false;
                 const deadline = Date.now() + 60000;

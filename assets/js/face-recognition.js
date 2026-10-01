@@ -272,27 +272,6 @@ class FaceRecognitionSystem {
     }
 
     /**
-     * Calculate Mouth Aspect Ratio (MAR) for smile/open mouth detection
-     */
-    getMouthAspectRatio(landmarks) {
-        const points = landmarks.positions;
-        
-        const getDistance = (p1, p2) => {
-            return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
-        };
-        
-        // Vertical distance
-        const A = getDistance(points[62], points[66]);
-        const B = getDistance(points[61], points[67]);
-        const C = getDistance(points[63], points[65]);
-        
-        // Horizontal distance
-        const D = getDistance(points[60], points[64]);
-
-        return (A + B + C) / (3.0 * D);
-    }
-
-    /**
      * Check if the current landmarks pass the specified challenge
      */
     checkLiveness(landmarks, challengeType) {
@@ -303,11 +282,6 @@ class FaceRecognitionSystem {
             // Threshold for blinking is usually below 0.25, but 0.28 is better for partial blinks/low res
             console.log('EAR:', ear.toFixed(3));
             return ear < 0.28;
-        } else if (challengeType === 'mouth') {
-            const mar = this.getMouthAspectRatio(landmarks);
-            // Threshold for open mouth is usually above 0.5
-            console.log('MAR:', mar.toFixed(3));
-            return mar > 0.45;
         }
         return false;
     }
