@@ -360,22 +360,32 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
                                             <?php endif; ?>
 
                                             <?php if ($row['jam_pulang'] && $row['jam_pulang'] != '00:00:00'): ?>
-                                                <?php if ($status_pulang == 'Setengah Hari'): ?>
-                                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-800/50">
-                                                        <i class="fa-solid fa-clock-rotate-left"></i> Setengah Hari
-                                                    </span>
-                                                <?php elseif ($status_pulang == 'Over Time'): ?>
-                                                    <div class="flex items-center gap-1.5">
+                                                <div class="flex flex-wrap items-center gap-1.5">
+                                                    <?php if ($status_pulang == 'Setengah Hari'): ?>
+                                                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-800/50">
+                                                            <i class="fa-solid fa-clock-rotate-left"></i> Setengah Hari
+                                                        </span>
+                                                    <?php elseif ($status_pulang == 'Over Time'): ?>
                                                         <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800/50">
                                                             <i class="fa-solid fa-business-time"></i> Over Time
                                                         </span>
-                                                        <?php if (!empty($row['alasan_pulang'])): ?>
-                                                            <button type="button" onclick="openDetailAlasanModal(this)" data-alasan="<?php echo htmlspecialchars($row['alasan_pulang'] ?? ''); ?>" data-foto="<?php echo htmlspecialchars($row['foto_pulang'] ?? ''); ?>" data-lokasi="<?php echo htmlspecialchars($row['lokasi_pulang'] ?? ''); ?>" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200 hover:bg-fuchsia-100 transition-colors dark:bg-fuchsia-900/30 dark:text-fuchsia-400 dark:border-fuchsia-800/50">
-                                                                <i class="fa-solid fa-eye"></i> Detail
-                                                            </button>
-                                                        <?php endif; ?>
-                                                    </div>
-                                                <?php endif; ?>
+                                                    <?php endif; ?>
+                                                    <?php // Detail alasan_pulang ditampilkan lepas dari status Setengah
+                                                          // Hari/Over Time di atas - dinas luar dadakan saat pulang (lihat
+                                                          // proses_absen.php) bisa terjadi pada jam pulang NORMAL, jadi
+                                                          // tombolnya tidak boleh terkubur hanya di cabang Over Time. ?>
+                                                    <?php if (!empty($row['dinas_pulang_dadakan'])): ?>
+                                                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-800/50" title="<?php echo empty($row['dinas_pulang_ditinjau_at']) ? 'Perlu ditinjau di Kelola Pengajuan Izin' : 'Sudah ditinjau'; ?>">
+                                                            <i class="fa-solid fa-briefcase"></i> Dinas Pulang
+                                                            <?php echo empty($row['dinas_pulang_ditinjau_at']) ? '&middot; Perlu Ditinjau' : '&middot; Ditinjau'; ?>
+                                                        </span>
+                                                    <?php endif; ?>
+                                                    <?php if (!empty($row['alasan_pulang'])): ?>
+                                                        <button type="button" onclick="openDetailAlasanModal(this)" data-alasan="<?php echo htmlspecialchars($row['alasan_pulang'] ?? ''); ?>" data-foto="<?php echo htmlspecialchars($row['foto_pulang'] ?? ''); ?>" data-lokasi="<?php echo htmlspecialchars($row['lokasi_pulang'] ?? ''); ?>" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200 hover:bg-fuchsia-100 transition-colors dark:bg-fuchsia-900/30 dark:text-fuchsia-400 dark:border-fuchsia-800/50">
+                                                            <i class="fa-solid fa-eye"></i> Detail
+                                                        </button>
+                                                    <?php endif; ?>
+                                                </div>
                                             <?php else: ?>
                                                 <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800/50">
                                                     <i class="fa-solid fa-triangle-exclamation"></i> <?php echo ($status_pulang == 'Belum Absen Pulang = Set. Hari') ? 'Belum Absen Pulang = Set. Hari' : 'Belum Absen Pulang'; ?>

@@ -832,6 +832,25 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
         </div>
     </div>
 
+    <!-- Modal Dinas Luar Saat Pulang -->
+    <div id="modal-dinas-luar-pulang" class="face-overlay" style="align-items: center; z-index: 10001;">
+        <div class="face-verification-box" style="text-align: left; padding: 25px; border-radius: 20px; width: 90%; max-width: 400px; max-height: 90vh; overflow-y: auto;">
+            <h2 style="margin-bottom: 5px;"><i class="fas fa-briefcase text-brand-500"></i> Dinas Luar Saat Pulang</h2>
+            <p style="font-size: 13px; margin-bottom: 20px;">Anda berada di luar area radius kantor. Jika sedang dinas luar, isi alasan di bawah - absen pulang Anda akan tetap tercatat (memakai lokasi Anda saat ini) dan ditandai untuk ditinjau Admin/Supervisor.</p>
+
+            <form id="form-dinas-luar-pulang" onsubmit="event.preventDefault(); submitDinasLuarPulangForm();">
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #333;">Keterangan Dinas <span style="color: red;">*</span></label>
+                    <textarea id="dinas-pulang-alasan-text" required minlength="5" rows="3" style="width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #ccc; font-family: inherit; font-size: 14px; outline: none;" placeholder="Contoh: Kunjungan klien PT ABC, langsung pulang dari lokasi"></textarea>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button type="button" class="btn" style="background: #f1f5f9; color: #475569;" onclick="document.getElementById('modal-dinas-luar-pulang').style.display='none'">Batal</button>
+                    <button type="submit" id="btn-submit-dinas-pulang" class="btn" style="background: #4f46e5; color: white;"><i class="fas fa-paper-plane"></i> Catat Absen Pulang</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Modal Izin Pulang Cepat -->
     <div id="modal-pulang-cepat" class="face-overlay" style="align-items: center; z-index: 10001;">
         <div class="face-verification-box" style="text-align: left; padding: 25px; border-radius: 20px; width: 90%; max-width: 400px; max-height: 90vh; overflow-y: auto;">
@@ -1024,10 +1043,28 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
             document.getElementById('modal-dinas-luar').style.display = 'flex';
         }
 
+        // Dipakai bersama oleh submit dinas luar masuk & pulang: kunci tombol
+        // + tampilkan spinner, tutup modal, jalankan submit-nya, lalu pulihkan
+        // tombol apapun hasilnya - supaya perilaku UI keduanya tidak bisa diam-
+        // diam berbeda kalau salah satunya diubah di kemudian hari.
+        function submitDenganTombolTerkunci(btnId, modalId, aksiSubmit) {
+            const btnSubmit = document.getElementById(btnId);
+            const originalText = btnSubmit.innerHTML;
+            btnSubmit.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Memproses...';
+            btnSubmit.disabled = true;
+
+            document.getElementById(modalId).style.display = 'none';
+
+            return aksiSubmit().finally(() => {
+                btnSubmit.innerHTML = originalText;
+                btnSubmit.disabled = false;
+            });
+        }
+
         function submitDinasLuarForm() {
             const alasan = document.getElementById('dinas-alasan-text').value;
             const fotoInput = document.getElementById('dinas-foto-bukti');
-            
+
             if (alasan.trim() === '') {
                 Swal.fire('Peringatan', 'Keterangan dinas wajib diisi!', 'warning');
                 return;
@@ -1041,18 +1078,29 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                 return;
             }
 
-            const btnSubmit = document.getElementById('btn-submit-dinas');
-            const originalText = btnSubmit.innerHTML;
-            btnSubmit.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Memproses...';
-            btnSubmit.disabled = true;
-
-            document.getElementById('modal-dinas-luar').style.display = 'none';
-            
             // Re-use the existing submitAbsen, but pass isDinasLuar flag
-            submitAbsen('Hadir', alasan, fotoInput.files[0], true).finally(() => {
-                btnSubmit.innerHTML = originalText;
-                btnSubmit.disabled = false;
-            });
+            submitDenganTombolTerkunci('btn-submit-dinas', 'modal-dinas-luar',
+                () => submitAbsen('Hadir', alasan, fotoInput.files[0], true));
+        }
+
+        function bukaModalDinasLuarPulang() {
+            document.getElementById('modal-dinas-luar-pulang').style.display = 'flex';
+        }
+
+        // Retry setelah absen pulang gagal karena location_error - karyawan absen
+        // masuk normal di kantor pagi ini, tapi saat pulang sudah di luar radius
+        // (ditugaskan keluar). Beda dari dinas dadakan saat masuk: di sini TIDAK
+        // menunggu ACC admin dulu - absen pulang langsung tercatat begitu alasan
+        // diisi, supaya karyawan yang sudah di luar kantor tidak terjebak menunggu.
+        function submitDinasLuarPulangForm() {
+            const alasan = document.getElementById('dinas-pulang-alasan-text').value.trim();
+            if (alasan.length < 5) {
+                Swal.fire('Peringatan', 'Keterangan dinas wajib diisi (minimal 5 karakter)!', 'warning');
+                return;
+            }
+
+            submitDenganTombolTerkunci('btn-submit-dinas-pulang', 'modal-dinas-luar-pulang',
+                () => submitAbsenPulang(null, alasan, true));
         }
 
         function bukaModalPulangCepat() {
@@ -1203,7 +1251,10 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
             });
         }
 
-        async function submitAbsenPulang(alasanTidakMasuk = null) {
+        // isDinasLuarPulang: dipakai saat retry dari tombol "Sedang Dinas Luar?"
+        // yang muncul setelah absen pulang normal gagal karena location_error -
+        // lihat submitDinasLuarPulangForm() dan blok location_error di performSubmit().
+        async function submitAbsenPulang(alasanTidakMasuk = null, alasanDinasPulang = null, isDinasLuarPulang = false) {
             if (cancelActiveVerification) return;
             currentAbsenType = 'pulang';
             const lokasiValue = document.getElementById('lokasi-pulang').value;
@@ -1223,6 +1274,10 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                 formData.append('aksi', 'pulang');
                 if (alasanTidakMasuk) {
                     formData.append('alasan', alasanTidakMasuk);
+                }
+                if (isDinasLuarPulang) {
+                    formData.append('is_dinas_luar', 'true');
+                    formData.append('alasan_pulang', alasanDinasPulang);
                 }
                 return formData;
             };
@@ -1456,8 +1511,11 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                                 </div>
                                 ` : ''}
                                 <button onclick="location.reload()" class="btn-retry"><i class="fas fa-redo"></i> Coba Lagi</button>
-                                ${data.type === 'location_error' && '<?php echo $status_absen; ?>' === 'belum_absen' ? `
+                                ${data.type === 'location_error' && currentAbsenType === 'masuk' && '<?php echo $status_absen; ?>' === 'belum_absen' ? `
                                 <button onclick="bukaModalDinasLuar()" class="btn-retry" style="background: #4f46e5; margin-top: 10px; color: white; box-shadow: 0 4px 0 #3730a3; border-color: #3730a3;"><i class="fas fa-briefcase"></i> Sedang Dinas Luar?</button>
+                                ` : ''}
+                                ${data.type === 'location_error' && currentAbsenType === 'pulang' && '<?php echo $status_absen; ?>' === 'sudah_masuk' ? `
+                                <button onclick="bukaModalDinasLuarPulang()" class="btn-retry" style="background: #4f46e5; margin-top: 10px; color: white; box-shadow: 0 4px 0 #3730a3; border-color: #3730a3;"><i class="fas fa-briefcase"></i> Sedang Dinas Luar?</button>
                                 ` : ''}
                             </div>
                         `;
