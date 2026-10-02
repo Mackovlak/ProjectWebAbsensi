@@ -906,6 +906,42 @@ if (isset($_POST['simpan_hari_kerja'])) {
     exit();
 }
 
+// Handler Simpan Pengaturan Kalender Tim (visibilitas izin & ulang tahun)
+if (isset($_POST['simpan_kalender_tim'])) {
+    verifyCSRFToken($_POST['csrf_token'] ?? '');
+
+    $jenis_dikirim = isset($_POST['kalender_tim_jenis_tampil']) && is_array($_POST['kalender_tim_jenis_tampil'])
+        ? $_POST['kalender_tim_jenis_tampil'] : [];
+    $jenis_valid = array_values(array_intersect(KALENDER_SEMUA_JENIS_IZIN, $jenis_dikirim));
+
+    $tampilkan_pending = isset($_POST['kalender_tim_tampilkan_pending']) ? '1' : '0';
+    $tampilkan_ultah    = isset($_POST['kalender_tampilkan_ultah']) ? '1' : '0';
+
+    $ok1 = setPengaturan($conn, 'kalender_tim_tampilkan_pending', $tampilkan_pending,
+        'Tampilkan pengajuan izin berstatus Pending milik rekan kerja lain di kalender tim');
+    // "-" dipakai sebagai penanda "tidak ada jenis dipilih" - string kosong tidak bisa
+    // dipakai karena getPengaturan() memperlakukan nilai kosong sebagai "belum diatur"
+    // dan akan jatuh balik ke default (semua jenis tampil), bukan daftar kosong yang dimaksud.
+    $jenis_tersimpan = empty($jenis_valid) ? '-' : implode(',', $jenis_valid);
+    $ok2 = setPengaturan($conn, 'kalender_tim_jenis_tampil', $jenis_tersimpan,
+        'Jenis pengajuan izin yang ditampilkan dari rekan kerja lain di kalender tim');
+    $ok3 = setPengaturan($conn, 'kalender_tampilkan_ultah', $tampilkan_ultah,
+        'Tampilkan ulang tahun karyawan di kalender');
+
+    if ($ok1 && $ok2 && $ok3) {
+        $_SESSION['success_message'] = "✅ Pengaturan kalender tim berhasil disimpan.";
+        logActivity($conn, 'ubah_kalender_tim',
+            "Mengubah pengaturan kalender tim: pending=" . $tampilkan_pending
+            . ", jenis=[" . implode(',', $jenis_valid) . "], ultah=" . $tampilkan_ultah,
+            $_SESSION['user_id']);
+    } else {
+        $_SESSION['error_message'] = "❌ Gagal menyimpan pengaturan kalender tim.";
+    }
+
+    header("Location: data_hari_libur.php");
+    exit();
+}
+
 // Handler Tambah Supervisor
 // Supervisor wajib tertaut ke karyawan aktif. Nama, gender, dan cabang
 // selalu mengikuti master data karyawan agar cakupan akses tidak dapat dipilih bebas.
