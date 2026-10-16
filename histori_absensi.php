@@ -3,6 +3,8 @@ require 'config.php';
 require_once 'attendance_capture.php';
 $cabang_reviewer = requireAttendancePhotoReviewer($conn);
 $is_admin = isAdmin();
+// Admin dan supervisor boleh koreksi/tambah absensi (supervisor dibatasi ke cabangnya di handler).
+$can_edit = $is_admin || isSupervisor();
 $capture_ready = attendanceCaptureReady($conn);
 
 // Ambil daftar cabang untuk dropdown
@@ -173,11 +175,13 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
                 </div>
             </form>
 
-            <?php if ($is_admin): ?><div class="flex items-center gap-2">
+            <?php if ($can_edit): ?><div class="flex items-center gap-2">
+                <?php if ($is_admin): ?>
                 <!-- Tombol Kelola Cuti Bersama -->
                 <button onclick="openModal('modal-kelola-cuti-bersama')" class="flex items-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl transition-colors font-medium text-sm shadow-sm shadow-teal-500/30">
                     <i class="fa-solid fa-calendar-plus"></i> Kelola Cuti Bersama
                 </button>
+                <?php endif; ?>
                 
                 <!-- Tombol Tambah Manual -->
                 <button onclick="openModal('modal-tambah-manual')" class="flex items-center gap-2 px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl transition-colors font-medium text-sm shadow-sm shadow-brand-500/30">
@@ -461,7 +465,7 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
                                     <?php else: ?>
                                         <span class="text-xs text-slate-400"><?= $capture_ready ? 'Belum ada foto' : 'Foto belum aktif' ?></span>
                                     <?php endif; ?>
-                                    <?php if ($is_admin): ?>
+                                    <?php if ($can_edit): ?>
                                     <button type="button" onclick="openEditAbsensiModal(this)" data-absen='<?php echo htmlspecialchars(json_encode($row), ENT_QUOTES); ?>' class="p-2 text-fuchsia-600 hover:bg-fuchsia-50 rounded-lg dark:text-fuchsia-400 dark:hover:bg-fuchsia-900/30 transition-colors border border-transparent hover:border-fuchsia-200 dark:hover:border-fuchsia-800" title="Edit Data">
                                         <i class="fa-solid fa-pen-to-square"></i>
                                     </button>
@@ -555,6 +559,7 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
 </div>
 
 <!-- ========================================== -->
+<?php if ($can_edit): ?>
 <?php if ($is_admin): ?>
 <!-- MODAL: PERSETUJUAN DINAS LUAR              -->
 <!-- ========================================== -->
@@ -607,6 +612,7 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
     </div>
 </div>
 
+<?php endif; ?>
 <!-- ========================================== -->
 <!-- MODAL: TAMBAH ABSENSI MANUAL               -->
 <!-- ========================================== -->
@@ -684,6 +690,7 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
     </div>
 </div>
 
+<?php if ($is_admin): ?>
 <!-- ========================================== -->
 <!-- MODAL: KELOLA CUTI BERSAMA                 -->
 <!-- ========================================== -->
@@ -827,6 +834,7 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
 </div>
 
 
+<?php endif; ?>
 <!-- ========================================== -->
 <!-- MODAL: EDIT ABSENSI (Koreksi Jam)          -->
 <!-- ========================================== -->

@@ -116,7 +116,11 @@ $keterlambatan_auto = hitungTotalPotonganKeterlambatanPeriode($conn, $id_karyawa
 // untuk menampilkan ringkasan "cara hitung" yang bisa dibaca manusia, dan
 // untuk mengisi panel edit kebijakan di bawah (lihat
 // ajax_save_kebijakan_keterlambatan.php untuk penyimpanannya).
-$pengaturan_telat = getPengaturanKeterlambatan($conn);
+// Ikut cabang karyawan (sama dengan yang dipakai hitungTotalPotonganKeterlambatanPeriode
+// dan admin_detail_cabang.php) - bukan global, supaya tampilan = hitungan sebenarnya.
+$id_cabang_telat = (int)($karyawan['cabang_id'] ?? 0);
+$nama_cabang_telat = $karyawan['nama_cabang'] ?? '';
+$pengaturan_telat = getPengaturanKeterlambatan($conn, $id_cabang_telat > 0 ? $id_cabang_telat : null);
 $ringkasan_kebijakan_telat = ringkasanKebijakanKeterlambatan($pengaturan_telat);
 
 // Check existing slip
@@ -697,7 +701,14 @@ require 'admin_header.php';
                                 <?php echo htmlspecialchars($ringkasan_kebijakan_telat); ?>
                             </p>
                             <p class="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
-                                <i class="fa-solid fa-triangle-exclamation"></i> Berlaku untuk SEMUA karyawan (bukan cuma slip ini) dan langsung dipakai untuk hitungan slip gaji berikutnya.
+                                <i class="fa-solid fa-link"></i>
+                                <?php if ($id_cabang_telat > 0): ?>
+                                Pengaturan ini <strong>tersinkron dengan pengaturan keterlambatan Cabang <?php echo htmlspecialchars($nama_cabang_telat); ?></strong>
+                                (<a href="admin_detail_cabang.php?id=<?php echo $id_cabang_telat; ?>" class="underline hover:text-brand-600">lihat di halaman cabang</a>).
+                                Perubahan di sini berlaku untuk SEMUA karyawan cabang ini (bukan cuma slip ini) dan langsung dipakai untuk hitungan slip berikutnya.
+                                <?php else: ?>
+                                Karyawan ini tidak punya cabang, sehingga memakai pengaturan GLOBAL. Perubahan berlaku untuk semua cabang yang belum punya pengaturan sendiri.
+                                <?php endif; ?>
                             </p>
 
                             <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mt-3">
@@ -1455,8 +1466,10 @@ require 'admin_header.php';
     // Simpan kebijakan keterlambatan bertingkat (system_settings, berlaku
     // untuk SEMUA karyawan) dari panel "Cara Hitung & Kebijakan Keterlambatan".
     function simpanKebijakanTelat(btnElement) {
-        const berlakuUntukSemua = 'Kebijakan ini berlaku untuk SEMUA karyawan dan langsung dipakai untuk '
-            + 'hitungan slip gaji berikutnya (bukan cuma slip yang sedang dibuka sekarang). Lanjutkan?';
+        const berlakuUntukSemua = <?php echo json_encode($id_cabang_telat > 0
+            ? 'Kebijakan ini disinkronkan ke pengaturan Cabang ' . $nama_cabang_telat . ' dan berlaku untuk SEMUA karyawan cabang tsb, '
+              . 'langsung dipakai untuk hitungan slip gaji berikutnya (bukan cuma slip ini). Lanjutkan?'
+            : 'Karyawan ini tanpa cabang; kebijakan GLOBAL akan diubah. Lanjutkan?'); ?>;
         if (!confirm(berlakuUntukSemua)) return;
 
         const msg = document.getElementById('kebijakanSaveMsg');
@@ -1468,6 +1481,7 @@ require 'admin_header.php';
 
         const formData = new FormData();
         formData.append('csrf_token', document.querySelector('input[name="csrf_token"]').value);
+        formData.append('id_cabang', '<?php echo $id_cabang_telat; ?>');
         formData.append('grace_menit', document.getElementById('kebijakanGraceMenit').value);
         formData.append('tier1_durasi_menit', document.getElementById('kebijakanTier1Durasi').value);
         formData.append('tier1_rate', document.getElementById('kebijakanTier1Rate').value);

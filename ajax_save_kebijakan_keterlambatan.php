@@ -3,9 +3,11 @@
  * Simpan kebijakan keterlambatan bertingkat (system_settings) dari panel
  * "Cara Hitung & Kebijakan Keterlambatan" di slip_gaji_form.php.
  *
- * Beda dari ajax_save_rate.php (rate per-karyawan) - ini pengaturan GLOBAL
- * yang dipakai untuk SEMUA karyawan (lihat keterlambatan_functions.php),
- * jadi divalidasi lebih ketat (batas wajar tiap angka) dan wajib CSRF.
+ * Beda dari ajax_save_rate.php (rate per-karyawan) - ini pengaturan level
+ * CABANG (key "c{id}_keterlambatan_*", sama persis dengan yang disimpan
+ * admin_detail_cabang.php lewat master_process.php), jadi berlaku untuk semua
+ * karyawan di cabang tsb. Tanpa id_cabang (karyawan tanpa cabang) jatuh ke
+ * key global. Divalidasi ketat dan wajib CSRF.
  */
 require 'config.php';
 requireAdmin();
@@ -16,6 +18,19 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 verifyCSRFToken($_POST['csrf_token'] ?? '');
+
+$id_cabang = (int)($_POST['id_cabang'] ?? 0);
+if ($id_cabang > 0) {
+    $stmt_cabang = $conn->prepare("SELECT nama_cabang FROM cabang WHERE id = ?");
+    $stmt_cabang->bind_param('i', $id_cabang);
+    $stmt_cabang->execute();
+    $cabang_row = $stmt_cabang->get_result()->fetch_assoc();
+    $stmt_cabang->close();
+    if (!$cabang_row) {
+        echo json_encode(['status' => 'error', 'message' => 'Cabang tidak ditemukan.']);
+        exit;
+    }
+}
 
 $fields = [
     'grace_menit' => [
@@ -58,20 +73,27 @@ foreach ($fields as $name => $meta) {
     $nilai[$name] = $v;
 }
 
+if (($nilai['maks_jam'] * 60) <= $nilai['grace_menit']) {
+    echo json_encode(['status' => 'error', 'message' => 'Batas maksimal (jam) harus lebih besar dari dispensasi.']);
+    exit;
+}
+
 $ok = true;
 foreach ($fields as $name => $meta) {
     // Simpan sebagai integer utuh kecuali maks_jam yang memang boleh pecahan
     // (mis. "1.5 jam"), lihat getPengaturanKeterlambatan() di
     // keterlambatan_functions.php.
     $simpan = ($name === 'maks_jam') ? $nilai[$name] : (int)$nilai[$name];
-    $ok = $ok && setPengaturan($conn, $meta['key'], (string)$simpan, $meta['desc']);
+    $key = $id_cabang > 0 ? getKunciPengaturanKeterlambatanCabang($id_cabang, $meta['key']) : $meta['key'];
+    $ok = $ok && setPengaturan($conn, $key, (string)$simpan, $meta['desc']);
 }
 
 if ($ok) {
     logActivity(
         $conn,
         'ubah_kebijakan_keterlambatan',
-        "Mengubah kebijakan keterlambatan: dispensasi {$nilai['grace_menit']} menit, "
+        ($id_cabang > 0 ? "[Cabang {$cabang_row['nama_cabang']}] " : '[Global] ')
+            . "Mengubah kebijakan keterlambatan: dispensasi {$nilai['grace_menit']} menit, "
             . "tier1 {$nilai['tier1_durasi_menit']} menit/Rp{$nilai['tier1_rate']}, "
             . "tier2 tiap {$nilai['tier2_interval_menit']} menit/Rp{$nilai['tier2_rate']}, "
             . "maks {$nilai['maks_jam']} jam",
