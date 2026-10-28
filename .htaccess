@@ -50,3 +50,4 @@ Options -Indexes
 # Set proper MIME type
 AddType application/javascript .js
 AddType application/json .json
+AddType application/manifest+json .webmanifest

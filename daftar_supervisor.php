@@ -98,6 +98,7 @@ $res_karyawan = $conn->query("SELECT k.id_karyawan, k.nama_karyawan, c.nama_caba
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Pendaftaran Supervisor - Absensi Javag</title>
+    <?php require __DIR__ . '/pwa_head.php'; ?>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
