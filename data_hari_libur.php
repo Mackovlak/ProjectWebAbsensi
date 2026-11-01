@@ -72,6 +72,8 @@ $res_cabang = $conn->query("SELECT id, nama_cabang FROM cabang ORDER BY nama_cab
 
 $hari_kerja_aktif    = getHariKerja($conn);
 $hari_overtime_aktif = getHariOvertime($conn);
+$kalender_tim_aktif  = getPengaturanKalenderTim($conn);
+$ultah_aktif         = tampilkanUlangTahunKalender($conn);
 $jumlah_verifikasi   = 0;
 foreach ($daftar_libur as $l) {
     if ((int)$l['perlu_verifikasi'] === 1) $jumlah_verifikasi++;
@@ -330,6 +332,70 @@ foreach ($daftar_libur as $l) {
                     ?>
                 </b>.
             </p>
+            <button type="submit" class="px-6 py-2.5 bg-fuchsia-600 hover:bg-fuchsia-700 text-white rounded-xl text-sm font-semibold shadow-sm shadow-fuchsia-500/30 transition-colors">
+                Simpan Pengaturan
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Pengaturan Kalender Tim -->
+<div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm mb-8 overflow-hidden">
+    <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center gap-3">
+        <i class="ph-duotone ph-users-three text-xl text-fuchsia-600 dark:text-fuchsia-400"></i>
+        <h3 class="font-bold text-slate-800 dark:text-white">Pengaturan Kalender Tim</h3>
+    </div>
+
+    <form action="master_process.php" method="POST" class="p-6">
+        <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+        <input type="hidden" name="simpan_kalender_tim" value="1">
+
+        <p class="text-sm text-slate-500 dark:text-slate-400 mb-5">
+            Mengatur apa yang terlihat di kalender tim pada dashboard Admin/Owner/Supervisor/Staff &mdash; setiap orang
+            tetap selalu melihat pengajuan izinnya sendiri (apapun jenis/statusnya); pengaturan ini hanya membatasi apa
+            yang terlihat dari rekan kerja <b>lain</b>. Supervisor &amp; staff hanya melihat rekan satu cabang.
+        </p>
+
+        <div class="mb-5">
+            <label class="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" name="kalender_tim_tampilkan_pending" value="1"
+                       <?php echo $kalender_tim_aktif['tampilkan_pending'] ? 'checked' : ''; ?>
+                       class="mt-0.5 w-4 h-4 rounded border-slate-300 text-fuchsia-600 focus:ring-fuchsia-500 cursor-pointer">
+                <span>
+                    <span class="block text-sm font-semibold text-slate-700 dark:text-slate-200">Tampilkan pengajuan yang masih Pending</span>
+                    <span class="block text-xs text-slate-400">Supaya tim tahu rencana ketidakhadiran rekan kerja walau belum disetujui. Nonaktifkan agar rekan kerja hanya melihat yang sudah Disetujui.</span>
+                </span>
+            </label>
+        </div>
+
+        <div class="mb-5">
+            <p class="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Jenis izin yang ditampilkan ke rekan kerja</p>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
+                <?php foreach (KALENDER_SEMUA_JENIS_IZIN as $j): ?>
+                    <label class="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 cursor-pointer">
+                        <input type="checkbox" name="kalender_tim_jenis_tampil[]" value="<?php echo safe_output($j); ?>"
+                               <?php echo in_array($j, $kalender_tim_aktif['jenis_tampil'], true) ? 'checked' : ''; ?>
+                               class="w-4 h-4 rounded border-slate-300 text-fuchsia-600 focus:ring-fuchsia-500 cursor-pointer">
+                        <?php echo safe_output($j); ?>
+                    </label>
+                <?php endforeach; ?>
+            </div>
+            <p class="text-xs text-slate-400 mt-2">Misalnya nonaktifkan <b>Sakit</b> saja bila dianggap terlalu privat untuk dilihat rekan kerja lain.</p>
+        </div>
+
+        <div class="mb-5 pt-5 border-t border-slate-100 dark:border-slate-700/60">
+            <label class="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" name="kalender_tampilkan_ultah" value="1"
+                       <?php echo $ultah_aktif ? 'checked' : ''; ?>
+                       class="mt-0.5 w-4 h-4 rounded border-slate-300 text-fuchsia-600 focus:ring-fuchsia-500 cursor-pointer">
+                <span>
+                    <span class="block text-sm font-semibold text-slate-700 dark:text-slate-200">🎂 Tampilkan ulang tahun karyawan</span>
+                    <span class="block text-xs text-slate-400">Diambil dari tanggal lahir di data karyawan, dibatasi ke cabang yang sama untuk Supervisor &amp; Staff. Aktif secara default.</span>
+                </span>
+            </label>
+        </div>
+
+        <div class="flex justify-end pt-5 border-t border-slate-100 dark:border-slate-700/60">
             <button type="submit" class="px-6 py-2.5 bg-fuchsia-600 hover:bg-fuchsia-700 text-white rounded-xl text-sm font-semibold shadow-sm shadow-fuchsia-500/30 transition-colors">
                 Simpan Pengaturan
             </button>

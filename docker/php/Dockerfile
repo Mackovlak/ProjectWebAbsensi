@@ -1,4 +1,4 @@
-FROM php:8.2-apache
+FROM php:8.3-apache
 
 # libzip-dev is a build-time dependency of the zip extension (needed by
 # xlsx_writer.php's use of ZipArchive to generate real .xlsx exports) - it
@@ -9,6 +9,13 @@ RUN apt-get update \
     && docker-php-ext-install mysqli zip \
     && a2enmod rewrite headers \
     && rm -rf /var/lib/apt/lists/*
+
+# Composer itself (not the app's dependencies - the repo is bind-mounted at
+# runtime, so anything installed into the image's copy of /var/www/html
+# would just be shadowed by the host directory). entrypoint.sh runs the
+# actual `composer install` against the bind-mounted assets/ on container
+# start, using this binary.
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 COPY docker/php/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
 COPY docker/apache/000-default.conf /etc/apache2/sites-available/000-default.conf

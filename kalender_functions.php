@@ -25,6 +25,9 @@ define('KALENDER_NAMA_BULAN', [
     9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember',
 ]);
 
+// Semua jenis pengajuan izin yang dikenal sistem (lihat migrations/003, 005).
+define('KALENDER_SEMUA_JENIS_IZIN', ['Cuti', 'Sakit', 'Izin', 'Dinas Luar', 'Menikah', 'Menikahkan Anak', 'Melahirkan', 'Duka Cita']);
+
 /**
  * Baca satu pengaturan dari system_settings, dengan cache per-request.
  * Aman dipanggil walau tabel/baris belum ada (mengembalikan $default).
@@ -204,6 +207,67 @@ function getHariLibur($conn, $tanggal_mulai, $tanggal_selesai, $id_cabang = null
 }
 
 /**
+ * Pengaturan visibilitas "Kalender Tim" (satu pengaturan berlaku untuk semua
+ * role yang melihat mode global - admin/owner/supervisor/staff): jenis izin
+ * apa saja dan apakah status Pending ikut ditampilkan untuk rekan kerja lain
+ * (bukan milik sendiri, yang selalu tampil terlepas dari pengaturan ini).
+ */
+function getPengaturanKalenderTim($conn) {
+    $jenis_tersimpan = explode(',', getPengaturan($conn, 'kalender_tim_jenis_tampil', implode(',', KALENDER_SEMUA_JENIS_IZIN)));
+    $jenis_tampil = array_values(array_intersect(KALENDER_SEMUA_JENIS_IZIN, $jenis_tersimpan));
+
+    return [
+        'tampilkan_pending' => getPengaturan($conn, 'kalender_tim_tampilkan_pending', '1') === '1',
+        'jenis_tampil'      => $jenis_tampil,
+    ];
+}
+
+/**
+ * Apakah ulang tahun karyawan ditampilkan di kalender (default aktif).
+ */
+function tampilkanUlangTahunKalender($conn) {
+    return getPengaturan($conn, 'kalender_tampilkan_ultah', '1') === '1';
+}
+
+/**
+ * Ulang tahun karyawan aktif pada satu bulan, dikelompokkan per tanggal
+ * (hari-ke, 1-31), dibatasi ke satu cabang bila $id_cabang diisi.
+ */
+function getUlangTahunBulan($conn, $bulan, $id_cabang = null) {
+    $hasil = [];
+
+    $sql = "SELECT id_karyawan, nama_karyawan, tanggal_lahir
+            FROM karyawan
+            WHERE status = 'aktif' AND tanggal_lahir IS NOT NULL
+              AND MONTH(tanggal_lahir) = ?" . ($id_cabang !== null ? " AND id_cabang = ?" : "");
+
+    $stmt = @$conn->prepare($sql);
+    if (!$stmt) {
+        return $hasil;
+    }
+
+    if ($id_cabang !== null) {
+        $stmt->bind_param("ii", $bulan, $id_cabang);
+    } else {
+        $stmt->bind_param("i", $bulan);
+    }
+
+    if ($stmt->execute()) {
+        $res = $stmt->get_result();
+        while ($row = $res->fetch_assoc()) {
+            $hari_ke = (int)date('j', strtotime($row['tanggal_lahir']));
+            $hasil[$hari_ke][] = [
+                'id_karyawan'   => $row['id_karyawan'],
+                'nama_karyawan' => $row['nama_karyawan'],
+            ];
+        }
+    }
+    $stmt->close();
+
+    return $hasil;
+}
+
+/**
  * Klasifikasi satu tanggal: 'kerja', 'overtime', 'libur' (mingguan), atau
  * 'libur_nasional' bila terdaftar di hari_libur.
  */
@@ -304,10 +368,15 @@ function getLemburHariSabtu($conn, $id_karyawan, $bulan, $tahun) {
  * Bangun struktur data kalender satu bulan.
  *
  * $opsi:
- *  - id_karyawan : tampilkan absensi & izin milik karyawan ini (mode pribadi)
- *  - id_cabang   : batasi hari libur & pengajuan pada cabang ini
- *  - global      : true = kumpulkan pengajuan izin disetujui SEMUA karyawan
- *                  dalam cakupan (mode supervisor/admin/owner)
+ *  - id_karyawan : tampilkan absensi & izin milik karyawan ini. Izin milik
+ *                  sendiri (Pending & Disetujui, semua jenis) selalu ikut
+ *                  tampil terlepas dari pengaturan kalender tim di bawah.
+ *  - id_cabang   : batasi hari libur, ulang tahun & pengajuan tim pada cabang ini
+ *  - global      : true = kalender tim - selain milik sendiri, ikut tampilkan
+ *                  pengajuan izin karyawan LAIN dalam cakupan, tunduk pada
+ *                  getPengaturanKalenderTim() (jenis & status apa yang admin
+ *                  izinkan tampil ke tim). Dipakai staff (digabung id_karyawan,
+ *                  dibatasi cabangnya sendiri) maupun admin/owner/supervisor.
  *
  * Mengembalikan:
  *  - bulan, tahun, label
@@ -315,7 +384,7 @@ function getLemburHariSabtu($conn, $id_karyawan, $bulan, $tahun) {
  *      sel = null (padding) atau [
  *          'tanggal', 'hari_ke', 'jenis' (kerja|overtime|libur|libur_nasional),
  *          'hari_ini' => bool, 'libur' => info|null,
- *          'absensi' => row|null, 'izin' => [ ... ]
+ *          'absensi' => row|null, 'izin' => [ ... ], 'ulang_tahun' => [ ... ]
  *      ]
  *  - agenda[] : daftar peristiwa penting bulan itu untuk ditampilkan sebagai list
  */
@@ -351,62 +420,111 @@ function bangunKalenderBulan($conn, $bulan, $tahun, $opsi = []) {
 
     // ---------- Pengajuan izin ----------
     // Rentang yang beririsan dengan bulan ini, bukan hanya yang mulai di bulan ini.
+    // Digabung dari dua sumber lalu dedupe per id: (1) milik sendiri - selalu
+    // tampil apapun pengaturannya, (2) milik tim - tunduk pengaturan admin.
     $izin_per_tanggal = [];
-    $agenda_izin = [];
+    $izin_rows = []; // keyed by id, dedupe kalau dua query sama-sama mengembalikannya
 
-    $sql_izin = "SELECT p.id, p.jenis, p.status, p.tanggal_mulai, p.tanggal_selesai,
-                        p.keperluan, k.nama_karyawan, k.id_karyawan
-                 FROM pengajuan_izin p
-                 JOIN karyawan k ON p.id_karyawan = k.id_karyawan
-                 WHERE p.tanggal_mulai <= ? AND p.tanggal_selesai >= ?";
-    $params = [$akhir, $awal];
-    $types  = 'ss';
-
-    if ($global) {
-        // Reviewer hanya melihat yang sudah disetujui - antrean Pending punya
-        // halamannya sendiri (kelola_pengajuan_izin.php).
-        $sql_izin .= " AND p.status = 'Disetujui'";
-        if ($id_cabang !== null) {
-            $sql_izin .= " AND k.id_cabang = ?";
-            $params[] = $id_cabang;
-            $types   .= 'i';
-        }
-    } else {
-        // Mode pribadi: tampilkan juga yang masih menunggu, supaya karyawan
-        // melihat rencana izinnya sendiri.
-        $sql_izin .= " AND p.id_karyawan = ? AND p.status IN ('Pending','Disetujui')";
-        $params[] = $id_karyawan;
-        $types   .= 's';
-    }
-    $sql_izin .= " ORDER BY p.tanggal_mulai ASC";
-
-    $stmt = @$conn->prepare($sql_izin);
-    if ($stmt) {
-        $stmt->bind_param($types, ...$params);
-        if ($stmt->execute()) {
-            $res = $stmt->get_result();
-            while ($row = $res->fetch_assoc()) {
-                $agenda_izin[] = $row;
-
-                // Sebar rentang ke tiap tanggal dalam bulan ini
-                $mulai_ts = max(strtotime($row['tanggal_mulai']), strtotime($awal));
-                $akhir_ts = min(strtotime($row['tanggal_selesai']), strtotime($akhir));
-                for ($ts = $mulai_ts; $ts <= $akhir_ts; $ts = strtotime('+1 day', $ts)) {
-                    $tgl = date('Y-m-d', $ts);
-                    $izin_per_tanggal[$tgl][] = [
-                        'id'            => $row['id'],
-                        'jenis'         => $row['jenis'],
-                        'status'        => $row['status'],
-                        'nama_karyawan' => $row['nama_karyawan'],
-                        'keperluan'     => $row['keperluan'],
-                        'awal_rentang'  => $tgl === $row['tanggal_mulai'],
-                        'akhir_rentang' => $tgl === $row['tanggal_selesai'],
-                    ];
+    if ($id_karyawan) {
+        $stmt = @$conn->prepare("SELECT p.id, p.jenis, p.status, p.tanggal_mulai, p.tanggal_selesai,
+                                        p.keperluan, k.nama_karyawan, k.id_karyawan
+                                 FROM pengajuan_izin p
+                                 JOIN karyawan k ON p.id_karyawan = k.id_karyawan
+                                 WHERE p.tanggal_mulai <= ? AND p.tanggal_selesai >= ?
+                                   AND p.id_karyawan = ? AND p.status IN ('Pending','Disetujui')");
+        if ($stmt) {
+            $stmt->bind_param("sss", $akhir, $awal, $id_karyawan);
+            if ($stmt->execute()) {
+                $res = $stmt->get_result();
+                while ($row = $res->fetch_assoc()) {
+                    $row['milik_sendiri'] = true;
+                    $izin_rows[$row['id']] = $row;
                 }
             }
+            $stmt->close();
         }
-        $stmt->close();
     }
+
+    if ($global) {
+        $pengaturan_tim = getPengaturanKalenderTim($conn);
+        $jenis_tampil   = $pengaturan_tim['jenis_tampil'];
+
+        if (!empty($jenis_tampil)) {
+            $status_diizinkan = $pengaturan_tim['tampilkan_pending'] ? "('Pending','Disetujui')" : "('Disetujui')";
+            $jenis_placeholder = implode(',', array_fill(0, count($jenis_tampil), '?'));
+
+            // Klausa & parameter ditambahkan berpasangan dan berurutan supaya posisi
+            // placeholder "?" di teks SQL selalu cocok dengan urutan $params - bind_param
+            // mencocokkan berdasarkan posisi, bukan berdasarkan nama/maksud parameter.
+            $sql_tim = "SELECT p.id, p.jenis, p.status, p.tanggal_mulai, p.tanggal_selesai,
+                               p.keperluan, k.nama_karyawan, k.id_karyawan
+                        FROM pengajuan_izin p
+                        JOIN karyawan k ON p.id_karyawan = k.id_karyawan
+                        WHERE p.tanggal_mulai <= ? AND p.tanggal_selesai >= ?
+                          AND p.status IN $status_diizinkan";
+            $params = [$akhir, $awal];
+            $types  = 'ss';
+
+            if ($id_karyawan) {
+                // Sudah tercakup query "milik sendiri" di atas - jangan dobel.
+                $sql_tim .= " AND p.id_karyawan != ?";
+                $params[] = $id_karyawan;
+                $types   .= 's';
+            }
+            if ($id_cabang !== null) {
+                $sql_tim .= " AND k.id_cabang = ?";
+                $params[] = $id_cabang;
+                $types   .= 'i';
+            }
+            $sql_tim .= " AND p.jenis IN ($jenis_placeholder)";
+            foreach ($jenis_tampil as $j) {
+                $params[] = $j;
+                $types   .= 's';
+            }
+
+            $stmt = @$conn->prepare($sql_tim);
+            if ($stmt) {
+                $stmt->bind_param($types, ...$params);
+                if ($stmt->execute()) {
+                    $res = $stmt->get_result();
+                    while ($row = $res->fetch_assoc()) {
+                        $row['milik_sendiri'] = false;
+                        $izin_rows[$row['id']] = $row;
+                    }
+                }
+                $stmt->close();
+            }
+        }
+    }
+
+    $agenda_izin = array_values($izin_rows);
+    usort($agenda_izin, function ($a, $b) {
+        return strcmp($a['tanggal_mulai'], $b['tanggal_mulai']);
+    });
+
+    foreach ($agenda_izin as $row) {
+        // Sebar rentang ke tiap tanggal dalam bulan ini
+        $mulai_ts = max(strtotime($row['tanggal_mulai']), strtotime($awal));
+        $akhir_ts = min(strtotime($row['tanggal_selesai']), strtotime($akhir));
+        for ($ts = $mulai_ts; $ts <= $akhir_ts; $ts = strtotime('+1 day', $ts)) {
+            $tgl = date('Y-m-d', $ts);
+            $izin_per_tanggal[$tgl][] = [
+                'id'             => $row['id'],
+                'jenis'          => $row['jenis'],
+                'status'         => $row['status'],
+                'nama_karyawan'  => $row['nama_karyawan'],
+                'keperluan'      => $row['keperluan'],
+                'milik_sendiri'  => $row['milik_sendiri'],
+                'awal_rentang'   => $tgl === $row['tanggal_mulai'],
+                'akhir_rentang'  => $tgl === $row['tanggal_selesai'],
+            ];
+        }
+    }
+
+    // ---------- Ulang tahun ----------
+    $ultah_per_hari_ke = tampilkanUlangTahunKalender($conn)
+        ? getUlangTahunBulan($conn, $bulan, $id_cabang)
+        : [];
 
     // ---------- Susun grid ----------
     $jumlah_hari  = (int)date('t', strtotime($awal));
@@ -424,13 +542,14 @@ function bangunKalenderBulan($conn, $bulan, $tahun, $opsi = []) {
         else                                       $jenis = 'libur';
 
         $sel[] = [
-            'tanggal'  => $tgl,
-            'hari_ke'  => $d,
-            'jenis'    => $jenis,
-            'hari_ini' => $tgl === $hari_ini,
-            'libur'    => $daftar_libur[$tgl] ?? null,
-            'absensi'  => $absensi_per_tanggal[$tgl] ?? null,
-            'izin'     => $izin_per_tanggal[$tgl] ?? [],
+            'tanggal'     => $tgl,
+            'hari_ke'     => $d,
+            'jenis'       => $jenis,
+            'hari_ini'    => $tgl === $hari_ini,
+            'libur'       => $daftar_libur[$tgl] ?? null,
+            'absensi'     => $absensi_per_tanggal[$tgl] ?? null,
+            'izin'        => $izin_per_tanggal[$tgl] ?? [],
+            'ulang_tahun' => $ultah_per_hari_ke[$d] ?? [],
         ];
     }
     while (count($sel) % 7 !== 0) {
@@ -451,17 +570,28 @@ function bangunKalenderBulan($conn, $bulan, $tahun, $opsi = []) {
         ];
     }
     foreach ($agenda_izin as $izin) {
+        $siapa = $izin['milik_sendiri'] ? 'Anda' : $izin['nama_karyawan'];
         $agenda[] = [
             'tipe'    => 'izin',
             'tanggal' => $izin['tanggal_mulai'],
-            'judul'   => $global
-                            ? $izin['nama_karyawan'] . ' - ' . $izin['jenis']
-                            : $izin['jenis'],
+            'judul'   => $global ? $siapa . ' - ' . $izin['jenis'] : $izin['jenis'],
             'jenis'   => $izin['jenis'],
             'status'  => $izin['status'],
             'rentang' => formatRentangTanggal($izin['tanggal_mulai'], $izin['tanggal_selesai']),
             'catatan' => $izin['keperluan'],
         ];
+    }
+    foreach ($ultah_per_hari_ke as $hari_ke => $daftar_ultah) {
+        $tgl = sprintf('%04d-%02d-%02d', $tahun, $bulan, $hari_ke);
+        foreach ($daftar_ultah as $org) {
+            $agenda[] = [
+                'tipe'    => 'ulang_tahun',
+                'tanggal' => $tgl,
+                'judul'   => $org['nama_karyawan'],
+                'jenis'   => null,
+                'catatan' => null,
+            ];
+        }
     }
     usort($agenda, function ($a, $b) {
         return strcmp($a['tanggal'], $b['tanggal']);

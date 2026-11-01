@@ -173,15 +173,26 @@ if (!function_exists('calculateDistance')) {
     }
 }
 
+// GPS bawaan browser (terutama enableHighAccuracy di gedung/indoor) bisa
+// meleset beberapa meter antar percobaan walau HP tidak bergerak sama
+// sekali - accuracy yang dilaporkan browser jadi ukuran seberapa jauh
+// meleset itu bisa dipercaya. Toleransi dibatasi (bukan dipakai mentah-
+// mentah) supaya seseorang tidak bisa mengirim accuracy raksasa dari
+// klien untuk melumpuhkan geofencing sepenuhnya.
+if (!defined('GPS_TOLERANCE_MAKS_METER')) {
+    define('GPS_TOLERANCE_MAKS_METER', 30);
+}
+
 /**
  * Validasi apakah lokasi karyawan dalam radius yang diizinkan
  * @param string $lokasi_karyawan Format: "latitude,longitude"
  * @param string $id_karyawan ID karyawan
  * @param mysqli $conn Database connection
+ * @param float|null $accuracy_meter Akurasi GPS yang dilaporkan browser (meter), dari GeolocationCoordinates.accuracy
  * @return array ['valid' => bool, 'message' => string, 'jarak' => float]
  */
 if (!function_exists('validateLokasiAbsen')) {
-    function validateLokasiAbsen($lokasi_karyawan, $id_karyawan, $conn) {
+    function validateLokasiAbsen($lokasi_karyawan, $id_karyawan, $conn, $accuracy_meter = null) {
         // Cek apakah lokasi terdeteksi
         if (empty($lokasi_karyawan) || strpos($lokasi_karyawan, ',') === false) {
             return [
@@ -244,27 +255,38 @@ if (!function_exists('validateLokasiAbsen')) {
         $lon_cabang = floatval($cabang_data['longitude']);
         $radius_allowed = intval($cabang_data['radius_meter']);
         $nama_cabang = $cabang_data['nama_cabang'];
-        
+
         // Hitung jarak
         $jarak = calculateDistance($lat_karyawan, $lon_karyawan, $lat_cabang, $lon_cabang);
-        
+
+        // Toleransi mengikuti akurasi GPS yang dilaporkan browser, dibatasi
+        // GPS_TOLERANCE_MAKS_METER supaya tidak bisa disalahgunakan untuk
+        // melumpuhkan geofencing.
+        $toleransi = 0;
+        if (is_numeric($accuracy_meter) && $accuracy_meter > 0) {
+            $toleransi = min(floatval($accuracy_meter), GPS_TOLERANCE_MAKS_METER);
+        }
+        $radius_efektif = $radius_allowed + $toleransi;
+
         // Validasi jarak
-        if ($jarak > $radius_allowed) {
+        if ($jarak > $radius_efektif) {
             return [
                 'valid' => false,
                 'message' => "Anda berada " . round($jarak) . " meter dari " . $nama_cabang . ". Absensi hanya dapat dilakukan dalam radius " . $radius_allowed . " meter dari kantor.",
                 'jarak' => $jarak,
                 'radius' => $radius_allowed,
+                'toleransi' => $toleransi,
                 'nama_cabang' => $nama_cabang
             ];
         }
-        
+
         // Lokasi valid
         return [
             'valid' => true,
             'message' => 'Lokasi valid - ' . round($jarak) . ' meter dari kantor.',
             'jarak' => $jarak,
             'radius' => $radius_allowed,
+            'toleransi' => $toleransi,
             'nama_cabang' => $nama_cabang
         ];
     }

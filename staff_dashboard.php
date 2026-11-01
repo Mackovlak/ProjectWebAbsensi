@@ -466,7 +466,7 @@ const exportDataArray = <?php echo json_encode($dataForExport ?? []); ?>;
 
 function exportToPDF() {
     if (exportDataArray.length === 0) {
-        alert('Tidak ada data untuk diekspor.');
+        Swal.fire({ icon: 'info', title: 'Tidak Ada Data', text: 'Tidak ada data untuk diekspor.', confirmButtonColor: '#c026d3' });
         return;
     }
     

@@ -46,7 +46,7 @@ $avatar_bg = ($staff_jk == 'P') ? 'bg-pink-100' : 'bg-fuchsia-100';
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="view-transition" content="same-origin">
     <title>Dashboard Karyawan - Absensi Javag</title>
-    <link rel="icon" type="image/png" href="/assets/images/logo.png">
+    <?php require __DIR__ . '/pwa_head.php'; ?>
 
     <!-- Tailwind CSS via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -237,6 +237,10 @@ $avatar_bg = ($staff_jk == 'P') ? 'bg-pink-100' : 'bg-fuchsia-100';
             <a href="staff_pengajuan_lembur.php" class="flex items-center gap-3 px-4 py-3 mx-4 <?php echo basename($_SERVER['PHP_SELF']) == 'staff_pengajuan_lembur.php' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
                 <i class="ph-duotone ph-business-time text-xl w-6 flex items-center justify-center <?php echo basename($_SERVER['PHP_SELF']) == 'staff_pengajuan_lembur.php' ? '' : 'opacity-70 group-hover:opacity-100 transition-opacity'; ?>"></i>
                 <span class="font-medium text-sm">Pengajuan Lembur</span>
+                <?php $jml_tugas_lembur = hitungPenugasanMenunggu($conn, $_SESSION['id_karyawan'] ?? ''); ?>
+                <?php if ($jml_tugas_lembur > 0): ?>
+                    <span class="ml-auto inline-flex items-center text-[10px] font-bold bg-sky-500/20 text-sky-300 px-2 py-0.5 rounded-full border border-sky-500/30" title="Penugasan lembur menunggu jawaban Anda"><?php echo $jml_tugas_lembur; ?> tugas</span>
+                <?php endif; ?>
             </a>
 
             <!-- Face Registration -->

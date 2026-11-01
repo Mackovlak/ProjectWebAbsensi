@@ -140,6 +140,7 @@ function hitungTotalPotonganKeterlambatanPeriode($conn, $id_karyawan, $bulan, $t
     $total = 0.0;
     $rincian = [];
     $jumlah_legacy = 0;
+    $total_menit = 0;
 
     while ($row = $result->fetch_assoc()) {
         if ($pengaturan === null) {
@@ -148,6 +149,7 @@ function hitungTotalPotonganKeterlambatanPeriode($conn, $id_karyawan, $bulan, $t
         if ($row['menit_terlambat'] !== null) {
             $potongan = hitungPotonganKeterlambatan((int)$row['menit_terlambat'], $pengaturan);
             $sumber = 'tiered';
+            $total_menit += (int)$row['menit_terlambat'];
         } else {
             $potongan = (float)$rateFallbackLegacy;
             $sumber = 'legacy_flat';
@@ -167,6 +169,33 @@ function hitungTotalPotonganKeterlambatanPeriode($conn, $id_karyawan, $bulan, $t
         'total' => $total,
         'jumlah_hari' => count($rincian),
         'jumlah_legacy' => $jumlah_legacy,
+        // Total menit HANYA dari hari yang punya data mentah (sumber 'tiered') -
+        // hari 'legacy_flat' tidak punya menit_terlambat sama sekali jadi tidak
+        // ikut dijumlah, supaya angkanya tidak menyesatkan (lihat jumlah_legacy
+        // untuk tahu berapa hari yang tidak terhitung di sini).
+        'total_menit' => $total_menit,
         'rincian' => $rincian,
     ];
+}
+
+/**
+ * Ringkasan kebijakan keterlambatan aktif dalam satu kalimat siap-tampil -
+ * dipakai di slip_gaji_form.php supaya admin/owner tidak perlu menebak-nebak
+ * arti angka-angka mentah di rincian per hari. Otomatis mengikuti perubahan
+ * system_settings, bukan teks yang di-hardcode.
+ */
+function ringkasanKebijakanKeterlambatan(array $p) {
+    $maksJamStr = rtrim(rtrim(number_format($p['maks_jam'], 2, ',', '.'), '0'), ',');
+    return sprintf(
+        'Dispensasi %d menit pertama setelah jam masuk (masih "Tepat Waktu", tanpa potongan). '
+        . 'Lewat dispensasi s.d. %d menit: potongan flat Rp%s. '
+        . 'Setiap %d menit berikutnya: tambahan Rp%s. '
+        . 'Dibekukan (tidak bertambah lagi) setelah keterlambatan mencapai %s jam.',
+        $p['grace_menit'],
+        $p['tier1_durasi_menit'],
+        number_format($p['tier1_rate'], 0, ',', '.'),
+        $p['tier2_interval_menit'],
+        number_format($p['tier2_rate'], 0, ',', '.'),
+        $maksJamStr
+    );
 }

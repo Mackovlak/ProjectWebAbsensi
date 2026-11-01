@@ -11,8 +11,8 @@
 require 'config.php';
 
 // SECURITY: Hanya admin yang boleh akses
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'admin') {
-    $_SESSION['error_message'] = "⛔ Akses ditolak. Hanya admin yang dapat menambahkan absensi manual.";
+if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['admin', 'supervisor'], true)) {
+    $_SESSION['error_message'] = "⛔ Akses ditolak. Hanya admin atau supervisor yang dapat menambahkan absensi manual.";
     header("Location: login.php");
     exit();
 }
@@ -72,8 +72,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
     
     // 4. Validasi ID Karyawan exists
-    $check_karyawan = $conn->prepare("SELECT nama_karyawan FROM karyawan WHERE id_karyawan = ?");
-    $check_karyawan->bind_param("s", $id_karyawan);
+    $cabang_sv = 0;
+    if (isSupervisor()) {
+        // Supervisor hanya boleh menambah absensi karyawan di cabangnya sendiri
+        $cabang_sv = (int)getCabangReviewer($conn, $_SESSION['user_id'], 'supervisor');
+        $redirect_cabang = $cabang_sv;
+    }
+    $check_karyawan = $conn->prepare("SELECT nama_karyawan FROM karyawan WHERE id_karyawan = ?" . (isSupervisor() ? " AND id_cabang = ?" : ""));
+    if (isSupervisor()) {
+        $check_karyawan->bind_param("si", $id_karyawan, $cabang_sv);
+    } else {
+        $check_karyawan->bind_param("s", $id_karyawan);
+    }
     $check_karyawan->execute();
     $result_karyawan = $check_karyawan->get_result();
     
@@ -179,3 +189,4 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 header("Location: histori_absensi.php?cabang=" . $redirect_cabang);
 exit();
 ?>
+

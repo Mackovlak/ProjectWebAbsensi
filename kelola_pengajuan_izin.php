@@ -160,6 +160,34 @@ if (!empty($params_pc_ht)) {
 $stmt_pc_ht->execute();
 $daftar_pulang_cepat_ht = $stmt_pc_ht->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt_pc_ht->close();
+
+// Dinas luar dadakan saat PULANG (proses_absen.php): beda dari dua daftar di
+// atas, ini bukan sesuatu yang perlu ACC/Tolak - absen pulangnya sudah
+// tercatat sah, admin/supervisor cuma perlu menandai sudah ditinjau. Tidak
+// dibatasi CURDATE() (beda dari Pending Dinas/Pulang Cepat di atas) karena
+// tidak ada urgensi operasional harian - kalau terlewat sehari, tetap harus
+// bisa ditinjau nanti, bukan hilang dari daftar.
+$sql_dinas_pulang_ht = "SELECT a.id, a.tanggal, a.alasan_pulang, a.jam_masuk, a.jam_pulang,
+                                k.nama_karyawan, k.id_karyawan, c.nama_cabang
+                         FROM absensi a
+                         JOIN karyawan k ON a.id_karyawan = k.id_karyawan
+                         LEFT JOIN cabang c ON k.id_cabang = c.id
+                         WHERE a.dinas_pulang_dadakan = 1 AND a.dinas_pulang_ditinjau_at IS NULL";
+$params_dp_ht = [];
+$types_dp_ht = '';
+if ($cabang_reviewer !== null) {
+    $sql_dinas_pulang_ht .= " AND k.id_cabang = ?";
+    $params_dp_ht[] = $cabang_reviewer;
+    $types_dp_ht .= 'i';
+}
+$sql_dinas_pulang_ht .= " ORDER BY a.tanggal ASC LIMIT 50";
+$stmt_dp_ht = $conn->prepare($sql_dinas_pulang_ht);
+if (!empty($params_dp_ht)) {
+    $stmt_dp_ht->bind_param($types_dp_ht, ...$params_dp_ht);
+}
+$stmt_dp_ht->execute();
+$daftar_dinas_pulang_ht = $stmt_dp_ht->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt_dp_ht->close();
 ?>
 
 <div class="mb-8">
@@ -264,6 +292,46 @@ $stmt_pc_ht->close();
                             <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white dark:bg-slate-700 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800/50 text-sm font-semibold hover:bg-rose-50 dark:hover:bg-rose-900/30 transition"><i class="ph-bold ph-x"></i> Tolak</button>
                         </form>
                     </div>
+                <?php endif; ?>
+            </div>
+        <?php endforeach; ?>
+    </div>
+</div>
+<?php endif; ?>
+
+<?php if (!empty($daftar_dinas_pulang_ht)): ?>
+<!-- Dinas Luar Dadakan Saat Pulang (proses_absen.php) - sudah tercatat, tinggal ditinjau -->
+<div class="mb-8">
+    <div class="flex items-center gap-2 mb-3">
+        <i class="ph-duotone ph-briefcase text-xl text-indigo-500"></i>
+        <h2 class="font-bold text-slate-800 dark:text-white">Dinas Luar Saat Pulang &mdash; Perlu Ditinjau</h2>
+        <span class="text-xs text-slate-400">&mdash; absen pulang sudah tercatat sah di luar radius kantor, tandai setelah dicek</span>
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <?php foreach ($daftar_dinas_pulang_ht as $dp): ?>
+            <div class="bg-white dark:bg-slate-800 rounded-2xl border border-indigo-200 dark:border-indigo-800/50 shadow-sm p-5">
+                <div class="flex items-start justify-between gap-3 mb-2">
+                    <div class="min-w-0">
+                        <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold border uppercase tracking-wide bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-800/50">
+                            <i class="ph-bold ph-briefcase"></i> Dinas Luar Saat Pulang
+                        </span>
+                        <h3 class="text-base font-bold text-slate-800 dark:text-white mt-1.5"><?php echo safe_output($dp['nama_karyawan']); ?></h3>
+                        <p class="text-xs text-slate-400">
+                            <?php echo safe_output($dp['id_karyawan']); ?>
+                            <?php if (!empty($dp['nama_cabang'])): ?> &middot; <?php echo safe_output($dp['nama_cabang']); ?><?php endif; ?>
+                            &middot; <?php echo date('d/m/Y', strtotime($dp['tanggal'])); ?>
+                            &middot; Pulang <?php echo !empty($dp['jam_pulang']) ? date('H:i', strtotime($dp['jam_pulang'])) : '-'; ?>
+                        </p>
+                    </div>
+                </div>
+                <p class="text-sm text-slate-600 dark:text-slate-300 mb-3"><?php echo safe_output($dp['alasan_pulang'] ?? '-'); ?></p>
+                <?php if ($boleh_review): ?>
+                    <form action="proses_tinjau_dinas_pulang.php" method="POST">
+                        <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+                        <input type="hidden" name="id_absensi" value="<?php echo (int)$dp['id']; ?>">
+                        <input type="hidden" name="redirect_url" value="kelola_pengajuan_izin.php">
+                        <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition"><i class="ph-bold ph-check"></i> Tandai Sudah Ditinjau</button>
+                    </form>
                 <?php endif; ?>
             </div>
         <?php endforeach; ?>

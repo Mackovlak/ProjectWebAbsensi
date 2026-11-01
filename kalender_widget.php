@@ -83,6 +83,9 @@ $k_link_ini = function () use ($k_url, $k_query) {
         <span class="inline-flex items-center gap-1.5">
             <span class="w-3 h-3 rounded border border-slate-300 dark:border-slate-600 bg-slate-200 dark:bg-slate-700"></span> Libur mingguan
         </span>
+        <span class="inline-flex items-center gap-1.5">
+            <span class="w-3 h-3 rounded border border-violet-300 dark:border-violet-700 bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center text-[8px]">🎂</span> Ulang tahun
+        </span>
     </div>
 
     <!-- Grid kalender -->
@@ -118,7 +121,11 @@ $k_link_ini = function () use ($k_url, $k_query) {
                                         . ($sel['absensi']['jam_masuk'] ? ' (' . substr($sel['absensi']['jam_masuk'], 0, 5) . ')' : '');
                                 }
                                 foreach ($sel['izin'] as $iz) {
-                                    $tip[] = ($k_global ? $iz['nama_karyawan'] . ': ' : '') . $iz['jenis'] . ' (' . $iz['status'] . ')';
+                                    $siapa = !empty($iz['milik_sendiri']) ? 'Anda' : $iz['nama_karyawan'];
+                                    $tip[] = ($k_global ? $siapa . ': ' : '') . $iz['jenis'] . ' (' . $iz['status'] . ')';
+                                }
+                                foreach ($sel['ulang_tahun'] as $ultah) {
+                                    $tip[] = '🎂 Ulang tahun ' . $ultah['nama_karyawan'];
                                 }
                             ?>
                             <div class="min-h-[76px] rounded-lg border p-1.5 flex flex-col gap-1 <?php echo $kelas_sel . $ring; ?>"
@@ -132,6 +139,8 @@ $k_link_ini = function () use ($k_url, $k_query) {
                                         <i class="ph-bold ph-hourglass-high text-[10px] text-amber-500" title="Hari lembur"></i>
                                     <?php elseif ($sel['libur']): ?>
                                         <i class="ph-fill ph-star text-[10px] text-rose-500"></i>
+                                    <?php elseif (!empty($sel['ulang_tahun'])): ?>
+                                        <span class="text-[10px]" title="Ada ulang tahun">🎂</span>
                                     <?php endif; ?>
                                 </div>
 
@@ -142,8 +151,10 @@ $k_link_ini = function () use ($k_url, $k_query) {
                                 <?php endif; ?>
 
                                 <?php
-                                // Absensi pribadi: tampilkan jam masuk atau keterangan
-                                if (!$k_global && $sel['absensi']):
+                                // Absensi pribadi: tampilkan jam masuk atau keterangan.
+                                // $sel['absensi'] hanya terisi untuk pemilik kalender sendiri
+                                // (lihat bangunKalenderBulan), jadi aman tampil di mode tim juga.
+                                if ($sel['absensi']):
                                     $ket = $sel['absensi']['keterangan'];
                                     $warna_abs = 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300';
                                     if ($ket === 'Hadir' || $ket === 'Dinas Luar') {
@@ -166,14 +177,15 @@ $k_link_ini = function () use ($k_url, $k_query) {
                                 $sisa   = count($sel['izin']) - count($tampil);
                                 foreach ($tampil as $iz):
                                     $pending = $iz['status'] === 'Pending';
+                                    $milik_sendiri = !empty($iz['milik_sendiri']);
+                                    $siapa = $milik_sendiri ? 'Anda' : $iz['nama_karyawan'];
                                 ?>
-                                    <span class="text-[9px] font-semibold px-1.5 py-0.5 rounded border truncate <?php echo badgeJenisIzin($iz['jenis']); ?> <?php echo $pending ? 'opacity-60 border-dashed' : ''; ?>"
-                                          title="<?php echo safe_output(($k_global ? $iz['nama_karyawan'] . ' - ' : '') . $iz['jenis'] . ' (' . $iz['status'] . ')'); ?>">
+                                    <span class="text-[9px] font-semibold px-1.5 py-0.5 rounded border truncate <?php echo badgeJenisIzin($iz['jenis']); ?> <?php echo $pending ? 'opacity-60 border-dashed' : ''; ?> <?php echo $milik_sendiri ? 'ring-1 ring-inset ring-current' : ''; ?>"
+                                          title="<?php echo safe_output(($k_global ? $siapa . ' - ' : '') . $iz['jenis'] . ' (' . $iz['status'] . ')'); ?>">
                                         <?php if ($k_global): ?>
                                             <?php
-                                                // Ruang sempit: pakai nama depan saja
-                                                $nama_pendek = explode(' ', trim($iz['nama_karyawan']))[0];
-                                                echo safe_output($nama_pendek);
+                                                // Ruang sempit: "Anda" untuk milik sendiri, nama depan untuk rekan kerja
+                                                echo $milik_sendiri ? 'Anda' : safe_output(explode(' ', trim($iz['nama_karyawan']))[0]);
                                             ?>
                                         <?php else: ?>
                                             <?php echo safe_output($iz['jenis']); ?>
@@ -184,6 +196,13 @@ $k_link_ini = function () use ($k_url, $k_query) {
                                 <?php if ($sisa > 0): ?>
                                     <span class="text-[9px] font-bold text-slate-400">+<?php echo $sisa; ?> lagi</span>
                                 <?php endif; ?>
+
+                                <?php foreach (array_slice($sel['ulang_tahun'], 0, 2) as $ultah): ?>
+                                    <span class="text-[9px] font-semibold px-1.5 py-0.5 rounded border truncate bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-900/30 dark:text-violet-400 dark:border-violet-800/50"
+                                          title="🎂 Ulang tahun <?php echo safe_output($ultah['nama_karyawan']); ?>">
+                                        🎂 <?php echo safe_output(explode(' ', trim($ultah['nama_karyawan']))[0]); ?>
+                                    </span>
+                                <?php endforeach; ?>
                             </div>
                         <?php endif; ?>
                     <?php endforeach; ?>
@@ -213,6 +232,10 @@ $k_link_ini = function () use ($k_url, $k_query) {
                                 <?php if ($ag['tipe'] === 'libur'): ?>
                                     <span class="text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-400 dark:border-rose-800/50">
                                         <?php echo safe_output($ag['jenis']); ?>
+                                    </span>
+                                <?php elseif ($ag['tipe'] === 'ulang_tahun'): ?>
+                                    <span class="text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-900/30 dark:text-violet-400 dark:border-violet-800/50">
+                                        🎂 Ulang Tahun
                                     </span>
                                 <?php else: ?>
                                     <span class="text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase <?php echo badgeStatusIzin($ag['status']); ?>">

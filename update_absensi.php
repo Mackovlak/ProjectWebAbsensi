@@ -2,12 +2,12 @@
 require 'config.php';
 
 // Cek apakah user sudah login dan adalah admin
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'admin') {
+if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['admin', 'supervisor'], true)) {
     if (isset($_POST['is_ajax'])) {
-        echo json_encode(['status' => 'error', 'message' => 'Akses ditolak. Hanya admin yang dapat mengedit absensi.']);
+        echo json_encode(['status' => 'error', 'message' => 'Akses ditolak. Hanya admin atau supervisor yang dapat mengedit absensi.']);
         exit();
     }
-    $_SESSION['error_message'] = "Akses ditolak. Hanya admin yang dapat mengedit absensi.";
+    $_SESSION['error_message'] = "Akses ditolak. Hanya admin atau supervisor yang dapat mengedit absensi.";
     header("Location: login.php");
     exit();
 }
@@ -18,6 +18,27 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $jam_keluar = sanitizeInput($_POST['jam_keluar']);
     $keterangan = sanitizeInput($_POST['keterangan']);
     $redirect_cabang = intval($_POST['redirect_cabang']);
+
+    // Supervisor hanya boleh mengedit absensi karyawan di cabangnya sendiri
+    if (isSupervisor()) {
+        $cabang_sv = (int)getCabangReviewer($conn, $_SESSION['user_id'], 'supervisor');
+        $redirect_cabang = $cabang_sv;
+        $stmt_cek = $conn->prepare("SELECT k.id_cabang FROM absensi a JOIN karyawan k ON a.id_karyawan = k.id_karyawan WHERE a.id = ?");
+        $stmt_cek->bind_param("i", $id_absensi);
+        $stmt_cek->execute();
+        $row_cek = $stmt_cek->get_result()->fetch_assoc();
+        $stmt_cek->close();
+        if ($cabang_sv <= 0 || !$row_cek || (int)$row_cek['id_cabang'] !== $cabang_sv) {
+            $msg_ditolak = "Data absensi ini berada di luar cabang yang Anda supervisi.";
+            if (isset($_POST['is_ajax'])) {
+                echo json_encode(['status' => 'error', 'message' => $msg_ditolak]);
+                exit();
+            }
+            $_SESSION['error_message'] = $msg_ditolak;
+            header("Location: histori_absensi.php?cabang=" . $redirect_cabang);
+            exit();
+        }
+    }
 
     // Validasi input
     if (empty($jam_masuk)) {
@@ -98,3 +119,4 @@ if (isset($_POST['is_ajax'])) {
 header("Location: histori_absensi.php?cabang=" . $redirect_cabang);
 exit();
 ?>
+

@@ -96,13 +96,14 @@ window.closeModal = function(modalId) {
 }
 
 // --- Fungsi untuk Modal Edit Karyawan ---
-window.openEditKaryawanModal = function(id, idKaryawan, nama, jenisKelamin, idJabatan, idCabang) {
+window.openEditKaryawanModal = function(id, idKaryawan, nama, jenisKelamin, idJabatan, idCabang, modeAbsen) {
     document.getElementById('edit-id-karyawan-pk').value = id;
     document.getElementById('edit-id-karyawan').value = idKaryawan;
     document.getElementById('edit-nama-karyawan').value = nama;
     document.getElementById('edit-jenis-kelamin').value = jenisKelamin;
     document.getElementById('edit-id-jabatan').value = idJabatan;
     document.getElementById('edit-id-cabang').value = idCabang;
+    document.getElementById('edit-mode-absen').value = modeAbsen || 'tetap';
     openModal('modal-edit');
 }
 

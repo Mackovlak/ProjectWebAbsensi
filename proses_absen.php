@@ -13,6 +13,12 @@ function outputJSON($data) {
     exit;
 }
 
+// Dipakai di 3 titik validasi GPS (masuk, pulang-tanpa-masuk, pulang) supaya
+// definisi "lokasi tidak valid" tidak bisa diam-diam berbeda antar titik.
+function lokasiTidakValid(array $validasi_lokasi, bool $is_onsite_karyawan) {
+    return !$is_onsite_karyawan && !$validasi_lokasi['valid'] && !isset($validasi_lokasi['bypass']);
+}
+
 try {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         http_response_code(405);
@@ -44,6 +50,11 @@ try {
 
     $id_karyawan = isset($_POST['id_karyawan']) ? sanitizeInput($_POST['id_karyawan']) : '';
     $lokasi = isset($_POST['lokasi']) ? sanitizeInput($_POST['lokasi']) : 'Lokasi tidak terdeteksi';
+    // Akurasi GPS (meter) dari GeolocationCoordinates.accuracy - dipakai sebagai
+    // toleransi jarak di validateLokasiAbsen(), bukan sumber kebenaran lokasi
+    // itu sendiri. filter_var menolak nilai non-numerik dari klien nakal.
+    $akurasi_lokasi = isset($_POST['akurasi_lokasi']) ? filter_var($_POST['akurasi_lokasi'], FILTER_VALIDATE_FLOAT) : false;
+    if ($akurasi_lokasi === false) $akurasi_lokasi = null;
     $keterangan_param = isset($_POST['keterangan']) ? sanitizeInput($_POST['keterangan']) : '';
     $is_dinas_luar = isset($_POST['is_dinas_luar']) && $_POST['is_dinas_luar'] === 'true';
     
@@ -70,11 +81,11 @@ try {
     }
 
     // Get karyawan data
-    $stmt = $conn->prepare("SELECT k.id, k.id_cabang, u.face_descriptor FROM karyawan k LEFT JOIN users u ON k.id_karyawan = u.id_karyawan WHERE k.id_karyawan = ? AND k.status = 'aktif' AND (u.id IS NULL OR u.is_active = 1)");
+    $stmt = $conn->prepare("SELECT k.id, k.id_cabang, k.mode_absen, u.face_descriptor FROM karyawan k LEFT JOIN users u ON k.id_karyawan = u.id_karyawan WHERE k.id_karyawan = ? AND k.status = 'aktif' AND (u.id IS NULL OR u.is_active = 1)");
     $stmt->bind_param("s", $id_karyawan);
     $stmt->execute();
     $result_karyawan = $stmt->get_result();
-    
+
     if ($result_karyawan->num_rows == 0) {
         $stmt->close();
         outputJSON(['success' => false, 'message' => 'ID Karyawan tidak ditemukan.']);
@@ -83,6 +94,11 @@ try {
     $karyawan_data = $result_karyawan->fetch_assoc();
     $id_cabang = $karyawan_data['id_cabang'];
     $has_registered_face = !empty($karyawan_data['face_descriptor']);
+    // Karyawan onsite (kerja lapangan/berpindah, ditandai admin lewat
+    // data_karyawan.php) lolos validasi radius lokasi cabang untuk semua
+    // check-in Hadir hari ini - GPS tetap dikirim & disimpan (lokasi_masuk/
+    // lokasi_pulang) untuk jejak audit, hanya pengecekan jaraknya yang dilewati.
+    $is_onsite_karyawan = ($karyawan_data['mode_absen'] ?? 'tetap') === 'onsite';
     $stmt->close();
 
     // Pengajuan Dinas Luar yang sudah disetujui supervisor/admin untuk hari ini.
@@ -106,9 +122,9 @@ try {
             ]);
         }
         
-        // 1. VALIDASI LOKASI GPS (wajib untuk Hadir, kecuali request Dinas Luar)
-        $validasi_lokasi = validateLokasiAbsen($lokasi, $id_karyawan, $conn);
-        if (!$is_dinas_luar && !$validasi_lokasi['valid'] && !isset($validasi_lokasi['bypass'])) {
+        // 1. VALIDASI LOKASI GPS (wajib untuk Hadir, kecuali request Dinas Luar atau karyawan onsite)
+        $validasi_lokasi = validateLokasiAbsen($lokasi, $id_karyawan, $conn, $akurasi_lokasi);
+        if (!$is_dinas_luar && lokasiTidakValid($validasi_lokasi, $is_onsite_karyawan)) {
             outputJSON([
                 'success' => false,
                 'message' => $validasi_lokasi['message'],
@@ -302,8 +318,8 @@ try {
                 ]);
             }
 
-            $validasi_lokasi = validateLokasiAbsen($lokasi, $id_karyawan, $conn);
-            if (!$validasi_lokasi['valid'] && !isset($validasi_lokasi['bypass'])) {
+            $validasi_lokasi = validateLokasiAbsen($lokasi, $id_karyawan, $conn, $akurasi_lokasi);
+            if (lokasiTidakValid($validasi_lokasi, $is_onsite_karyawan)) {
                 $stmt_check->close();
                 outputJSON([
                     'success' => false,
@@ -336,10 +352,11 @@ try {
                 // check-in yang lain (Dinas Luar dkk.), jadi tidak bentrok makna.
                 $waktu_alasan_tidak_masuk = date('Y-m-d H:i:s');
                 $stmt_insert_pulang_saja = $conn->prepare(
-                    "INSERT INTO absensi (id_karyawan, tanggal, jam_pulang, lokasi_pulang, keterangan, status_masuk, face_verified, face_confidence, input_method, alasan, waktu_alasan)
-                     VALUES (?, ?, ?, ?, 'Hadir', NULL, 1, ?, 'qr_scan', ?, ?)"
+                    "INSERT INTO absensi (id_karyawan, tanggal, jam_pulang, lokasi_pulang, keterangan, status_masuk, face_verified, face_confidence, input_method, alasan, waktu_alasan, is_onsite)
+                     VALUES (?, ?, ?, ?, 'Hadir', NULL, 1, ?, 'qr_scan', ?, ?, ?)"
                 );
-                $stmt_insert_pulang_saja->bind_param("ssssdss", $id_karyawan, $tanggal, $waktu, $lokasi, $face_confidence, $alasan_tidak_masuk, $waktu_alasan_tidak_masuk);
+                $is_onsite_flag = $is_onsite_karyawan ? 1 : 0;
+                $stmt_insert_pulang_saja->bind_param("ssssdssi", $id_karyawan, $tanggal, $waktu, $lokasi, $face_confidence, $alasan_tidak_masuk, $waktu_alasan_tidak_masuk, $is_onsite_flag);
 
                 if ($stmt_insert_pulang_saja->execute()) {
                     if ($capture_ready) saveAttendanceCapture($conn, $conn->insert_id, 'pulang', $capture_bytes);
@@ -385,11 +402,30 @@ try {
             $stmt_check->close();
             outputJSON(['success' => false, 'message' => 'Absensi masuk Anda masih menunggu persetujuan Dinas Luar. Harap tunggu Admin menyetujui, atau periksa kembali statusnya.']);
         }
-        
+
+        // Dibaca lebih awal (bukan hanya dekat UPDATE) supaya bisa diwajibkan
+        // SEBELUM insert kalau ini dinas dadakan saat pulang (di bawah).
+        $alasan_pulang = isset($_POST['alasan_pulang']) ? sanitizeInput($_POST['alasan_pulang']) : null;
+
+        // Dinas luar dadakan saat PULANG: karyawan absen masuk normal (Hadir,
+        // dalam radius kantor), lalu saat pulang berada di luar radius karena
+        // ditugaskan keluar hari itu juga. Beda dari dinas dadakan saat MASUK
+        // (yang digantung ke antrean 'Pending Dinas' menunggu ACC admin - lihat
+        // cabang else di bawah untuk absen masuk): di sini absen pulang tetap
+        // direkam LANGSUNG memakai lokasi asli (di luar radius) - menahan
+        // checkout sampai admin ACC tidak masuk akal karena karyawan sudah di
+        // luar kantor. Alih-alih diblokir, dicatat & ditandai untuk ditinjau
+        // (logActivity + alasan_pulang wajib), meniru pola
+        // 'absen_pulang_tanpa_masuk' di atas. $izin_dinas_hari_ini (pengajuan
+        // dinas yang SUDAH disetujui) tetap bypass diam-diam tanpa alasan
+        // tambahan, sama seperti perlakuannya di tempat lain di file ini.
+        $dinas_pulang_dadakan = false;
         if ($is_hadir_masuk) {
             // Validasi GPS untuk pulang
-            $validasi_lokasi = validateLokasiAbsen($lokasi, $id_karyawan, $conn);
-            if (!$validasi_lokasi['valid'] && !isset($validasi_lokasi['bypass'])) {
+            $validasi_lokasi = validateLokasiAbsen($lokasi, $id_karyawan, $conn, $akurasi_lokasi);
+            $lokasi_pulang_invalid = lokasiTidakValid($validasi_lokasi, $is_onsite_karyawan);
+
+            if ($lokasi_pulang_invalid && !$is_dinas_luar) {
                 $stmt_check->close();
                 outputJSON([
                     'success' => false,
@@ -397,6 +433,16 @@ try {
                     'jarak' => $validasi_lokasi['jarak'],
                     'radius' => $validasi_lokasi['radius'],
                     'type' => 'location_error'
+                ]);
+            }
+
+            $dinas_pulang_dadakan = $lokasi_pulang_invalid && $is_dinas_luar && !$izin_dinas_hari_ini;
+            if ($dinas_pulang_dadakan && (!$alasan_pulang || strlen($alasan_pulang) < 5)) {
+                $stmt_check->close();
+                outputJSON([
+                    'success' => false,
+                    'message' => 'Mohon isi alasan sedang dinas luar saat pulang (minimal 5 karakter).',
+                    'type' => 'alasan_required'
                 ]);
             }
         }
@@ -453,7 +499,8 @@ try {
             $stmt_jam_pulang->close();
         }
 
-        $alasan_pulang = isset($_POST['alasan_pulang']) ? sanitizeInput($_POST['alasan_pulang']) : null;
+        // $alasan_pulang sudah dibaca di atas (dibutuhkan lebih awal untuk
+        // validasi dinas dadakan saat pulang).
         $foto_pulang_name = null;
         // ==============================================
 
@@ -466,19 +513,25 @@ try {
         // Update dengan data face jika ada
         // $face_verified and $face_confidence come only from the consumed server receipt.
         
+        $dinas_pulang_dadakan_flag = $dinas_pulang_dadakan ? 1 : 0;
         if ($face_verified) {
-            $stmt_update = $conn->prepare("UPDATE absensi SET jam_pulang = ?, lokasi_pulang = ?, face_verified = 1, face_confidence = ?, alasan_pulang = ?, foto_pulang = ? WHERE id = ? AND (jam_pulang IS NULL OR jam_pulang = '00:00:00')");
-            $stmt_update->bind_param("ssdssi", $waktu, $lokasi, $face_confidence, $alasan_pulang, $foto_pulang_name, $data_absen['id']);
+            $stmt_update = $conn->prepare("UPDATE absensi SET jam_pulang = ?, lokasi_pulang = ?, face_verified = 1, face_confidence = ?, alasan_pulang = ?, foto_pulang = ?, dinas_pulang_dadakan = ? WHERE id = ? AND (jam_pulang IS NULL OR jam_pulang = '00:00:00')");
+            $stmt_update->bind_param("ssdssii", $waktu, $lokasi, $face_confidence, $alasan_pulang, $foto_pulang_name, $dinas_pulang_dadakan_flag, $data_absen['id']);
         } else {
-            $stmt_update = $conn->prepare("UPDATE absensi SET jam_pulang = ?, lokasi_pulang = ?, alasan_pulang = ?, foto_pulang = ? WHERE id = ? AND (jam_pulang IS NULL OR jam_pulang = '00:00:00')");
-            $stmt_update->bind_param("ssssi", $waktu, $lokasi, $alasan_pulang, $foto_pulang_name, $data_absen['id']);
+            $stmt_update = $conn->prepare("UPDATE absensi SET jam_pulang = ?, lokasi_pulang = ?, alasan_pulang = ?, foto_pulang = ?, dinas_pulang_dadakan = ? WHERE id = ? AND (jam_pulang IS NULL OR jam_pulang = '00:00:00')");
+            $stmt_update->bind_param("ssssii", $waktu, $lokasi, $alasan_pulang, $foto_pulang_name, $dinas_pulang_dadakan_flag, $data_absen['id']);
         }
         
         if ($stmt_update->execute() && $stmt_update->affected_rows > 0) {
             if ($capture_ready) saveAttendanceCapture($conn, $data_absen['id'], 'pulang', $capture_bytes);
-            $log_message = "Absen pulang jam $waktu" . ($face_verified ? " (Face Verified: {$face_confidence}%)" : "");
-            logActivity($conn, 'absen_pulang', $log_message, $id_karyawan);
-            
+            if ($dinas_pulang_dadakan) {
+                $log_message = "Absen pulang jam $waktu di luar radius kantor (dinas luar dadakan): \"$alasan_pulang\" - perlu ditinjau" . ($face_verified ? " (Face Verified: {$face_confidence}%)" : "");
+                logActivity($conn, 'absen_pulang_dinas_luar', $log_message, $id_karyawan);
+            } else {
+                $log_message = "Absen pulang jam $waktu" . ($face_verified ? " (Face Verified: {$face_confidence}%)" : "");
+                logActivity($conn, 'absen_pulang', $log_message, $id_karyawan);
+            }
+
             if ($face_verified) {
                 $stmt_face_log = $conn->prepare(
                     "INSERT INTO face_recognition_logs (id_karyawan, attempt_type, status, confidence_score, ip_address) 
@@ -494,10 +547,17 @@ try {
             $stmt_update->close();
             $stmt_check->close();
             
+            $pesan_pulang = "Absensi pulang berhasil direkam pada jam $waktu.";
+            if ($dinas_pulang_dadakan) {
+                $pesan_pulang .= "<br><br>Karena tercatat di luar radius kantor, absensi pulang ini ditandai sebagai dinas luar dan akan ditinjau Admin/Supervisor.";
+            }
+            if ($face_verified) {
+                $pesan_pulang .= " <br><small style='color: #28a745;'>🛡️ Wajah terverifikasi ({$face_confidence}%)</small>";
+            }
             outputJSON([
-                'success' => true, 
-                'message' => "Absensi pulang berhasil direkam pada jam $waktu." . ($face_verified ? " <br><small style='color: #28a745;'>🛡️ Wajah terverifikasi ({$face_confidence}%)</small>" : ""), 
-                'title' => "Selamat Beristirahat!"
+                'success' => true,
+                'message' => $pesan_pulang,
+                'title' => $dinas_pulang_dadakan ? "Dinas Luar Tercatat" : "Selamat Beristirahat!"
             ]);
         } else {
             $conn->rollback();
@@ -606,20 +666,21 @@ try {
             }
             
             $waktu_alasan = ($alasan !== null) ? date('Y-m-d H:i:s') : null;
+            $is_onsite_flag = $is_onsite_karyawan ? 1 : 0;
 
             // Insert data
             if ($face_verified) {
                 $stmt_insert = $conn->prepare(
-                    "INSERT INTO absensi (id_karyawan, tanggal, jam_masuk, lokasi_masuk, keterangan, status_masuk, menit_terlambat, face_verified, face_confidence, alasan, foto_bukti, waktu_alasan)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)"
+                    "INSERT INTO absensi (id_karyawan, tanggal, jam_masuk, lokasi_masuk, keterangan, status_masuk, menit_terlambat, face_verified, face_confidence, alasan, foto_bukti, waktu_alasan, is_onsite)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)"
                 );
-                $stmt_insert->bind_param("ssssssidsss", $id_karyawan, $tanggal, $waktu, $lokasi, $keterangan, $status_masuk, $menit_terlambat, $face_confidence, $alasan, $foto_bukti_name, $waktu_alasan);
+                $stmt_insert->bind_param("ssssssidsssi", $id_karyawan, $tanggal, $waktu, $lokasi, $keterangan, $status_masuk, $menit_terlambat, $face_confidence, $alasan, $foto_bukti_name, $waktu_alasan, $is_onsite_flag);
             } else {
                 $stmt_insert = $conn->prepare(
-                    "INSERT INTO absensi (id_karyawan, tanggal, jam_masuk, lokasi_masuk, keterangan, status_masuk, menit_terlambat, alasan, foto_bukti, waktu_alasan)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                    "INSERT INTO absensi (id_karyawan, tanggal, jam_masuk, lokasi_masuk, keterangan, status_masuk, menit_terlambat, alasan, foto_bukti, waktu_alasan, is_onsite)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 );
-                $stmt_insert->bind_param("ssssssisss", $id_karyawan, $tanggal, $waktu, $lokasi, $keterangan, $status_masuk, $menit_terlambat, $alasan, $foto_bukti_name, $waktu_alasan);
+                $stmt_insert->bind_param("ssssssisssi", $id_karyawan, $tanggal, $waktu, $lokasi, $keterangan, $status_masuk, $menit_terlambat, $alasan, $foto_bukti_name, $waktu_alasan, $is_onsite_flag);
             }
             
             if ($stmt_insert->execute()) {

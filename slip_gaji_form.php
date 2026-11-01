@@ -112,6 +112,17 @@ $lembur_disetujui = hitungJamLemburDisetujui($conn, $id_karyawan, $bulan, $tahun
 $rate_keterlambatan_fallback = $karyawan['rate_keterlambatan'] ?? 20000;
 $keterlambatan_auto = hitungTotalPotonganKeterlambatanPeriode($conn, $id_karyawan, $bulan, $tahun, $rate_keterlambatan_fallback);
 
+// Kebijakan keterlambatan bertingkat AKTIF SEKARANG (system_settings) - dipakai
+// untuk menampilkan ringkasan "cara hitung" yang bisa dibaca manusia, dan
+// untuk mengisi panel edit kebijakan di bawah (lihat
+// ajax_save_kebijakan_keterlambatan.php untuk penyimpanannya).
+// Ikut cabang karyawan (sama dengan yang dipakai hitungTotalPotonganKeterlambatanPeriode
+// dan admin_detail_cabang.php) - bukan global, supaya tampilan = hitungan sebenarnya.
+$id_cabang_telat = (int)($karyawan['cabang_id'] ?? 0);
+$nama_cabang_telat = $karyawan['nama_cabang'] ?? '';
+$pengaturan_telat = getPengaturanKeterlambatan($conn, $id_cabang_telat > 0 ? $id_cabang_telat : null);
+$ringkasan_kebijakan_telat = ringkasanKebijakanKeterlambatan($pengaturan_telat);
+
 // Check existing slip
 $stmt = $conn->prepare("SELECT * FROM slip_gaji WHERE id_karyawan = ? AND bulan = ? AND tahun = ?");
 $stmt->bind_param("sii", $id_karyawan, $bulan, $tahun);
@@ -616,12 +627,26 @@ require 'admin_header.php';
                 <div class="p-6 space-y-4" id="potonganContainer">
                     
                     <!-- Keterlambatan (Otomatis Bertingkat per Hari) -->
+                    <div>
                     <div class="flex items-start gap-4">
                         <div class="w-1/3">
                             <p class="text-sm font-semibold text-slate-700 dark:text-slate-300">Pot. Keterlambatan</p>
-                            <p class="text-[10px] text-rose-600 dark:text-rose-400 mt-1"><i class="fa-solid fa-link"></i> Otomatis bertingkat (<?php echo $keterlambatan_auto['jumlah_hari']; ?> hari telat)</p>
+                            <div class="flex flex-wrap gap-1.5 mt-1.5">
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400">
+                                    <i class="fa-solid fa-calendar-xmark"></i> <?php echo $keterlambatan_auto['jumlah_hari']; ?> hari telat
+                                </span>
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300" title="Total menit dari hari yang punya data mentah menit_terlambat (tidak termasuk hari 'rate lama*')">
+                                    <i class="fa-solid fa-clock"></i>
+                                    <?php
+                                        $total_menit_telat = $keterlambatan_auto['total_menit'];
+                                        echo $total_menit_telat > 0
+                                            ? sprintf('%d menit (%dj %dm)', $total_menit_telat, intdiv($total_menit_telat, 60), $total_menit_telat % 60)
+                                            : '0 menit';
+                                    ?>
+                                </span>
+                            </div>
                             <?php if ($keterlambatan_auto['jumlah_legacy'] > 0): ?>
-                            <p class="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5"><i class="fa-solid fa-triangle-exclamation"></i> <?php echo $keterlambatan_auto['jumlah_legacy']; ?> hari pakai rate lama* (data menit belum tersedia)</p>
+                            <p class="text-[10px] text-amber-600 dark:text-amber-400 mt-1.5"><i class="fa-solid fa-triangle-exclamation"></i> <?php echo $keterlambatan_auto['jumlah_legacy']; ?> hari pakai rate lama* (data menit belum tersedia)</p>
                             <?php endif; ?>
                             <?php if (!empty($keterlambatan_auto['rincian'])): ?>
                             <details class="mt-1.5">
@@ -663,6 +688,64 @@ require 'admin_header.php';
                             </button>
                             <?php endif; ?>
                         </div>
+                    </div>
+
+                    <!-- Cara Hitung & Kebijakan Keterlambatan -->
+                    <div class="mt-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-900/30 p-3">
+                        <details id="detailsKebijakanTelat">
+                            <summary class="flex items-center justify-between cursor-pointer text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400">
+                                <span><i class="fa-solid fa-scale-balanced"></i> Cara Hitung &amp; Kebijakan Keterlambatan</span>
+                                <i class="fa-solid fa-chevron-down text-[10px]"></i>
+                            </summary>
+                            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-2 leading-relaxed" id="ringkasanKebijakanTelat">
+                                <?php echo htmlspecialchars($ringkasan_kebijakan_telat); ?>
+                            </p>
+                            <p class="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+                                <i class="fa-solid fa-link"></i>
+                                <?php if ($id_cabang_telat > 0): ?>
+                                Pengaturan ini <strong>tersinkron dengan pengaturan keterlambatan Cabang <?php echo htmlspecialchars($nama_cabang_telat); ?></strong>
+                                (<a href="admin_detail_cabang.php?id=<?php echo $id_cabang_telat; ?>" class="underline hover:text-brand-600">lihat di halaman cabang</a>).
+                                Perubahan di sini berlaku untuk SEMUA karyawan cabang ini (bukan cuma slip ini) dan langsung dipakai untuk hitungan slip berikutnya.
+                                <?php else: ?>
+                                Karyawan ini tidak punya cabang, sehingga memakai pengaturan GLOBAL. Perubahan berlaku untuk semua cabang yang belum punya pengaturan sendiri.
+                                <?php endif; ?>
+                            </p>
+
+                            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mt-3">
+                                <div>
+                                    <label class="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">Dispensasi (menit)</label>
+                                    <input type="number" min="0" max="180" id="kebijakanGraceMenit" value="<?php echo (int)$pengaturan_telat['grace_menit']; ?>" class="w-full px-2 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg text-xs bg-white dark:bg-slate-800 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-brand-500">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">Durasi Tier 1 (menit)</label>
+                                    <input type="number" min="1" max="180" id="kebijakanTier1Durasi" value="<?php echo (int)$pengaturan_telat['tier1_durasi_menit']; ?>" class="w-full px-2 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg text-xs bg-white dark:bg-slate-800 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-brand-500">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">Potongan Tier 1 (Rp)</label>
+                                    <input type="number" min="0" step="500" id="kebijakanTier1Rate" value="<?php echo (int)$pengaturan_telat['tier1_rate']; ?>" class="w-full px-2 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg text-xs bg-white dark:bg-slate-800 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-brand-500">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">Interval Tier 2 (menit)</label>
+                                    <input type="number" min="1" max="180" id="kebijakanTier2Interval" value="<?php echo (int)$pengaturan_telat['tier2_interval_menit']; ?>" class="w-full px-2 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg text-xs bg-white dark:bg-slate-800 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-brand-500">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">Potongan Tier 2 / Interval (Rp)</label>
+                                    <input type="number" min="0" step="500" id="kebijakanTier2Rate" value="<?php echo (int)$pengaturan_telat['tier2_rate']; ?>" class="w-full px-2 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg text-xs bg-white dark:bg-slate-800 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-brand-500">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-slate-500 dark:text-slate-400 mb-0.5">Batas Maks (jam)</label>
+                                    <input type="number" min="0.5" max="24" step="0.5" id="kebijakanMaksJam" value="<?php echo (float)$pengaturan_telat['maks_jam']; ?>" class="w-full px-2 py-1.5 border border-slate-200 dark:border-slate-600 rounded-lg text-xs bg-white dark:bg-slate-800 text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-brand-500">
+                                </div>
+                            </div>
+
+                            <div class="flex items-center justify-between mt-3">
+                                <span id="kebijakanSaveMsg" class="text-[10px]"></span>
+                                <button type="button" onclick="simpanKebijakanTelat(this)" class="px-3 py-1.5 bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold rounded-lg transition-colors">
+                                    <i class="fa-solid fa-save"></i> Simpan Kebijakan
+                                </button>
+                            </div>
+                        </details>
+                    </div>
                     </div>
 
                     <!-- Potongan Ekstra Existing -->
@@ -1377,6 +1460,58 @@ require 'admin_header.php';
             console.error('Error:', error);
             alert('Gagal menghubungi server.');
             icon.className = origClass;
+        });
+    }
+
+    // Simpan kebijakan keterlambatan bertingkat (system_settings, berlaku
+    // untuk SEMUA karyawan) dari panel "Cara Hitung & Kebijakan Keterlambatan".
+    function simpanKebijakanTelat(btnElement) {
+        const berlakuUntukSemua = <?php echo json_encode($id_cabang_telat > 0
+            ? 'Kebijakan ini disinkronkan ke pengaturan Cabang ' . $nama_cabang_telat . ' dan berlaku untuk SEMUA karyawan cabang tsb, '
+              . 'langsung dipakai untuk hitungan slip gaji berikutnya (bukan cuma slip ini). Lanjutkan?'
+            : 'Karyawan ini tanpa cabang; kebijakan GLOBAL akan diubah. Lanjutkan?'); ?>;
+        if (!confirm(berlakuUntukSemua)) return;
+
+        const msg = document.getElementById('kebijakanSaveMsg');
+        const icon = btnElement.querySelector('i');
+        const origClass = icon.className;
+        icon.className = 'fa-solid fa-circle-notch fa-spin';
+        btnElement.disabled = true;
+        msg.textContent = '';
+
+        const formData = new FormData();
+        formData.append('csrf_token', document.querySelector('input[name="csrf_token"]').value);
+        formData.append('id_cabang', '<?php echo $id_cabang_telat; ?>');
+        formData.append('grace_menit', document.getElementById('kebijakanGraceMenit').value);
+        formData.append('tier1_durasi_menit', document.getElementById('kebijakanTier1Durasi').value);
+        formData.append('tier1_rate', document.getElementById('kebijakanTier1Rate').value);
+        formData.append('tier2_interval_menit', document.getElementById('kebijakanTier2Interval').value);
+        formData.append('tier2_rate', document.getElementById('kebijakanTier2Rate').value);
+        formData.append('maks_jam', document.getElementById('kebijakanMaksJam').value);
+
+        fetch('ajax_save_kebijakan_keterlambatan.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                msg.className = 'text-[10px] text-emerald-600 dark:text-emerald-400';
+                msg.textContent = 'Tersimpan, memuat ulang halaman...';
+                setTimeout(() => window.location.reload(), 800);
+            } else {
+                icon.className = origClass;
+                btnElement.disabled = false;
+                msg.className = 'text-[10px] text-rose-600 dark:text-rose-400';
+                msg.textContent = data.message || 'Gagal menyimpan kebijakan.';
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            icon.className = origClass;
+            btnElement.disabled = false;
+            msg.className = 'text-[10px] text-rose-600 dark:text-rose-400';
+            msg.textContent = 'Gagal menghubungi server.';
         });
     }
 

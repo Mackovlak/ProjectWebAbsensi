@@ -32,7 +32,7 @@ $view = $_GET['view'] ?? 'aktif';
 $status_filter = ($view == 'arsip') ? 'nonaktif' : 'aktif';
 
 // --- Ambil data karyawan dengan JOIN ---
-$sql = "SELECT k.id, k.id_karyawan, k.nama_karyawan, k.jenis_kelamin, k.foto, j.nama_jabatan, c.nama_cabang, k.id_jabatan, k.id_cabang
+$sql = "SELECT k.id, k.id_karyawan, k.nama_karyawan, k.jenis_kelamin, k.foto, j.nama_jabatan, c.nama_cabang, k.id_jabatan, k.id_cabang, k.mode_absen
         FROM karyawan k
         LEFT JOIN jabatan j ON k.id_jabatan = j.id
         LEFT JOIN cabang c ON k.id_cabang = c.id
@@ -171,6 +171,11 @@ function getCabangColorClass($nama_cabang) {
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300 search-target">
                                 <?php echo htmlspecialchars($row['nama_jabatan']); ?>
+                                <?php if (($row['mode_absen'] ?? 'tetap') === 'onsite'): ?>
+                                    <span class="ml-1 inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400" title="Absen tanpa validasi lokasi cabang">
+                                        <i class="fa-solid fa-map-location-dot mr-1"></i>Onsite
+                                    </span>
+                                <?php endif; ?>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                 <div class="flex items-center justify-end gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
@@ -185,7 +190,7 @@ function getCabangColorClass($nama_cabang) {
                                         <a href="admin_detail_karyawan.php?id=<?php echo $row['id']; ?>" class="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg dark:text-indigo-400 dark:hover:bg-indigo-900/30 transition-colors" title="Lihat Detail">
                                             <i class="fa-solid fa-eye"></i>
                                         </a>
-                                        <button onclick="openEditKaryawanModal('<?php echo $row['id']; ?>', '<?php echo htmlspecialchars(addslashes($row['id_karyawan'])); ?>', '<?php echo htmlspecialchars(addslashes($row['nama_karyawan'])); ?>', '<?php echo htmlspecialchars(addslashes($row['jenis_kelamin'] ?? 'L')); ?>', '<?php echo $row['id_jabatan']; ?>', '<?php echo $row['id_cabang']; ?>')" class="p-2 text-brand-600 hover:bg-brand-50 rounded-lg dark:text-brand-400 dark:hover:bg-brand-900/30 transition-colors" title="Edit Data">
+                                        <button onclick="openEditKaryawanModal('<?php echo $row['id']; ?>', '<?php echo htmlspecialchars(addslashes($row['id_karyawan'])); ?>', '<?php echo htmlspecialchars(addslashes($row['nama_karyawan'])); ?>', '<?php echo htmlspecialchars(addslashes($row['jenis_kelamin'] ?? 'L')); ?>', '<?php echo $row['id_jabatan']; ?>', '<?php echo $row['id_cabang']; ?>', '<?php echo htmlspecialchars(addslashes($row['mode_absen'] ?? 'tetap')); ?>')" class="p-2 text-brand-600 hover:bg-brand-50 rounded-lg dark:text-brand-400 dark:hover:bg-brand-900/30 transition-colors" title="Edit Data">
                                             <i class="fa-solid fa-pen-to-square"></i>
                                         </button>
                                         <a href="master_process.php?nonaktifkan_karyawan=<?php echo $row['id']; ?>" onclick="event.preventDefault(); handleKaryawanAction(this.href, 'Konfirmasi Non-aktif', 'Apakah Anda yakin ingin menonaktifkan <?php echo htmlspecialchars($row['nama_karyawan']); ?>? Karyawan akan dipindah ke Arsip Resign dan akunnya dihapus.', '#d97706');" class="p-2 text-amber-600 hover:bg-amber-50 rounded-lg dark:text-amber-400 dark:hover:bg-amber-900/30 transition-colors" title="Resign / Non-aktifkan">
@@ -269,8 +274,16 @@ function getCabangColorClass($nama_cabang) {
                             <?php endforeach; ?>
                         </select>
                     </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Mode Absen <span class="text-red-500">*</span></label>
+                        <select id="mode_absen" name="mode_absen" required class="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 transition-colors appearance-none">
+                            <option value="tetap">Tetap (wajib di lokasi cabang)</option>
+                            <option value="onsite">Onsite (kerja lapangan, tanpa validasi lokasi)</option>
+                        </select>
+                        <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Karyawan onsite tetap wajib verifikasi wajah, tapi absen Hadir-nya tidak dicek jarak ke cabang.</p>
+                    </div>
                 </div>
-                
+
                 <div class="px-6 py-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
                     <button type="button" onclick="closeModal('modal-tambah')" class="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-sm font-medium">Batal</button>
                     <button type="submit" name="tambah_karyawan" class="px-6 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-sm shadow-brand-500/30 transition-colors text-sm font-medium">Simpan</button>
@@ -332,8 +345,16 @@ function getCabangColorClass($nama_cabang) {
                             <?php endforeach; ?>
                         </select>
                     </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Mode Absen <span class="text-red-500">*</span></label>
+                        <select id="edit-mode-absen" name="mode_absen" required class="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 transition-colors appearance-none">
+                            <option value="tetap">Tetap (wajib di lokasi cabang)</option>
+                            <option value="onsite">Onsite (kerja lapangan, tanpa validasi lokasi)</option>
+                        </select>
+                        <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Karyawan onsite tetap wajib verifikasi wajah, tapi absen Hadir-nya tidak dicek jarak ke cabang.</p>
+                    </div>
                 </div>
-                
+
                 <div class="px-6 py-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
                     <button type="button" onclick="closeModal('modal-edit')" class="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-sm font-medium">Batal</button>
                     <button type="submit" name="edit_karyawan" class="px-6 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl shadow-sm shadow-brand-500/30 transition-colors text-sm font-medium">Update</button>

@@ -102,6 +102,21 @@ while ($row = $res_pc->fetch_assoc()) {
 }
 $stmt_pc->close();
 
+$notif_dinas_pulang = [];
+$stmt_dp = $conn->prepare("SELECT a.id, a.tanggal, a.alasan_pulang, k.nama_karyawan
+                           FROM absensi a
+                           JOIN karyawan k ON a.id_karyawan = k.id_karyawan
+                           WHERE a.dinas_pulang_dadakan = 1 AND a.dinas_pulang_ditinjau_at IS NULL AND k.id_cabang = ?
+                           ORDER BY a.tanggal ASC
+                           LIMIT 20");
+$stmt_dp->bind_param("i", $cabang_supervisor);
+$stmt_dp->execute();
+$res_dp = $stmt_dp->get_result();
+while ($row = $res_dp->fetch_assoc()) {
+    $notif_dinas_pulang[] = $row;
+}
+$stmt_dp->close();
+
 $notif_izin_info = [];
 $stmt_izin_info = $conn->prepare("SELECT a.id, a.tanggal, a.keterangan, a.alasan, k.nama_karyawan
                                   FROM absensi a
@@ -120,7 +135,7 @@ while ($row = $res_izin_info->fetch_assoc()) {
 $stmt_izin_info->close();
 
 $pending_lembur_count = hitungPendingLembur($conn, $cabang_supervisor);
-$actionable_notif_count = count($notif_pengajuan) + count($notif_dinas) + count($notif_pulang_cepat) + $pending_lembur_count;
+$actionable_notif_count = count($notif_pengajuan) + count($notif_dinas) + count($notif_pulang_cepat) + count($notif_dinas_pulang) + $pending_lembur_count;
 $total_notif = $actionable_notif_count + count($notif_izin_info);
 // ------------------------------
 ?>
@@ -131,7 +146,7 @@ $total_notif = $actionable_notif_count + count($notif_izin_info);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="view-transition" content="same-origin">
     <title>Dashboard Supervisor - Absensi Javag</title>
-    <link rel="icon" type="image/png" href="/assets/images/logo.png">
+    <?php require __DIR__ . '/pwa_head.php'; ?>
 
     <!-- Tailwind CSS via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -313,6 +328,10 @@ $total_notif = $actionable_notif_count + count($notif_izin_info);
             <a href="staff_pengajuan_lembur.php" class="flex items-center gap-3 px-4 py-3 mx-4 <?php echo basename($_SERVER['PHP_SELF']) == 'staff_pengajuan_lembur.php' ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20' : 'text-white hover:bg-[#1e293b]'; ?> rounded-xl transition-all duration-300 group">
                 <i class="ph-duotone ph-business-time text-xl w-6 flex items-center justify-center"></i>
                 <span class="font-medium text-sm">Lembur Saya</span>
+                <?php $jml_tugas_lembur = hitungPenugasanMenunggu($conn, $_SESSION['id_karyawan'] ?? ''); ?>
+                <?php if ($jml_tugas_lembur > 0): ?>
+                    <span class="ml-auto inline-flex items-center text-[10px] font-bold bg-sky-500/20 text-sky-300 px-2 py-0.5 rounded-full border border-sky-500/30" title="Penugasan lembur menunggu jawaban Anda"><?php echo $jml_tugas_lembur; ?> tugas</span>
+                <?php endif; ?>
             </a>
             <?php endif; ?>
 
@@ -499,6 +518,22 @@ $total_notif = $actionable_notif_count + count($notif_izin_info);
                                     </div>
                                     <p class="text-xs text-slate-600 dark:text-slate-300 line-clamp-2"><?php echo htmlspecialchars($npc['alasan_pulang_cepat'] ?? '-'); ?></p>
                                     <p class="text-[10px] font-medium text-slate-400 mt-2"><i class="fa-regular fa-calendar mr-1"></i><?php echo date('d M Y', strtotime($npc['tanggal'])); ?></p>
+                                </a>
+                                <?php endforeach; endif; ?>
+
+                                <!-- Loop Dinas Luar Saat Pulang: preview saja, aksi tandai ditinjau dilakukan di Kelola Pengajuan Izin -->
+                                <?php if (count($notif_dinas_pulang) > 0): ?>
+                                <div class="px-4 py-2 bg-slate-50 dark:bg-slate-800/50 border-y border-slate-100 dark:border-slate-700/50 sticky top-0 z-10 backdrop-blur-sm">
+                                    <p class="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">Dinas Luar Saat Pulang - Perlu Ditinjau</p>
+                                </div>
+                                <?php foreach ($notif_dinas_pulang as $ndp): ?>
+                                <a href="kelola_pengajuan_izin.php" class="block p-4 border-b border-slate-100 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                                    <div class="flex items-center justify-between gap-2 mb-1">
+                                        <p class="text-sm font-bold text-slate-800 dark:text-white truncate"><?php echo htmlspecialchars($ndp['nama_karyawan']); ?></p>
+                                        <span class="text-[10px] px-2 py-0.5 rounded-full border font-bold shrink-0 bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800/50">Dinas Pulang</span>
+                                    </div>
+                                    <p class="text-xs text-slate-600 dark:text-slate-300 line-clamp-2"><?php echo htmlspecialchars($ndp['alasan_pulang'] ?? '-'); ?></p>
+                                    <p class="text-[10px] font-medium text-slate-400 mt-2"><i class="fa-regular fa-calendar mr-1"></i><?php echo date('d M Y', strtotime($ndp['tanggal'])); ?></p>
                                 </a>
                                 <?php endforeach; endif; ?>
 

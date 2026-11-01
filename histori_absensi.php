@@ -3,6 +3,8 @@ require 'config.php';
 require_once 'attendance_capture.php';
 $cabang_reviewer = requireAttendancePhotoReviewer($conn);
 $is_admin = isAdmin();
+// Admin dan supervisor boleh koreksi/tambah absensi (supervisor dibatasi ke cabangnya di handler).
+$can_edit = $is_admin || isSupervisor();
 $capture_ready = attendanceCaptureReady($conn);
 
 // Ambil daftar cabang untuk dropdown
@@ -173,11 +175,13 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
                 </div>
             </form>
 
-            <?php if ($is_admin): ?><div class="flex items-center gap-2">
+            <?php if ($can_edit): ?><div class="flex items-center gap-2">
+                <?php if ($is_admin): ?>
                 <!-- Tombol Kelola Cuti Bersama -->
                 <button onclick="openModal('modal-kelola-cuti-bersama')" class="flex items-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl transition-colors font-medium text-sm shadow-sm shadow-teal-500/30">
                     <i class="fa-solid fa-calendar-plus"></i> Kelola Cuti Bersama
                 </button>
+                <?php endif; ?>
                 
                 <!-- Tombol Tambah Manual -->
                 <button onclick="openModal('modal-tambah-manual')" class="flex items-center gap-2 px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl transition-colors font-medium text-sm shadow-sm shadow-brand-500/30">
@@ -360,22 +364,32 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
                                             <?php endif; ?>
 
                                             <?php if ($row['jam_pulang'] && $row['jam_pulang'] != '00:00:00'): ?>
-                                                <?php if ($status_pulang == 'Setengah Hari'): ?>
-                                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-800/50">
-                                                        <i class="fa-solid fa-clock-rotate-left"></i> Setengah Hari
-                                                    </span>
-                                                <?php elseif ($status_pulang == 'Over Time'): ?>
-                                                    <div class="flex items-center gap-1.5">
+                                                <div class="flex flex-wrap items-center gap-1.5">
+                                                    <?php if ($status_pulang == 'Setengah Hari'): ?>
+                                                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-800/50">
+                                                            <i class="fa-solid fa-clock-rotate-left"></i> Setengah Hari
+                                                        </span>
+                                                    <?php elseif ($status_pulang == 'Over Time'): ?>
                                                         <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800/50">
                                                             <i class="fa-solid fa-business-time"></i> Over Time
                                                         </span>
-                                                        <?php if (!empty($row['alasan_pulang'])): ?>
-                                                            <button type="button" onclick="openDetailAlasanModal(this)" data-alasan="<?php echo htmlspecialchars($row['alasan_pulang'] ?? ''); ?>" data-foto="<?php echo htmlspecialchars($row['foto_pulang'] ?? ''); ?>" data-lokasi="<?php echo htmlspecialchars($row['lokasi_pulang'] ?? ''); ?>" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200 hover:bg-fuchsia-100 transition-colors dark:bg-fuchsia-900/30 dark:text-fuchsia-400 dark:border-fuchsia-800/50">
-                                                                <i class="fa-solid fa-eye"></i> Detail
-                                                            </button>
-                                                        <?php endif; ?>
-                                                    </div>
-                                                <?php endif; ?>
+                                                    <?php endif; ?>
+                                                    <?php // Detail alasan_pulang ditampilkan lepas dari status Setengah
+                                                          // Hari/Over Time di atas - dinas luar dadakan saat pulang (lihat
+                                                          // proses_absen.php) bisa terjadi pada jam pulang NORMAL, jadi
+                                                          // tombolnya tidak boleh terkubur hanya di cabang Over Time. ?>
+                                                    <?php if (!empty($row['dinas_pulang_dadakan'])): ?>
+                                                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-800/50" title="<?php echo empty($row['dinas_pulang_ditinjau_at']) ? 'Perlu ditinjau di Kelola Pengajuan Izin' : 'Sudah ditinjau'; ?>">
+                                                            <i class="fa-solid fa-briefcase"></i> Dinas Pulang
+                                                            <?php echo empty($row['dinas_pulang_ditinjau_at']) ? '&middot; Perlu Ditinjau' : '&middot; Ditinjau'; ?>
+                                                        </span>
+                                                    <?php endif; ?>
+                                                    <?php if (!empty($row['alasan_pulang'])): ?>
+                                                        <button type="button" onclick="openDetailAlasanModal(this)" data-alasan="<?php echo htmlspecialchars($row['alasan_pulang'] ?? ''); ?>" data-foto="<?php echo htmlspecialchars($row['foto_pulang'] ?? ''); ?>" data-lokasi="<?php echo htmlspecialchars($row['lokasi_pulang'] ?? ''); ?>" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200 hover:bg-fuchsia-100 transition-colors dark:bg-fuchsia-900/30 dark:text-fuchsia-400 dark:border-fuchsia-800/50">
+                                                            <i class="fa-solid fa-eye"></i> Detail
+                                                        </button>
+                                                    <?php endif; ?>
+                                                </div>
                                             <?php else: ?>
                                                 <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800/50">
                                                     <i class="fa-solid fa-triangle-exclamation"></i> <?php echo ($status_pulang == 'Belum Absen Pulang = Set. Hari') ? 'Belum Absen Pulang = Set. Hari' : 'Belum Absen Pulang'; ?>
@@ -451,7 +465,7 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
                                     <?php else: ?>
                                         <span class="text-xs text-slate-400"><?= $capture_ready ? 'Belum ada foto' : 'Foto belum aktif' ?></span>
                                     <?php endif; ?>
-                                    <?php if ($is_admin): ?>
+                                    <?php if ($can_edit): ?>
                                     <button type="button" onclick="openEditAbsensiModal(this)" data-absen='<?php echo htmlspecialchars(json_encode($row), ENT_QUOTES); ?>' class="p-2 text-fuchsia-600 hover:bg-fuchsia-50 rounded-lg dark:text-fuchsia-400 dark:hover:bg-fuchsia-900/30 transition-colors border border-transparent hover:border-fuchsia-200 dark:hover:border-fuchsia-800" title="Edit Data">
                                         <i class="fa-solid fa-pen-to-square"></i>
                                     </button>
@@ -545,6 +559,7 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
 </div>
 
 <!-- ========================================== -->
+<?php if ($can_edit): ?>
 <?php if ($is_admin): ?>
 <!-- MODAL: PERSETUJUAN DINAS LUAR              -->
 <!-- ========================================== -->
@@ -597,6 +612,7 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
     </div>
 </div>
 
+<?php endif; ?>
 <!-- ========================================== -->
 <!-- MODAL: TAMBAH ABSENSI MANUAL               -->
 <!-- ========================================== -->
@@ -674,6 +690,7 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
     </div>
 </div>
 
+<?php if ($is_admin): ?>
 <!-- ========================================== -->
 <!-- MODAL: KELOLA CUTI BERSAMA                 -->
 <!-- ========================================== -->
@@ -732,7 +749,7 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
                         </select>
                     </div>
 
-                    <div class="grid grid-cols-2 gap-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">Dari Tanggal <span class="text-red-500">*</span></label>
                             <input type="date" name="tanggal_mulai" required class="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:ring-2 focus:ring-teal-500 outline-none text-sm">
@@ -794,7 +811,7 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
                         </select>
                     </div>
 
-                    <div class="grid grid-cols-2 gap-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">Dari Tanggal <span class="text-red-500">*</span></label>
                             <input type="date" name="tanggal_mulai" required class="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:ring-2 focus:ring-rose-500 outline-none text-sm">
@@ -817,6 +834,7 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
 </div>
 
 
+<?php endif; ?>
 <!-- ========================================== -->
 <!-- MODAL: EDIT ABSENSI (Koreksi Jam)          -->
 <!-- ========================================== -->
@@ -838,7 +856,7 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
                 <input type="hidden" name="id_absensi" id="edit-id-absensi">
                 <input type="hidden" name="redirect_cabang" value="<?php echo $id_cabang; ?>">
 
-                <div class="grid grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">Nama Karyawan</label>
                         <input type="text" id="edit-nama-karyawan" readonly class="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-xl bg-slate-100 dark:bg-slate-900 text-slate-500 dark:text-slate-400 focus:outline-none text-sm cursor-not-allowed">
@@ -849,7 +867,7 @@ require $is_admin ? 'admin_header.php' : 'supervisor_header.php';
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">Jam Masuk</label>
                         <input type="time" name="jam_masuk" id="edit-jam-masuk" step="1" class="w-full px-3 py-2.5 border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:ring-2 focus:ring-fuchsia-500 outline-none text-sm">

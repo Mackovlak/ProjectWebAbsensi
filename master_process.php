@@ -320,8 +320,9 @@ if (isset($_POST['tambah_karyawan'])) {
     $id_jabatan = intval($_POST['id_jabatan']);
     $id_cabang = intval($_POST['id_cabang']);
     $jenis_kelamin = $conn->real_escape_string($_POST['jenis_kelamin'] ?? 'L');
-    $stmt = $conn->prepare("INSERT INTO karyawan (id_karyawan, nama_karyawan, id_jabatan, id_cabang, jenis_kelamin) VALUES (?, ?, ?, ?, ?)");
-    $stmt->bind_param("ssiis", $id_karyawan, $nama_karyawan, $id_jabatan, $id_cabang, $jenis_kelamin);
+    $mode_absen = in_array($_POST['mode_absen'] ?? 'tetap', ['tetap', 'onsite'], true) ? $_POST['mode_absen'] : 'tetap';
+    $stmt = $conn->prepare("INSERT INTO karyawan (id_karyawan, nama_karyawan, id_jabatan, id_cabang, jenis_kelamin, mode_absen) VALUES (?, ?, ?, ?, ?, ?)");
+    $stmt->bind_param("ssiiss", $id_karyawan, $nama_karyawan, $id_jabatan, $id_cabang, $jenis_kelamin, $mode_absen);
     if ($stmt->execute()) {
         if (isset($_POST['is_ajax'])) {
             echo json_encode(['status' => 'success', 'message' => 'Karyawan berhasil ditambahkan!']);
@@ -346,8 +347,9 @@ if (isset($_POST['edit_karyawan'])) {
     $id_jabatan = intval($_POST['id_jabatan']);
     $id_cabang = intval($_POST['id_cabang']);
     $jenis_kelamin = $conn->real_escape_string($_POST['jenis_kelamin'] ?? 'L');
-    $stmt = $conn->prepare("UPDATE karyawan SET nama_karyawan = ?, id_jabatan = ?, id_cabang = ?, jenis_kelamin = ? WHERE id = ?");
-    $stmt->bind_param("siisi", $nama_karyawan, $id_jabatan, $id_cabang, $jenis_kelamin, $id);
+    $mode_absen = in_array($_POST['mode_absen'] ?? 'tetap', ['tetap', 'onsite'], true) ? $_POST['mode_absen'] : 'tetap';
+    $stmt = $conn->prepare("UPDATE karyawan SET nama_karyawan = ?, id_jabatan = ?, id_cabang = ?, jenis_kelamin = ?, mode_absen = ? WHERE id = ?");
+    $stmt->bind_param("siissi", $nama_karyawan, $id_jabatan, $id_cabang, $jenis_kelamin, $mode_absen, $id);
     if ($stmt->execute()) {
         if (isset($_POST['is_ajax'])) {
             echo json_encode(['status' => 'success', 'message' => 'Data karyawan berhasil diperbarui!']);
@@ -898,6 +900,42 @@ if (isset($_POST['simpan_hari_kerja'])) {
             $_SESSION['user_id']);
     } else {
         $_SESSION['error_message'] = "❌ Gagal menyimpan pengaturan hari kerja.";
+    }
+
+    header("Location: data_hari_libur.php");
+    exit();
+}
+
+// Handler Simpan Pengaturan Kalender Tim (visibilitas izin & ulang tahun)
+if (isset($_POST['simpan_kalender_tim'])) {
+    verifyCSRFToken($_POST['csrf_token'] ?? '');
+
+    $jenis_dikirim = isset($_POST['kalender_tim_jenis_tampil']) && is_array($_POST['kalender_tim_jenis_tampil'])
+        ? $_POST['kalender_tim_jenis_tampil'] : [];
+    $jenis_valid = array_values(array_intersect(KALENDER_SEMUA_JENIS_IZIN, $jenis_dikirim));
+
+    $tampilkan_pending = isset($_POST['kalender_tim_tampilkan_pending']) ? '1' : '0';
+    $tampilkan_ultah    = isset($_POST['kalender_tampilkan_ultah']) ? '1' : '0';
+
+    $ok1 = setPengaturan($conn, 'kalender_tim_tampilkan_pending', $tampilkan_pending,
+        'Tampilkan pengajuan izin berstatus Pending milik rekan kerja lain di kalender tim');
+    // "-" dipakai sebagai penanda "tidak ada jenis dipilih" - string kosong tidak bisa
+    // dipakai karena getPengaturan() memperlakukan nilai kosong sebagai "belum diatur"
+    // dan akan jatuh balik ke default (semua jenis tampil), bukan daftar kosong yang dimaksud.
+    $jenis_tersimpan = empty($jenis_valid) ? '-' : implode(',', $jenis_valid);
+    $ok2 = setPengaturan($conn, 'kalender_tim_jenis_tampil', $jenis_tersimpan,
+        'Jenis pengajuan izin yang ditampilkan dari rekan kerja lain di kalender tim');
+    $ok3 = setPengaturan($conn, 'kalender_tampilkan_ultah', $tampilkan_ultah,
+        'Tampilkan ulang tahun karyawan di kalender');
+
+    if ($ok1 && $ok2 && $ok3) {
+        $_SESSION['success_message'] = "✅ Pengaturan kalender tim berhasil disimpan.";
+        logActivity($conn, 'ubah_kalender_tim',
+            "Mengubah pengaturan kalender tim: pending=" . $tampilkan_pending
+            . ", jenis=[" . implode(',', $jenis_valid) . "], ultah=" . $tampilkan_ultah,
+            $_SESSION['user_id']);
+    } else {
+        $_SESSION['error_message'] = "❌ Gagal menyimpan pengaturan kalender tim.";
     }
 
     header("Location: data_hari_libur.php");
