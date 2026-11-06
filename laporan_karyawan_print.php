@@ -1,5 +1,6 @@
 <?php
 require 'config.php';
+require_once __DIR__ . '/laporan_data.php';
 requireAdminOrOwner();
 
 $action = $_GET['action'] ?? 'preview';
@@ -20,34 +21,7 @@ if ($cabang_id !== 'all') {
 $status = $_GET['status'] ?? 'Aktif';
 
 // Fetch Karyawan
-$query = "SELECT k.id_karyawan as id, k.nama_karyawan as nama_lengkap, k.jenis_kelamin, IFNULL(GROUP_CONCAT(u.username SEPARATOR ', '), '-') as username, j.nama_jabatan, c.nama_cabang, k.tanggal_resign 
-          FROM karyawan k 
-          LEFT JOIN jabatan j ON k.id_jabatan = j.id 
-          LEFT JOIN cabang c ON k.id_cabang = c.id 
-          LEFT JOIN users u ON k.id_karyawan = u.id_karyawan
-          WHERE 1=1";
-$params = [];
-$types = "";
-
-if ($status !== 'all') {
-    $query .= " AND k.status = ?";
-    $params[] = $status;
-    $types .= "s";
-}
-
-if ($cabang_id !== 'all') {
-    $query .= " AND k.id_cabang = ?";
-    $params[] = $cabang_id;
-    $types .= "i";
-}
-$query .= " GROUP BY k.id ORDER BY c.nama_cabang ASC, k.nama_karyawan ASC";
-
-$stmt = $conn->prepare($query);
-if (!empty($params)) {
-    $stmt->bind_param($types, ...$params);
-}
-$stmt->execute();
-$result = $stmt->get_result();
+$result = laporanKaryawan($conn, $cabang_id, $status);
 
 $karyawan_data = [];
 $summary_cabang = [];
