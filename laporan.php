@@ -660,6 +660,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 
+<script src="assets/js/slip-preview-navigation.js"></script>
 <?php 
 if (isAdmin()) {
     require 'admin_footer.php'; 
