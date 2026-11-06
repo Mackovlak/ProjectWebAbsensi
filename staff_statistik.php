@@ -83,6 +83,9 @@ $sql_statistik = "SELECT
         WHEN a.jam_pulang IS NOT NULL 
         AND a.jam_pulang != '00:00:00'
         AND TIMESTAMPDIFF(MINUTE, a.jam_masuk, a.jam_pulang) >= 330
+        -- Lembur hanya dihitung bila tanggalnya tercakup izin lembur berstatus Disetujui
+        AND EXISTS (SELECT 1 FROM pengajuan_lembur pl WHERE pl.id_karyawan = a.id_karyawan
+            AND pl.status = 'Disetujui' AND a.tanggal BETWEEN pl.tanggal_mulai AND pl.tanggal_selesai)
         AND a.jam_pulang > (
             SELECT jk.jam_pulang
             FROM jam_kerja jk
