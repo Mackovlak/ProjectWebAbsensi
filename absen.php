@@ -1354,10 +1354,8 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                 await faceSystem.startCamera('face-video');
                 checkCancelled();
                 let challenge = await request('start');
-                const currentChallenge = 'blink';
-                instructionEl.textContent = 'TANTANGAN: Tolong Kedipkan Mata Anda';
-                instructionEl.style.color = '#e11d48';
-                let challengePassed = false;
+                instructionEl.textContent = 'Posisikan wajah Anda di dalam panduan';
+                instructionEl.style.color = '';
                 const deadline = Date.now() + 60000;
                 while (Date.now() < deadline) {
                     checkCancelled();
@@ -1373,15 +1371,6 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                         continue;
                     }
                     checkCancelled();
-                    if (!challengePassed) {
-                        challengePassed = faceSystem.checkLiveness(result.landmarks, currentChallenge);
-                        if (challengePassed) {
-                            instructionEl.textContent = 'Tantangan berhasil. Verifikasi server...';
-                            instructionEl.style.color = '#10b981';
-                        }
-                        await pause(challengePassed ? 500 : 100);
-                        continue;
-                    }
                     const photo = await captureAttendancePhoto(faceSystem.videoElement);
                     let matched;
                     try {
@@ -1393,9 +1382,9 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                     } catch (error) {
                         checkCancelled();
                         updateFaceStatus('error', error.message);
-                        // Nonce tantangan sudah terpakai begitu request('verify')
+                        // Nonce sudah terpakai begitu request('verify')
                         // dikirim, walau hasilnya gagal (mis. wajah tak cocok) -
-                        // minta tantangan baru dulu sebelum mencoba lagi, supaya
+                        // minta nonce baru dulu sebelum mencoba lagi, supaya
                         // satu momen kurang pas (pencahayaan/sudut) tidak
                         // menggagalkan seluruh proses verifikasi.
                         challenge = await request('start');
