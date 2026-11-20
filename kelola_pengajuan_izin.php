@@ -410,6 +410,11 @@ $stmt_dp_ht->close();
                                 <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold border uppercase tracking-wide <?php echo badgeStatusIzin($row['status']); ?>">
                                     <?php echo safe_output($row['status']); ?>
                                 </span>
+                                <?php if (!empty($row['setengah_hari'])): ?>
+                                    <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold border uppercase tracking-wide bg-teal-100 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:text-teal-400 dark:border-teal-800/50">
+                                        Setengah Hari &middot; <?php echo safe_output($row['sesi_setengah_hari']); ?>
+                                    </span>
+                                <?php endif; ?>
                             </div>
                             <h3 class="text-lg font-bold text-slate-800 dark:text-white"><?php echo safe_output($row['nama_karyawan']); ?></h3>
                             <p class="text-xs text-slate-400 mt-0.5">
@@ -421,8 +426,12 @@ $stmt_dp_ht->close();
                         <div class="text-right shrink-0">
                             <p class="text-sm font-bold text-slate-700 dark:text-slate-200"><?php echo formatRentangTanggal($row['tanggal_mulai'], $row['tanggal_selesai']); ?></p>
                             <p class="text-xs text-slate-400 mt-0.5">
-                                <?php echo (int)$row['jumlah_hari']; ?> hari kalender &middot;
-                                <b><?php echo $is_pending ? (int)$rincian['hari_efektif'] : (int)$row['jumlah_hari_kerja']; ?> hari kerja</b>
+                                <?php if (!empty($row['setengah_hari'])): ?>
+                                    <b>0,5 hari kerja (setengah hari)</b>
+                                <?php else: ?>
+                                    <?php echo (int)$row['jumlah_hari']; ?> hari kalender &middot;
+                                    <b><?php echo $is_pending ? (int)$rincian['hari_efektif'] : formatHariIzin($row['jumlah_hari_kerja']); ?> hari kerja</b>
+                                <?php endif; ?>
                             </p>
                             <p class="text-xs text-slate-400 mt-0.5">Diajukan <?php echo date('d/m/Y H:i', strtotime($row['created_at'])); ?></p>
                         </div>
@@ -443,10 +452,10 @@ $stmt_dp_ht->close();
                     <div class="flex flex-wrap gap-x-6 gap-y-2 text-xs mb-4">
                         <span class="text-slate-500 dark:text-slate-400">
                             Kuota <?php echo $kuota_kar['tahun']; ?>:
-                            <b class="text-slate-700 dark:text-slate-200"><?php echo $kuota_kar['terpakai']; ?>/<?php echo $kuota_kar['jatah']; ?></b> terpakai
+                            <b class="text-slate-700 dark:text-slate-200"><?php echo formatHariIzin($kuota_kar['terpakai']); ?>/<?php echo $kuota_kar['jatah']; ?></b> terpakai
                         </span>
                         <span class="text-slate-500 dark:text-slate-400">
-                            Sisa: <b class="text-emerald-600 dark:text-emerald-400"><?php echo $kuota_kar['sisa']; ?> hari</b>
+                            Sisa: <b class="text-emerald-600 dark:text-emerald-400"><?php echo formatHariIzin($kuota_kar['sisa']); ?> hari</b>
                         </span>
                         <?php if (!$row['potong_kuota']): ?>
                             <span class="text-emerald-600 dark:text-emerald-400 font-semibold">
@@ -454,7 +463,7 @@ $stmt_dp_ht->close();
                                 <?php echo ($row['jenis'] === 'Sakit') ? 'Sakit + bukti - tidak memotong kuota' : 'Tidak memotong kuota'; ?>
                             </span>
                         <?php endif; ?>
-                        <?php if ($is_pending && $rincian['hari_efektif'] !== (int)$row['jumlah_hari_kerja']): ?>
+                        <?php if ($is_pending && empty($row['setengah_hari']) && $rincian['hari_efektif'] !== (int)$row['jumlah_hari_kerja']): ?>
                             <span class="text-amber-600 dark:text-amber-400 font-semibold">
                                 <i class="ph-bold ph-warning"></i>
                                 Hari kerja berubah sejak diajukan (<?php echo (int)$row['jumlah_hari_kerja']; ?> &rarr; <?php echo (int)$rincian['hari_efektif']; ?>)

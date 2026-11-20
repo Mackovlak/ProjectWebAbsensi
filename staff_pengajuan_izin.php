@@ -58,6 +58,8 @@ $libur_js = array_keys(getHariLibur(
     date('Y-m-d', strtotime('+13 months')),
     $id_cabang_staff
 ));
+// Pemakaian setengah hari bulan ini, untuk info batas 3x/bulan di form.
+$setengah_bulan_ini = hitungSetengahHariBulanIni($conn, $id_karyawan_staff, (int)date('n'), (int)date('Y'));
 $persen_terpakai = $kuota['jatah'] > 0 ? min(100, round(($kuota['terpakai'] / $kuota['jatah']) * 100)) : 0;
 
 // Riwayat pengajuan pada tahun terpilih
@@ -101,7 +103,7 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
             <div>
                 <p class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Kuota Izin Tahun <?php echo $tahun_aktif; ?></p>
                 <p class="text-3xl font-bold text-slate-800 dark:text-white mt-1">
-                    <?php echo $kuota['sisa']; ?><span class="text-lg text-slate-400 font-semibold"> / <?php echo $kuota['jatah']; ?> hari</span>
+                    <?php echo formatHariIzin($kuota['sisa']); ?><span class="text-lg text-slate-400 font-semibold"> / <?php echo $kuota['jatah']; ?> hari</span>
                 </p>
             </div>
             <div class="w-12 h-12 rounded-xl bg-fuchsia-100 dark:bg-fuchsia-900/30 flex items-center justify-center">
@@ -116,15 +118,15 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
 
         <div class="grid grid-cols-3 gap-4 text-center">
             <div>
-                <p class="text-xl font-bold text-slate-700 dark:text-slate-200"><?php echo $kuota['terpakai']; ?></p>
+                <p class="text-xl font-bold text-slate-700 dark:text-slate-200"><?php echo formatHariIzin($kuota['terpakai']); ?></p>
                 <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mt-0.5">Terpakai</p>
             </div>
             <div>
-                <p class="text-xl font-bold text-amber-600 dark:text-amber-400"><?php echo $kuota['tertahan']; ?></p>
+                <p class="text-xl font-bold text-amber-600 dark:text-amber-400"><?php echo formatHariIzin($kuota['tertahan']); ?></p>
                 <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mt-0.5">Menunggu</p>
             </div>
             <div>
-                <p class="text-xl font-bold text-emerald-600 dark:text-emerald-400"><?php echo $kuota['tersedia']; ?></p>
+                <p class="text-xl font-bold text-emerald-600 dark:text-emerald-400"><?php echo formatHariIzin($kuota['tersedia']); ?></p>
                 <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mt-0.5">Bisa Diajukan</p>
             </div>
         </div>
@@ -136,6 +138,10 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
             <li class="flex gap-2.5">
                 <i class="ph-duotone ph-check-circle text-emerald-500 text-lg shrink-0"></i>
                 <span><b>Cuti, Sakit,</b> dan <b>Izin</b> memotong jatah <?php echo $kuota['jatah']; ?> hari per tahun.</span>
+            </li>
+            <li class="flex gap-2.5">
+                <i class="ph-duotone ph-clock-half text-fuchsia-500 text-lg shrink-0"></i>
+                <span><b>Cuti</b> dan <b>Izin</b> bisa diajukan <b>setengah hari</b> (memotong 0,5 hari kuota), maksimal <b><?php echo IZIN_SETENGAH_HARI_MAKS_PER_BULAN; ?>x per bulan</b>. Tetap diajukan sebelum hari-H.</span>
             </li>
             <li class="flex gap-2.5">
                 <i class="ph-duotone ph-briefcase text-sky-500 text-lg shrink-0"></i>
@@ -201,6 +207,36 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
             </div>
         </div>
 
+        <!-- Durasi: sehari penuh / setengah hari (hanya Cuti & Izin) -->
+        <div id="blok-durasi" class="mb-5">
+            <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Durasi</label>
+            <div class="flex flex-wrap gap-3">
+                <label class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 text-sm text-slate-700 dark:text-slate-200 cursor-pointer has-[:checked]:border-fuchsia-500 has-[:checked]:bg-fuchsia-50 dark:has-[:checked]:bg-fuchsia-900/20">
+                    <input type="radio" name="durasi" value="penuh" id="durasi-penuh" checked class="accent-fuchsia-600">
+                    Satu hari penuh / lebih
+                </label>
+                <label class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 text-sm text-slate-700 dark:text-slate-200 cursor-pointer has-[:checked]:border-fuchsia-500 has-[:checked]:bg-fuchsia-50 dark:has-[:checked]:bg-fuchsia-900/20">
+                    <input type="radio" name="durasi" value="setengah" id="durasi-setengah" class="accent-fuchsia-600">
+                    Setengah hari
+                </label>
+            </div>
+            <input type="hidden" name="setengah_hari" id="input-setengah-hari" value="">
+
+            <div id="blok-sesi" class="hidden mt-4">
+                <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Bagian hari yang diizinkan</label>
+                <select name="sesi_setengah_hari" id="sesi-setengah-hari"
+                        class="w-full md:w-1/2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:ring-2 focus:ring-fuchsia-500 focus:border-transparent outline-none transition">
+                    <option value="Masuk Siang">Masuk Siang (pagi libur, masuk setelah istirahat)</option>
+                    <option value="Pulang Awal">Pulang Awal (masuk pagi, pulang sebelum jam pulang)</option>
+                </select>
+                <p class="text-xs text-slate-400 mt-1.5">
+                    Memotong 0,5 hari kuota. Satu tanggal saja. Anda tetap absen (wajah &amp; lokasi).
+                    <b>Masuk Siang</b>: tidak dihitung terlambat. <b>Pulang Awal</b>: tidak perlu izin pulang cepat.
+                    Bulan ini sudah dipakai <b><?php echo $setengah_bulan_ini; ?>/<?php echo IZIN_SETENGAH_HARI_MAKS_PER_BULAN; ?></b>.
+                </p>
+            </div>
+        </div>
+
         <div class="mb-5">
             <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Keperluan</label>
             <textarea name="keperluan" rows="3" required minlength="5"
@@ -260,8 +296,13 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
                                 <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold border uppercase tracking-wide <?php echo badgeStatusIzin($row['status']); ?>">
                                     <?php echo safe_output($row['status']); ?>
                                 </span>
+                                <?php if (!empty($row['setengah_hari'])): ?>
+                                    <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold border uppercase tracking-wide bg-teal-100 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:text-teal-400 dark:border-teal-800/50">
+                                        Setengah Hari &middot; <?php echo safe_output($row['sesi_setengah_hari']); ?>
+                                    </span>
+                                <?php endif; ?>
                                 <?php if ($row['potong_kuota']): ?>
-                                    <span class="text-xs text-slate-400 font-medium"><?php echo (int)$row['jumlah_hari_kerja']; ?> hari kuota</span>
+                                    <span class="text-xs text-slate-400 font-medium"><?php echo formatHariIzin($row['jumlah_hari_kerja']); ?> hari kuota</span>
                                 <?php else: ?>
                                     <span class="text-xs text-slate-400 font-medium">tidak memotong kuota</span>
                                 <?php endif; ?>
@@ -322,7 +363,32 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
     const lampiranEl  = document.getElementById('lampiran-izin');
     const infoLampiranEl = document.getElementById('info-lampiran');
 
-    const kuotaTersedia = <?php echo (int)$kuota['tersedia']; ?>;
+    const kuotaTersedia = <?php echo (float)$kuota['tersedia']; ?>;
+    const jenisSetengahHari = <?php echo json_encode(IZIN_JENIS_SETENGAH_HARI); ?>;
+    const blokDurasi   = document.getElementById('blok-durasi');
+    const blokSesi     = document.getElementById('blok-sesi');
+    const radioSetengah = document.getElementById('durasi-setengah');
+    const radioPenuh   = document.getElementById('durasi-penuh');
+    const inputSetengah = document.getElementById('input-setengah-hari');
+    const sesiEl       = document.getElementById('sesi-setengah-hari');
+
+    function fmtHari(n) { return String(n).replace('.', ','); }
+    function isSetengahHari() { return radioSetengah.checked && jenisSetengahHari.includes(jenisEl.value); }
+
+    // Setengah hari hanya untuk Cuti/Izin, dan selalu satu tanggal:
+    // tanggal selesai dikunci mengikuti tanggal mulai.
+    function perbaruiDurasi() {
+        const boleh = jenisSetengahHari.includes(jenisEl.value);
+        blokDurasi.classList.toggle('hidden', !boleh);
+        if (!boleh) radioPenuh.checked = true;
+
+        const setengah = isSetengahHari();
+        blokSesi.classList.toggle('hidden', !setengah);
+        inputSetengah.value = setengah ? '1' : '';
+        sesiEl.disabled = !setengah;
+        selesaiEl.readOnly = setengah;
+        if (setengah && mulaiEl.value) selesaiEl.value = mulaiEl.value;
+    }
     const hariIni = '<?php echo date('Y-m-d'); ?>';
     // 1 = Senin ... 7 = Minggu, mengikuti pengaturan hari kerja perusahaan
     const hariKerja = <?php echo json_encode($hari_kerja_js); ?>;
@@ -384,6 +450,7 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
             return;
         }
 
+        const setengah = isSetengahHari();
         let total = 0, efektif = 0, dilewati = 0;
         for (let d = new Date(mulai); d <= selesai; d.setDate(d.getDate() + 1)) {
             total++;
@@ -408,9 +475,16 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
             ? ` (${dilewati} hari dilewati: akhir pekan/hari lembur/libur nasional).`
             : '.';
 
+        if (setengah) {
+            teks = efektif > 0
+                ? `<b>Setengah hari</b> (${sesiEl.value}) &mdash; memotong <b>0,5 hari</b> kuota.`
+                : '';
+        }
+
+        const butuh = setengah ? 0.5 : efektif;
         if (potong) {
-            teks += ` Sisa kuota yang bisa dipakai: <b>${kuotaTersedia} hari</b>.`;
-            if (efektif > kuotaTersedia) {
+            teks += ` Sisa kuota yang bisa dipakai: <b>${fmtHari(kuotaTersedia)} hari</b>.`;
+            if (butuh > kuotaTersedia) {
                 teks += ` <span class="font-bold text-rose-600 dark:text-rose-400">Melebihi kuota Anda.</span>`;
             }
         } else if (sakitDenganBukti) {
@@ -427,15 +501,20 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
         ringkasan.classList.remove('hidden');
     }
 
-    jenisEl.addEventListener('change', function () { perbaruiBatas(); perbaruiInfoLampiran(); hitungRingkasan(); });
+    jenisEl.addEventListener('change', function () { perbaruiBatas(); perbaruiDurasi(); perbaruiInfoLampiran(); hitungRingkasan(); });
+    radioPenuh.addEventListener('change', function () { perbaruiDurasi(); hitungRingkasan(); });
+    radioSetengah.addEventListener('change', function () { perbaruiDurasi(); hitungRingkasan(); });
+    sesiEl.addEventListener('change', hitungRingkasan);
     mulaiEl.addEventListener('change', function () {
         selesaiEl.min = mulaiEl.value;
         if (selesaiEl.value && selesaiEl.value < mulaiEl.value) selesaiEl.value = mulaiEl.value;
+        if (isSetengahHari()) selesaiEl.value = mulaiEl.value;
         hitungRingkasan();
     });
     selesaiEl.addEventListener('change', hitungRingkasan);
     lampiranEl.addEventListener('change', function () { perbaruiInfoLampiran(); hitungRingkasan(); });
     perbaruiBatas();
+    perbaruiDurasi();
     perbaruiInfoLampiran();
 
     // Konfirmasi pembatalan

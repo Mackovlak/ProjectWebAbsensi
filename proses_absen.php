@@ -109,6 +109,14 @@ try {
         $is_dinas_luar = true;
     }
 
+    // Pengajuan Cuti/Izin setengah hari yang sudah disetujui untuk hari ini.
+    // Karyawan tetap absen (wajah + GPS seperti biasa); yang berubah:
+    //  - 'Masuk Siang' : tidak dihitung Terlambat
+    //  - 'Pulang Awal' : tidak butuh izin pulang cepat
+    // dan baris absensinya ditandai setengah hari supaya slip gaji
+    // menghitungnya 0,5 hadir (lihat slip_gaji_process.php).
+    $izin_setengah_hari_ini = getIzinSetengahHariDisetujui($conn, $id_karyawan, $tanggal);
+
     // ========== PERBAIKAN: VALIDASI HANYA UNTUK "HADIR" ==========
     // Validasi GPS dan Face HANYA untuk keterangan "Hadir"
     if ($keterangan_param === 'Hadir') {
@@ -481,7 +489,9 @@ try {
             $result_jam_pulang = $stmt_jam_pulang->get_result();
             if ($result_jam_pulang->num_rows > 0) {
                 $target_jam_pulang = $result_jam_pulang->fetch_assoc()['jam_pulang'];
-                if ($waktu < $target_jam_pulang && $ket_data['izin_pulang_cepat'] !== 'Disetujui') {
+                $bebas_pulang_cepat = $izin_setengah_hari_ini
+                    && $izin_setengah_hari_ini['sesi_setengah_hari'] === 'Pulang Awal';
+                if ($waktu < $target_jam_pulang && $ket_data['izin_pulang_cepat'] !== 'Disetujui' && !$bebas_pulang_cepat) {
                     // Pulang lebih awal dari jam pulang shift wajib punya izin
                     // pulang cepat yang sudah Disetujui Admin/Supervisor.
                     $stmt_jam_pulang->close();
@@ -587,7 +597,10 @@ try {
             && empty(getHariLibur($conn, $tanggal, $tanggal, $id_cabang));
 
         // Cek status keterlambatan HANYA untuk 'Hadir' (Pending Dinas kita anggap Tepat Waktu sementara, atau bisa juga terlambat jika mau)
-        if ($keterangan == 'Hadir' && $hari_kerja_normal) {
+        // Masuk Siang (setengah hari yang sudah disetujui) bebas dari Terlambat.
+        $bebas_terlambat = $izin_setengah_hari_ini
+            && $izin_setengah_hari_ini['sesi_setengah_hari'] === 'Masuk Siang';
+        if ($keterangan == 'Hadir' && $hari_kerja_normal && !$bebas_terlambat) {
             $stmt_jam = $conn->prepare("SELECT jam_masuk_akhir FROM jam_kerja WHERE id_cabang = ?");
             $stmt_jam->bind_param("i", $id_cabang);
             $stmt_jam->execute();
@@ -685,6 +698,23 @@ try {
             
             if ($stmt_insert->execute()) {
                 if ($capture_ready) saveAttendanceCapture($conn, $conn->insert_id, 'masuk', $capture_bytes);
+
+                // Tandai baris absensi hari ini sebagai setengah hari (id absensi
+                // diambil dari $stmt_insert, bukan $conn->insert_id yang bisa
+                // tergeser oleh saveAttendanceCapture di atas).
+                if ($izin_setengah_hari_ini && $keterangan === 'Hadir') {
+                    $id_absen_baru = (int)$stmt_insert->insert_id;
+                    $id_pengajuan_sh = (int)$izin_setengah_hari_ini['id'];
+                    $stmt_sh = $conn->prepare("UPDATE absensi
+                        SET dikonversi_izin_setengah_hari = 1, dikonversi_at = NOW(), id_pengajuan = ?
+                        WHERE id = ?");
+                    $stmt_sh->bind_param("ii", $id_pengajuan_sh, $id_absen_baru);
+                    if (!$stmt_sh->execute()) {
+                        throw new RuntimeException('Gagal menandai izin setengah hari.');
+                    }
+                    $stmt_sh->close();
+                }
+
                 $log_message = "Absen $keterangan ($status_masuk)" . ($face_verified ? " - Face Verified: {$face_confidence}%" : "");
                 logActivity($conn, 'absen_masuk', $log_message, $id_karyawan);
 

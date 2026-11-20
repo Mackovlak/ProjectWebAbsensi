@@ -466,7 +466,7 @@ $total_notif = $actionable_notif_count + count($notif_izin_info);
                                     <p class="text-[10px] font-medium text-slate-400 mt-2">
                                         <i class="fa-regular fa-calendar mr-1"></i>
                                         <?php echo formatRentangTanggal($np['tanggal_mulai'], $np['tanggal_selesai']); ?>
-                                        &middot; <?php echo (int)$np['jumlah_hari_kerja']; ?> hari kerja
+                                        &middot; <?php echo formatHariIzin($np['jumlah_hari_kerja']); ?> hari kerja
                                     </p>
                                 </a>
                                 <?php endforeach; endif; ?>

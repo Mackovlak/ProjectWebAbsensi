@@ -24,6 +24,12 @@ define('IZIN_JENIS_KHUSUS', ['Menikah', 'Menikahkan Anak', 'Melahirkan', 'Duka C
 define('IZIN_JENIS_VALID', ['Cuti', 'Sakit', 'Izin', 'Dinas Luar', 'Menikah', 'Menikahkan Anak', 'Melahirkan', 'Duka Cita']);
 define('IZIN_JATAH_DEFAULT', 12);
 
+// Jenis yang boleh diajukan setengah hari. Hanya Cuti & Izin: keduanya wajib
+// diajukan SEBELUM hari-H, jadi setengah hari selalu terencana (tidak ada
+// kasus mundur). Sakit/Dinas/cuti khusus sengaja tidak termasuk.
+define('IZIN_JENIS_SETENGAH_HARI', ['Cuti', 'Izin']);
+define('IZIN_SESI_SETENGAH_HARI', ['Masuk Siang', 'Pulang Awal']);
+
 /**
  * Apakah jenis pengajuan ini memotong kuota tahunan?
  *
@@ -185,8 +191,9 @@ function getRingkasanKuotaIzin($conn, $id_karyawan, $tahun = null) {
     $row = $stmt->get_result()->fetch_assoc();
     $stmt->close();
 
-    $terpakai = (int)($row['terpakai'] ?? 0);
-    $tertahan = (int)($row['tertahan'] ?? 0);
+    // float, bukan int: pengajuan setengah hari memotong 0,5.
+    $terpakai = (float)($row['terpakai'] ?? 0);
+    $tertahan = (float)($row['tertahan'] ?? 0);
 
     return [
         'tahun'     => $tahun,
@@ -231,6 +238,13 @@ function materialisasiIzin($conn, $pengajuan) {
     $keterangan = izinKeteranganAbsensi($pengajuan['jenis']);
     if ($keterangan === null) {
         return 0; // Dinas Luar: absensi tetap dibuat oleh karyawan di hari-H
+    }
+    if (!empty($pengajuan['setengah_hari'])) {
+        // Setengah hari: karyawan tetap masuk separuh hari, jadi baris absensi
+        // dibuat oleh absen biasa di hari-H (proses_absen.php lalu menandainya
+        // setengah hari). Membuat baris 'Cuti' di sini akan menghitung hari
+        // itu libur penuh dan memblokir absen.
+        return 0;
     }
 
     $rincian = hitungHariIzin(
@@ -304,27 +318,68 @@ function getIzinDinasDisetujui($conn, $id_karyawan, $tanggal) {
 }
 
 /**
- * Batas konversi "Tidak Absen Masuk" jadi izin setengah hari, per karyawan
- * per bulan kalender. Angka ini kebijakan perusahaan (mengikuti Talenta),
- * bukan terkait jatah_cuti tahunan - konversi ini murni reklasifikasi
- * status satu hari yang sudah tercatat, bukan pengajuan cuti baru, jadi
- * sengaja tidak memotong jatah_cuti.
+ * Batas izin setengah hari per karyawan per bulan kalender, berlaku untuk
+ * pengajuan setengah hari DAN konversi "Tidak Absen Masuk" (dihitung
+ * bersama, lihat hitungSetengahHariBulanIni). Angka ini kebijakan perusahaan
+ * (mengikuti Talenta). Konversi murni reklasifikasi hari yang sudah tercatat
+ * sehingga tidak memotong jatah_cuti; pengajuan setengah hari memotong 0,5.
  */
 define('IZIN_SETENGAH_HARI_MAKS_PER_BULAN', 3);
 
 /**
- * Berapa kali karyawan ini sudah mengonversi Tidak Absen Masuk jadi izin
- * setengah hari pada bulan/tahun tertentu.
+ * Berapa kali karyawan ini memakai jatah setengah hari pada bulan/tahun
+ * tertentu. Batas IZIN_SETENGAH_HARI_MAKS_PER_BULAN berlaku untuk dua jalur
+ * sekaligus, supaya karyawan tidak bisa menghindarinya dengan berganti jalur:
+ *  1. pengajuan setengah hari (Pending/Disetujui) di pengajuan_izin, dihitung
+ *     per bulan tanggal pelaksanaan;
+ *  2. konversi "Tidak Absen Masuk" oleh admin/SPV. Baris absensi hasil
+ *     pengajuan (id_pengajuan terisi) tidak dihitung lagi di sini - sudah
+ *     terwakili jalur 1.
+ * $exclude_id = pengajuan yang sedang direview, agar tidak menghitung dirinya
+ * sendiri saat persetujuan.
  */
-function hitungKonversiSetengahHariBulanIni($conn, $id_karyawan, $bulan, $tahun) {
+function hitungSetengahHariBulanIni($conn, $id_karyawan, $bulan, $tahun, $exclude_id = 0) {
+    $stmt = $conn->prepare("SELECT COUNT(*) AS jumlah FROM pengajuan_izin
+        WHERE id_karyawan = ? AND setengah_hari = 1 AND status IN ('Pending','Disetujui')
+          AND id <> ? AND MONTH(tanggal_mulai) = ? AND YEAR(tanggal_mulai) = ?");
+    $stmt->bind_param("siii", $id_karyawan, $exclude_id, $bulan, $tahun);
+    $stmt->execute();
+    $dari_pengajuan = (int)($stmt->get_result()->fetch_assoc()['jumlah'] ?? 0);
+    $stmt->close();
+
     $stmt = $conn->prepare("SELECT COUNT(*) AS jumlah FROM absensi
-        WHERE id_karyawan = ? AND dikonversi_izin_setengah_hari = 1
+        WHERE id_karyawan = ? AND dikonversi_izin_setengah_hari = 1 AND id_pengajuan IS NULL
           AND MONTH(tanggal) = ? AND YEAR(tanggal) = ?");
     $stmt->bind_param("sii", $id_karyawan, $bulan, $tahun);
     $stmt->execute();
+    $dari_konversi = (int)($stmt->get_result()->fetch_assoc()['jumlah'] ?? 0);
+    $stmt->close();
+
+    return $dari_pengajuan + $dari_konversi;
+}
+
+/**
+ * Pengajuan setengah hari yang sudah disetujui dan jatuh pada tanggal ini.
+ * Dipakai proses_absen.php di hari-H: bebas Terlambat (Masuk Siang) atau bebas
+ * syarat izin pulang cepat (Pulang Awal).
+ */
+function getIzinSetengahHariDisetujui($conn, $id_karyawan, $tanggal) {
+    $stmt = $conn->prepare("SELECT id, jenis, sesi_setengah_hari FROM pengajuan_izin
+                            WHERE id_karyawan = ? AND setengah_hari = 1 AND status = 'Disetujui'
+                              AND tanggal_mulai = ? LIMIT 1");
+    $stmt->bind_param("ss", $id_karyawan, $tanggal);
+    $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
     $stmt->close();
-    return (int)($row['jumlah'] ?? 0);
+    return $row ?: null;
+}
+
+/**
+ * Format jumlah hari kuota: 3 -> "3", 0.5 -> "0,5", 2.5 -> "2,5".
+ */
+function formatHariIzin($angka) {
+    $angka = (float)$angka;
+    return rtrim(rtrim(number_format($angka, 1, ',', ''), '0'), ',');
 }
 
 /**
@@ -356,7 +411,7 @@ function konversiTidakAbsenMasukKeSetengahHari($conn, $id_absensi, $id_reviewer)
 
     $bulan = (int)date('n', strtotime($absen['tanggal']));
     $tahun = (int)date('Y', strtotime($absen['tanggal']));
-    $jumlah_bulan_ini = hitungKonversiSetengahHariBulanIni($conn, $absen['id_karyawan'], $bulan, $tahun);
+    $jumlah_bulan_ini = hitungSetengahHariBulanIni($conn, $absen['id_karyawan'], $bulan, $tahun);
     if ($jumlah_bulan_ini >= IZIN_SETENGAH_HARI_MAKS_PER_BULAN) {
         return [
             'sukses' => false,
