@@ -386,6 +386,7 @@ function convertDateRiwayat(form) {
 }
 </script>
 
+<script src="assets/js/slip-preview-navigation.js"></script>
 <?php 
 require 'staff_footer.php'; // Atau footer yang sesuai dengan dashboard staff
 ?>

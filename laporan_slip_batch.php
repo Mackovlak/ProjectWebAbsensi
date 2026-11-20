@@ -6,6 +6,7 @@
 
 require 'config.php';
 requireLogin(); // Ganti dari requireAdminOrOwner agar staff bisa masuk dan diverifikasi
+$report_return_url = $_SESSION['role'] === 'staff' ? 'staff_laporan_gaji.php' : 'laporan.php';
 
 // Get parameters
 $tipe = $_GET['tipe'] ?? 'cetak_slip_batch';
@@ -37,7 +38,7 @@ function showErrorAndGoBack($title, $message) {
             if (window.history.length > 1) {
                 window.history.back();
             } else {
-                window.close();
+                window.location.href = ' . json_encode($_SESSION['role'] === 'staff' ? 'staff_laporan_gaji.php' : 'laporan.php') . ';
             }
         });
     </script>
@@ -203,6 +204,7 @@ function ribuan($angka) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cetak Slip Gaji Batch - <?php echo htmlspecialchars($slips[0]['nama_karyawan']); ?></title>
+    <?php require __DIR__ . '/pwa_head.php'; ?>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Arial:wght@400;700&display=swap" rel="stylesheet">
@@ -248,10 +250,16 @@ function ribuan($angka) {
 
         /* Alignment Utilities */
         .flex-rp { display: flex; justify-content: space-between; width: 100%; }
+        .preview-toolbar { position: sticky; top: 0; z-index: 50; padding: 12px; background: #fff; border-bottom: 1px solid #cbd5e1; }
+        .preview-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+        .preview-actions a, .preview-actions button { padding: 10px 14px; border-radius: 8px; color: white; font-size: 14px; }
+        .preview-scroll { overflow-x: auto; }
+        @media (display-mode: standalone) { #printSlipButton { display: none; } }
 
         /* Mode Cetak */
         @media print {
             body { background-color: white; margin: 0; padding: 0; }
+            .preview-scroll { overflow: visible; }
             .a4-paper { margin: 0; box-shadow: none; width: 100%; min-height: auto; padding: 5mm 10mm; }
             .print-hidden { display: none !important; }
             /* Memaksa browser mencetak warna background */
@@ -282,6 +290,10 @@ function ribuan($angka) {
         <?php $action = $_GET['action'] ?? 'preview'; ?>
         
         window.onload = function() { 
+            if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) {
+                document.getElementById('printSlipButton').hidden = true;
+                return; // Downloads in the installed app always require an explicit tap.
+            }
             <?php if ($action === 'print'): ?>
                 window.print();
             <?php elseif ($action === 'image'): ?>
@@ -295,21 +307,25 @@ function ribuan($angka) {
 <body>
 
     <!-- Tombol Mengambang (Sembunyi saat print) -->
-    <div class="fixed bottom-8 right-8 flex flex-col gap-3 print-hidden z-50">
-        <a href="#" onclick="window.history.back()" class="bg-slate-800 hover:bg-slate-700 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-110" title="Kembali">
-            <i class="fa-solid fa-arrow-left text-xl"></i>
+    <div class="preview-toolbar print-hidden">
+      <div class="preview-actions">
+        <a href="<?php echo $report_return_url; ?>" onclick="if (document.referrer && new URL(document.referrer).origin === location.origin && history.length > 1) { event.preventDefault(); history.back(); }" class="bg-slate-800" >
+            <i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Kembali
         </a>
-        <button onclick="window.print()" class="bg-fuchsia-600 hover:bg-fuchsia-700 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-110" title="Cetak / Print">
-            <i class="fa-solid fa-print text-xl"></i>
+        <button id="printSlipButton" onclick="window.print()" class="bg-fuchsia-600">
+            <i class="fa-solid fa-print" aria-hidden="true"></i> Cetak
         </button>
-        <button onclick="downloadPdfZip()" class="bg-red-600 hover:bg-red-700 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-110" title="Unduh PDF / ZIP">
-            <i class="fa-solid fa-file-pdf text-xl"></i>
+        <button onclick="downloadPdfZip()" class="bg-red-600">
+            <i class="fa-solid fa-file-pdf" aria-hidden="true"></i> <?php echo count($slips) === 1 ? 'Unduh PDF' : 'Unduh ZIP (PDF per slip)'; ?>
         </button>
-        <button onclick="downloadZip()" class="bg-emerald-600 hover:bg-emerald-700 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-110" title="Unduh Image / ZIP">
-            <i class="fa-solid fa-image text-xl"></i>
+        <button onclick="downloadZip()" class="bg-emerald-600">
+            <i class="fa-solid fa-image" aria-hidden="true"></i> Unduh Gambar / ZIP
         </button>
+      </div>
+      <p class="text-xs text-slate-600 mt-2">Untuk mencetak dari ponsel, unduh PDF lalu buka di aplikasi PDF. Geser pratinjau ke samping untuk melihat seluruh slip.</p>
     </div>
 
+    <div class="preview-scroll">
     <?php foreach ($slips as $slip): 
         // Get penghasilan extra
         $stmt = $conn->prepare("SELECT * FROM slip_gaji_penghasilan WHERE id_slip_gaji = ? ORDER BY urutan");
@@ -723,6 +739,7 @@ function ribuan($angka) {
 
     </div>
     <?php endforeach; ?>
+    </div>
 
     <!-- Loader Zip -->
     <div id="zipLoader">

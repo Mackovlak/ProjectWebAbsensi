@@ -1,5 +1,6 @@
 <?php
 require 'config.php';
+require_once __DIR__ . '/laporan_data.php';
 requireLogin();
 
 $action = $_GET['action'] ?? 'preview';
@@ -137,51 +138,8 @@ if (in_array($tipe, ['lap_gaji_divisi', 'rekap_gaji_divisi']) && !empty($cabang_
                 // dengan user untuk dapat nama dan cabang.
                 // Jika ingin mencari total, kita perlu menjumlahkan komponen dari slip_gaji
                 
-                if ($tipe === 'rekap_gaji_divisi') {
-                    $query = "SELECT sg.bulan, sg.tahun, c.nama_cabang, 
-                              SUM(sg.total_penghasilan) as total_penghasilan, 
-                              SUM(sg.total_potongan) as total_potongan, 
-                              SUM(sg.gaji_bersih) as gaji_bersih 
-                              FROM slip_gaji sg 
-                              LEFT JOIN karyawan k ON sg.id_karyawan = k.id_karyawan 
-                              LEFT JOIN cabang c ON k.id_cabang = c.id 
-                              WHERE STR_TO_DATE(CONCAT(sg.tahun, '-', LPAD(sg.bulan, 2, '0'), '-01'), '%Y-%m-%d') >= DATE_FORMAT(?, '%Y-%m-01') 
-                              AND STR_TO_DATE(CONCAT(sg.tahun, '-', LPAD(sg.bulan, 2, '0'), '-01'), '%Y-%m-%d') <= DATE_FORMAT(?, '%Y-%m-01')";
-                } else {
-                    $query = "SELECT sg.*, COALESCE(k.nama_karyawan, CONCAT('Karyawan Dihapus (', sg.id_karyawan, ')')) as nama_lengkap, c.nama_cabang 
-                              FROM slip_gaji sg 
-                              LEFT JOIN karyawan k ON sg.id_karyawan = k.id_karyawan 
-                              LEFT JOIN cabang c ON k.id_cabang = c.id 
-                              WHERE STR_TO_DATE(CONCAT(sg.tahun, '-', LPAD(sg.bulan, 2, '0'), '-01'), '%Y-%m-%d') >= DATE_FORMAT(?, '%Y-%m-01') 
-                              AND STR_TO_DATE(CONCAT(sg.tahun, '-', LPAD(sg.bulan, 2, '0'), '-01'), '%Y-%m-%d') <= DATE_FORMAT(?, '%Y-%m-01')";
-                }
-                
-                $params = [$start_date, $end_date];
-                $types = "ss";
+                $res = laporanGaji($conn, $tipe, $cabang_id, $user_id, $start_date, $end_date);
 
-                if (in_array($tipe, ['lap_gaji_divisi', 'rekap_gaji_divisi']) && !empty($cabang_id) && $cabang_id !== 'all') {
-                    $query .= " AND k.id_cabang = ?";
-                    $params[] = $cabang_id;
-                    $types .= "i";
-                } elseif ($tipe === 'per_karyawan' && !empty($user_id)) {
-                    $query .= " AND sg.id_karyawan = ?";
-                    $params[] = $user_id;
-                    $types .= "s";
-                }
-                
-                if ($tipe === 'per_karyawan') {
-                    $query .= " ORDER BY sg.tahun ASC, sg.bulan ASC";
-                } elseif ($tipe === 'rekap_gaji_divisi') {
-                    $query .= " GROUP BY sg.tahun, sg.bulan, c.id, c.nama_cabang ORDER BY c.nama_cabang ASC, sg.tahun ASC, sg.bulan ASC";
-                } else {
-                    $query .= " ORDER BY c.nama_cabang ASC, k.nama_karyawan ASC, sg.tahun ASC, sg.bulan ASC";
-                }
-                
-                $stmt = $conn->prepare($query);
-                $stmt->bind_param($types, ...$params);
-                $stmt->execute();
-                $res = $stmt->get_result();
-                
                 $months = ['','Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
                 $no = 1;
                 $grand_penghasilan = 0;

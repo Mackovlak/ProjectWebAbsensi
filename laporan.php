@@ -68,7 +68,7 @@ if (isAdmin()) {
                 <h3 class="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
                     <i class="fa-solid fa-users text-brand-500"></i> Data Karyawan
                 </h3>
-                <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Export data master karyawan berdasarkan divisi.</p>
+                <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Export data master karyawan berdasarkan cabang dan status. Excel tersedia untuk Rekap Data (Tabel).</p>
             </div>
             
             <form action="laporan_karyawan_print.php" method="GET" target="_blank" class="space-y-5" id="formLapKaryawan" onsubmit="return validateLaporanKaryawan()">
@@ -135,6 +135,9 @@ if (isAdmin()) {
                     <button type="submit" name="action" value="image" class="flex-1 flex items-center justify-center gap-2 px-6 py-2.5 bg-slate-800 hover:bg-slate-900 text-white dark:bg-slate-700 dark:hover:bg-slate-600 border border-transparent rounded-xl font-medium transition-colors shadow-sm">
                         <i class="fa-solid fa-download"></i> <span>Unduh Jpeg/PNG</span>
                     </button>
+                    <button type="submit" name="report" value="karyawan" formaction="export_laporan.php" id="excel-karyawan" class="flex-1 flex items-center justify-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-medium transition-colors shadow-sm">
+                        <i class="fa-solid fa-file-excel"></i> <span>Export Excel</span>
+                    </button>
                 </div>
             </form>
         </div>
@@ -145,7 +148,7 @@ if (isAdmin()) {
                 <h3 class="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
                     <i class="fa-solid fa-calendar-check text-brand-500"></i> Data Absensi
                 </h3>
-                <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Export log kehadiran atau statistik absensi.</p>
+                <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Export log kehadiran atau statistik absensi. Excel tersedia untuk Log Harian dan Statistik Cabang.</p>
             </div>
             
             <form action="laporan_absensi_print.php" method="GET" target="_blank" class="space-y-5" id="formLapAbsensi" onsubmit="return validateLaporanAbsensi()">
@@ -233,6 +236,9 @@ if (isAdmin()) {
                     <button type="submit" name="action" value="image" class="flex-1 flex items-center justify-center gap-2 px-6 py-2.5 bg-slate-800 hover:bg-slate-900 text-white dark:bg-slate-700 dark:hover:bg-slate-600 border border-transparent rounded-xl font-medium transition-colors shadow-sm">
                         <i class="fa-solid fa-download"></i> <span>Unduh Jpeg/PNG</span>
                     </button>
+                    <button type="submit" name="report" value="absensi" formaction="export_laporan.php" id="excel-absensi" class="flex-1 flex items-center justify-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-medium transition-colors shadow-sm">
+                        <i class="fa-solid fa-file-excel"></i> <span>Export Excel</span>
+                    </button>
                 </div>
             </form>
         </div>
@@ -243,7 +249,7 @@ if (isAdmin()) {
                 <h3 class="text-xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
                     <i class="fa-solid fa-money-check-dollar text-brand-500"></i> Data Gaji & Slip
                 </h3>
-                <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Export rekap gaji dan cetak slip gaji karyawan.</p>
+                <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Export rekap gaji dan cetak slip gaji karyawan. Excel tersedia untuk laporan gaji per nama, per cabang, dan personal.</p>
             </div>
             
             <form action="laporan_gaji_print.php" method="GET" target="_blank" class="space-y-5" id="formLapGaji" onsubmit="return validateLaporanGaji()">
@@ -334,6 +340,9 @@ if (isAdmin()) {
                     <button type="submit" name="action" value="image" class="flex-1 flex items-center justify-center gap-2 px-6 py-2.5 bg-slate-800 hover:bg-slate-900 text-white dark:bg-slate-700 dark:hover:bg-slate-600 border border-transparent rounded-xl font-medium transition-colors shadow-sm">
                         <i class="fa-solid fa-download"></i> <span>Unduh Jpeg/PNG</span>
                     </button>
+                    <button type="submit" name="report" value="gaji" formaction="export_laporan.php" id="excel-gaji" class="flex-1 flex items-center justify-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-medium transition-colors shadow-sm">
+                        <i class="fa-solid fa-file-excel"></i> <span>Export Excel</span>
+                    </button>
                 </div>
             </form>
         </div>
@@ -407,6 +416,7 @@ if (isAdmin()) {
     </div>
 </div>
 
+<style>[id^="excel-"][hidden] { display: none !important; }</style>
 <script>
 let currentKaryawanTarget = 'gaji';
 
@@ -457,6 +467,7 @@ function toggleAbsensiFilters() {
     const fKar = document.getElementById('filterKaryawanAbsensi');
     const fTgl = document.getElementById('filterTanggalAbsensi');
     const fThn = document.getElementById('filterTahunAbsensi');
+    document.getElementById('excel-absensi').hidden = !['log', 'statistik'].includes(tipe);
     
     if (tipe === 'statistik_karyawan') {
         fDiv.style.display = 'none';
@@ -481,6 +492,7 @@ function toggleKaryawanFilters() {
     const formLapKaryawan = document.getElementById('formLapKaryawan');
     const fRekap = document.getElementById('filterRekapKaryawan');
     const fBiodata = document.getElementById('filterBiodataKaryawan');
+    document.getElementById('excel-karyawan').hidden = tipe && tipe.value === 'biodata';
 
     if (tipe && tipe.value === 'biodata') {
         formLapKaryawan.action = 'laporan_biodata_print.php';
@@ -500,6 +512,7 @@ function toggleGajiFilters() {
     const fDokumen = document.getElementById('filterJenisDokumenPayroll');
     const formLapGaji = document.getElementById('formLapGaji');
     const isSlip = tipe === 'cetak_slip_batch' || tipe === 'cetak_slip_divisi';
+    document.getElementById('excel-gaji').hidden = isSlip;
     fDokumen.style.display = isSlip ? 'block' : 'none';
     
     if (tipe === 'lap_gaji_divisi' || tipe === 'rekap_gaji_divisi') {
@@ -660,6 +673,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 
+<script src="assets/js/slip-preview-navigation.js"></script>
 <?php 
 if (isAdmin()) {
     require 'admin_footer.php'; 
