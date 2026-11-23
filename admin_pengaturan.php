@@ -33,6 +33,7 @@ if ($is_linked_profile && !empty($user_data['foto_karyawan'])) {
 $nama = $user_data['nama_karyawan'] ?: ($user_data['nama'] ?? '');
 $jenis_kelamin = $is_linked_profile ? ($user_data['jenis_kelamin_karyawan'] ?? $user_data['jenis_kelamin']) : ($user_data['jenis_kelamin'] ?? '');
 $wa_token = $user_data['wa_token'] ?? '';
+$can_edit_identitas = !$is_supervisor_pengaturan; // admin boleh ubah nama & username sendiri
 ?>
 
 <div class="max-w-4xl mx-auto mt-4 px-4 sm:px-0">
@@ -40,6 +41,8 @@ $wa_token = $user_data['wa_token'] ?? '';
         <h2 class="text-2xl font-bold text-slate-800 dark:text-white mb-2">Pengaturan Akun</h2>
         <p class="text-slate-500 dark:text-slate-400">Atur profil akun, tanda tangan digital, dan biodata karyawan Anda.</p>
     </div>
+
+    <?php include __DIR__ . '/pwa_notif_card.php'; ?>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <!-- Profil Card -->
@@ -74,9 +77,21 @@ $wa_token = $user_data['wa_token'] ?? '';
             <div class="space-y-4 flex-1">
                 <div>
                     <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">Nama Lengkap</label>
+                    <?php if ($can_edit_identitas): ?>
+                    <input type="text" id="nama_lengkap" value="<?php echo htmlspecialchars($nama); ?>" maxlength="50" class="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all">
+                    <p class="text-[11px] text-slate-400 mt-1"><?php echo $is_linked_profile ? '*Perubahan juga diterapkan ke Master Data Karyawan.' : '*Maksimal 50 karakter.'; ?></p>
+                    <?php else: ?>
                     <input type="text" value="<?php echo htmlspecialchars($nama); ?>" class="w-full px-4 py-2 bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-500 dark:text-slate-400 focus:outline-none cursor-not-allowed" readonly>
                     <p class="text-[11px] text-slate-400 mt-1"><?php echo $is_linked_profile ? '*Nama mengikuti Master Data Karyawan.' : '*Nama akun tidak dapat diubah.'; ?></p>
+                    <?php endif; ?>
                 </div>
+                <?php if ($can_edit_identitas): ?>
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">Username</label>
+                    <input type="text" id="username_akun" value="<?php echo htmlspecialchars($_SESSION['username'] ?? ''); ?>" maxlength="30" autocomplete="off" class="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all">
+                    <p class="text-[11px] text-slate-400 mt-1">4-30 karakter: huruf, angka, titik, garis bawah, atau tanda hubung. Gunakan username baru saat login berikutnya.</p>
+                </div>
+                <?php endif; ?>
                 <div>
                     <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">Jenis Kelamin</label>
                     <select id="jenis_kelamin" class="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300 focus:ring-2 focus:ring-brand-500 outline-none transition-all">
@@ -238,6 +253,11 @@ $wa_token = $user_data['wa_token'] ?? '';
         formData.append('action', 'update_profil');
         formData.append('jenis_kelamin', jk);
         formData.append('wa_token', wa_token);
+        <?php if ($can_edit_identitas): ?>
+        formData.append('nama', document.getElementById('nama_lengkap').value);
+        formData.append('username', document.getElementById('username_akun').value);
+        formData.append('csrf_token', <?php echo json_encode(generateCSRFToken()); ?>);
+        <?php endif; ?>
 
         Swal.fire({ title: 'Menyimpan...', allowOutsideClick: false, didOpen: () => { Swal.showLoading(); }});
 

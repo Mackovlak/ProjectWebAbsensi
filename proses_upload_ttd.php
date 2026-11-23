@@ -262,10 +262,56 @@ if ($action === 'upload_ttd') {
 } elseif ($action === 'update_profil') {
     $jenis_kelamin = $_POST['jenis_kelamin'] ?? '';
     $wa_token = $_POST['wa_token'] ?? '';
-    
+
+    // Admin/owner boleh mengganti nama lengkap & username akunnya sendiri.
+    // Field ini hanya diproses bila dikirim (halaman Pengaturan admin/owner).
+    $ubah_identitas = in_array($_SESSION['role'] ?? '', ['admin', 'owner'], true)
+        && isset($_POST['nama'], $_POST['username']);
+    $nama_baru = '';
+    $username_baru = '';
+    if ($ubah_identitas) {
+        $csrf = $_POST['csrf_token'] ?? '';
+        if (!isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $csrf)) {
+            echo json_encode(['success' => false, 'message' => 'Token keamanan tidak valid. Muat ulang halaman lalu coba lagi.']);
+            exit();
+        }
+        $nama_baru = trim(preg_replace('/\s+/', ' ', $_POST['nama']));
+        $username_baru = trim($_POST['username']);
+        if (mb_strlen($nama_baru) < 3 || mb_strlen($nama_baru) > 50) {
+            echo json_encode(['success' => false, 'message' => 'Nama lengkap harus 3-50 karakter.']);
+            exit();
+        }
+        if (strlen($username_baru) < 4 || strlen($username_baru) > 30 || !preg_match('/^[A-Za-z0-9._-]+$/', $username_baru)) {
+            echo json_encode(['success' => false, 'message' => 'Username harus 4-30 karakter dan hanya boleh berisi huruf, angka, titik, garis bawah, atau tanda hubung.']);
+            exit();
+        }
+    }
+
     if (in_array($jenis_kelamin, ['L', 'P'], true)) {
         $conn->begin_transaction();
         try {
+            if ($ubah_identitas) {
+                $stmt_dup = $conn->prepare("SELECT id FROM users WHERE username = ? AND id <> ? LIMIT 1");
+                $stmt_dup->bind_param("si", $username_baru, $user_id);
+                $stmt_dup->execute();
+                $dup = $stmt_dup->get_result()->num_rows > 0;
+                $stmt_dup->close();
+                if ($dup) throw new Exception('Username sudah digunakan oleh user lain.');
+
+                $stmt_id = $conn->prepare("UPDATE users SET nama = ?, username = ? WHERE id = ?");
+                $stmt_id->bind_param("ssi", $nama_baru, $username_baru, $user_id);
+                if (!$stmt_id->execute()) throw new Exception('Gagal mengupdate nama dan username.');
+                $stmt_id->close();
+
+                // Nama akun yang tertaut karyawan mengikuti Master Data Karyawan.
+                if ($is_linked_karyawan) {
+                    $stmt_nama = $conn->prepare("UPDATE karyawan SET nama_karyawan = ? WHERE id_karyawan = ?");
+                    $stmt_nama->bind_param("ss", $nama_baru, $linked_id_karyawan);
+                    if (!$stmt_nama->execute()) throw new Exception('Gagal mengupdate nama di Master Data Karyawan.');
+                    $stmt_nama->close();
+                }
+            }
+
             $stmt = $conn->prepare("UPDATE users SET jenis_kelamin = ?, wa_token = ? WHERE id = ?");
             $stmt->bind_param("ssi", $jenis_kelamin, $wa_token, $user_id);
             if (!$stmt->execute()) throw new Exception('Gagal mengupdate profil akun.');
@@ -277,7 +323,14 @@ if ($action === 'upload_ttd') {
                 if (!$stmt_karyawan->execute()) throw new Exception('Gagal mengupdate Master Data Karyawan.');
                 $stmt_karyawan->close();
             }
+            if ($ubah_identitas) {
+                logActivity($conn, 'ubah_identitas_akun', "Ubah nama/username akun sendiri -> {$username_baru}", $user_id);
+            }
             $conn->commit();
+            if ($ubah_identitas) {
+                $_SESSION['nama_lengkap'] = $nama_baru;
+                $_SESSION['username'] = $username_baru;
+            }
             $_SESSION['jenis_kelamin'] = $jenis_kelamin;
             echo json_encode(['success' => true, 'message' => $is_linked_karyawan ? 'Profil dan Master Data Karyawan berhasil diperbarui.' : 'Profil berhasil diperbarui.']);
         } catch (Throwable $e) {
