@@ -584,9 +584,8 @@ $total_notif = count($notif_dinas) + count($notif_pulang_cepat) + count($notif_d
                             <i class="fa-solid fa-xmark text-xl"></i>
                         </button>
                     </div>
-                    <form id="form-ganti-password-header" action="master_process.php" method="POST">
-                        <input type="hidden" name="edit_user" value="1">
-                        <input type="hidden" name="id_user" value="<?php echo $_SESSION['user_id']; ?>">
+                    <form id="form-ganti-password-header" action="proses_ganti_password.php" method="POST">
+                        <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
                         <div class="px-6 py-5 space-y-4">
                             <div>
                                 <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Username</label>
@@ -595,7 +594,7 @@ $total_notif = count($notif_dinas) + count($notif_pulang_cepat) + count($notif_d
                             <div x-data="{ showPass: false }">
                                 <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Password Baru <span class="text-red-500">*</span></label>
                                 <div class="relative">
-                                    <input :type="showPass ? 'text' : 'password'" name="password" required minlength="6" class="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors pr-10">
+                                    <input :type="showPass ? 'text' : 'password'" name="password_baru" required minlength="8" class="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors pr-10">
                                     <button type="button" @click="showPass = !showPass" class="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
                                         <i class="fa-solid fa-eye" x-show="!showPass"></i>
                                         <i class="fa-solid fa-eye-slash" x-show="showPass" style="display: none;"></i>
@@ -606,7 +605,7 @@ $total_notif = count($notif_dinas) + count($notif_pulang_cepat) + count($notif_d
                             <div x-data="{ showPassConf: false }">
                                 <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Konfirmasi Password <span class="text-red-500">*</span></label>
                                 <div class="relative">
-                                    <input :type="showPassConf ? 'text' : 'password'" name="confirm_password" required minlength="6" class="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors pr-10">
+                                    <input :type="showPassConf ? 'text' : 'password'" name="konfirmasi_password" required minlength="8" class="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors pr-10">
                                     <button type="button" @click="showPassConf = !showPassConf" class="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
                                         <i class="fa-solid fa-eye" x-show="!showPassConf"></i>
                                         <i class="fa-solid fa-eye-slash" x-show="showPassConf" style="display: none;"></i>
@@ -697,8 +696,8 @@ $total_notif = count($notif_dinas) + count($notif_pulang_cepat) + count($notif_d
                 formGantiPassword.addEventListener('submit', function(e) {
                     e.preventDefault();
                     
-                    const pass = this.querySelector('input[name="password"]').value;
-                    const passConf = this.querySelector('input[name="confirm_password"]').value;
+                    const pass = this.querySelector('input[name="password_baru"]').value;
+                    const passConf = this.querySelector('input[name="konfirmasi_password"]').value;
                     
                     if (pass !== passConf) {
                         if (typeof Swal !== 'undefined') {
@@ -725,16 +724,15 @@ $total_notif = count($notif_dinas) + count($notif_pulang_cepat) + count($notif_d
                     }
                     
                     const formData = new FormData(this);
-                    formData.append('is_ajax', '1');
-                    
-                    fetch(this.action, {
+                                        
+                    fetch('proses_ganti_password.php', {
                         method: 'POST',
                         body: formData
                     })
                     .then(response => response.json())
                     .then(data => {
                         if (typeof Swal !== 'undefined') {
-                            if (data.status === 'success') {
+                            if (data.success) {
                                 Swal.fire({
                                     icon: 'success',
                                     title: 'Berhasil!',
@@ -752,7 +750,7 @@ $total_notif = count($notif_dinas) + count($notif_pulang_cepat) + count($notif_d
                                 });
                             }
                         } else {
-                            if (data.status === 'success') {
+                            if (data.success) {
                                 alert(data.message);
                                 window.location.reload();
                             } else {

@@ -650,9 +650,8 @@ $total_notif = count($notif_dinas) + count($notif_pulang_cepat) + count($notif_d
                             <i class="fa-solid fa-xmark text-xl"></i>
                         </button>
                     </div>
-                    <form id="form-ganti-password-header" action="master_process.php" method="POST" onsubmit="return validatePwdAdmin()">
-                        <input type="hidden" name="edit_user" value="1">
-                        <input type="hidden" name="id_user" value="<?php echo $_SESSION['user_id']; ?>">
+                    <form id="form-ganti-password-header" action="proses_ganti_password.php" method="POST" onsubmit="return validatePwdAdmin()">
+                        <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
                         <div class="px-6 py-5 space-y-4">
                             <div>
                                 <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Username</label>
@@ -661,7 +660,7 @@ $total_notif = count($notif_dinas) + count($notif_pulang_cepat) + count($notif_d
                             <div>
                                 <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Password Baru <span class="text-rose-500">*</span></label>
                                 <div class="relative">
-                                    <input type="password" id="pwd_admin_baru" name="password" required minlength="6" class="w-full px-4 py-2.5 pr-10 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors">
+                                    <input type="password" id="pwd_admin_baru" name="password_baru" required minlength="8" class="w-full px-4 py-2.5 pr-10 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors">
                                     <button type="button" onclick="togglePasswordVisibility('pwd_admin_baru', 'icon_pwd_baru')" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
                                         <i id="icon_pwd_baru" class="fa-regular fa-eye"></i>
                                     </button>
@@ -671,7 +670,7 @@ $total_notif = count($notif_dinas) + count($notif_pulang_cepat) + count($notif_d
                             <div>
                                 <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Konfirmasi Password <span class="text-rose-500">*</span></label>
                                 <div class="relative">
-                                    <input type="password" id="pwd_admin_confirm" required minlength="6" class="w-full px-4 py-2.5 pr-10 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors">
+                                    <input type="password" id="pwd_admin_confirm" name="konfirmasi_password" required minlength="8" class="w-full px-4 py-2.5 pr-10 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-800 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors">
                                     <button type="button" onclick="togglePasswordVisibility('pwd_admin_confirm', 'icon_pwd_confirm')" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
                                         <i id="icon_pwd_confirm" class="fa-regular fa-eye"></i>
                                     </button>
@@ -795,16 +794,15 @@ $total_notif = count($notif_dinas) + count($notif_pulang_cepat) + count($notif_d
                     }
                     
                     const formData = new FormData(this);
-                    formData.append('is_ajax', '1');
-                    
-                    fetch(this.action, {
+                                        
+                    fetch('proses_ganti_password.php', {
                         method: 'POST',
                         body: formData
                     })
                     .then(response => response.json())
                     .then(data => {
                         if (typeof Swal !== 'undefined') {
-                            if (data.status === 'success') {
+                            if (data.success) {
                                 Swal.fire({
                                     icon: 'success',
                                     title: 'Berhasil!',
@@ -822,7 +820,7 @@ $total_notif = count($notif_dinas) + count($notif_pulang_cepat) + count($notif_d
                                 });
                             }
                         } else {
-                            if (data.status === 'success') {
+                            if (data.success) {
                                 alert(data.message);
                                 window.location.reload();
                             } else {
