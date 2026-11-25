@@ -31,10 +31,17 @@ sort($cabangs);
 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
     <div>
         <h2 class="text-2xl font-bold text-slate-800 dark:text-white">ID Card & QR Code</h2>
-        <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Buat dan unduh kode QR untuk identitas absensi karyawan.</p>
+        <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Buat dan unduh kode QR, atau cukup bagikan link absensi karyawan.</p>
     </div>
     
-    <div class="flex items-center gap-3 w-full sm:w-auto">
+    <div class="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+        <!-- Tombol Link Massal (ringan, tanpa membuat gambar QR) -->
+        <button onclick="copyAllLinks()" class="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 rounded-xl transition-colors font-medium text-sm shadow-sm" title="Salin daftar Nama + Link sesuai filter">
+            <i class="fa-solid fa-link"></i> Salin Semua Link
+        </button>
+        <button onclick="downloadLinksCsv()" class="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 rounded-xl transition-colors font-medium text-sm shadow-sm" title="Unduh daftar Nama + Link sesuai filter">
+            <i class="fa-solid fa-file-csv"></i> Unduh Link (CSV)
+        </button>
         <!-- Tombol Cetak/Unduh Massal PDF -->
         <button id="btnDownloadAllPdf" onclick="downloadAllPdf()" class="flex items-center gap-2 px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl transition-colors font-medium text-sm shadow-sm shadow-brand-500/30">
             <i class="fa-solid fa-file-pdf"></i> Unduh Semua QR (PDF)
@@ -93,7 +100,7 @@ sort($cabangs);
                     <th class="px-6 py-4 font-semibold">NAMA</th>
                     <th class="px-6 py-4 font-semibold">JABATAN</th>
                     <th class="px-6 py-4 font-semibold">CABANG</th>
-                    <th class="px-6 py-4 font-semibold text-center">QR CODE</th>
+                    <th class="px-6 py-4 font-semibold text-center">QR / LINK</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-slate-200 dark:divide-slate-700" id="tableBody">
@@ -125,9 +132,14 @@ sort($cabangs);
                         </span>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                        <div class="inline-flex items-center gap-2">
+                        <button onclick="copyLink(this.closest('tr').dataset.id)" class="inline-flex items-center justify-center w-8 h-8 bg-sky-50 text-sky-600 hover:bg-sky-100 dark:bg-sky-900/30 dark:text-sky-400 dark:hover:bg-sky-800/50 rounded-lg transition-colors border border-sky-200 dark:border-sky-800" title="Salin Link Absensi">
+                            <i class="fa-solid fa-link"></i>
+                        </button>
                         <button onclick="openQrModal('<?php echo addslashes(htmlspecialchars($karyawan['nama_karyawan'])); ?>', '<?php echo addslashes(htmlspecialchars($karyawan['id_karyawan'])); ?>', '<?php echo addslashes(htmlspecialchars($roleLabel)); ?>')" class="inline-flex items-center justify-center w-8 h-8 bg-purple-50 text-purple-600 hover:bg-purple-100 dark:bg-purple-900/30 dark:text-purple-400 dark:hover:bg-purple-800/50 rounded-lg transition-colors border border-purple-200 dark:border-purple-800" title="Tampilkan QR">
                             <i class="fa-solid fa-qrcode"></i>
                         </button>
+                        </div>
                     </td>
                 </tr>
                 <?php endforeach; ?>
@@ -209,7 +221,12 @@ sort($cabangs);
         <!-- Modal Footer -->
         <div class="px-6 py-4 bg-white dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700 flex justify-between gap-3">
             <button onclick="closeQrModal()" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl font-medium transition-colors text-sm">Tutup</button>
-            
+
+            <!-- Salin Link (alternatif tanpa gambar QR) -->
+            <button onclick="copyLink(document.getElementById('modalEmpId').textContent)" class="flex-1 py-2.5 bg-sky-50 hover:bg-sky-100 dark:bg-sky-900/30 dark:hover:bg-sky-800/50 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 rounded-xl font-medium transition-colors text-sm flex items-center justify-center gap-2">
+                <i class="fa-solid fa-link"></i> Salin Link
+            </button>
+
             <!-- Tombol Unduh PNG Tunggal -->
             <button onclick="downloadSinglePng(event)" class="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-medium transition-colors text-sm shadow-sm flex items-center justify-center gap-2">
                 <i class="fa-solid fa-download"></i> Unduh PNG
@@ -330,11 +347,101 @@ sort($cabangs);
         controls.innerHTML = html;
     }
 
+    // ----- LINK ABSENSI (dipakai oleh QR maupun fitur salin/unduh link) -----
+    // Relatif terhadap halaman ini, jadi otomatis ikut http/https & folder yang sedang dipakai.
+    function buildLink(id) {
+        return new URL('absen.php?id=' + encodeURIComponent(id), window.location.href).href;
+    }
+
+    // Baris yang lolos filter pencarian + cabang (sama dengan logika filterTable)
+    function getFilteredRows() {
+        const searchVal = document.getElementById('searchInput').value.toLowerCase();
+        const branchFilter = document.getElementById('branchFilter').value.toLowerCase();
+        return Array.from(document.querySelectorAll('.employee-row')).filter(row => {
+            const name = row.getAttribute('data-name').toLowerCase();
+            const branch = row.getAttribute('data-branch').toLowerCase();
+            const id = row.getAttribute('data-id').toLowerCase();
+            const matchSearch = name.includes(searchVal) || id.includes(searchVal);
+            const matchBranch = branchFilter === 'all' || branch === branchFilter || (branch === '' && branchFilter === '-');
+            return matchSearch && matchBranch;
+        });
+    }
+
+    // Salin teks; fallback untuk konteks non-HTTPS (LAN/XAMPP) yang tidak punya navigator.clipboard
+    async function copyText(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+            return;
+        }
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (!ok) throw new Error('copy failed');
+    }
+
+    function toast(icon, title) {
+        Swal.fire({ toast: true, position: 'top-end', icon: icon, title: title, showConfirmButton: false, timer: 2000, timerProgressBar: true });
+    }
+
+    async function copyLink(id) {
+        try {
+            await copyText(buildLink(id));
+            toast('success', 'Link absensi disalin');
+        } catch (e) {
+            Swal.fire({ icon: 'error', title: 'Gagal menyalin', text: buildLink(id) });
+        }
+    }
+
+    // Salin "Nama<TAB>Link" per baris (langsung bisa ditempel ke Excel / WhatsApp)
+    async function copyAllLinks() {
+        const rows = getFilteredRows();
+        if (rows.length === 0) {
+            Swal.fire({ icon: 'info', title: 'Tidak Ada Data', text: 'Tidak ada karyawan yang sesuai filter.', confirmButtonColor: '#c026d3' });
+            return;
+        }
+        const text = rows.map(r => `${r.getAttribute('data-name')}\t${buildLink(r.getAttribute('data-id'))}`).join('\n');
+        try {
+            await copyText(text);
+            toast('success', `${rows.length} link disalin`);
+        } catch (e) {
+            Swal.fire({ icon: 'error', title: 'Gagal menyalin', text: 'Gunakan tombol Unduh Link (CSV).' });
+        }
+    }
+
+    // CSV: BOM UTF-8 + pemisah ';' (konvensi export lain di aplikasi ini)
+    function downloadLinksCsv() {
+        const rows = getFilteredRows();
+        if (rows.length === 0) {
+            Swal.fire({ icon: 'info', title: 'Tidak Ada Data', text: 'Tidak ada karyawan yang sesuai filter.', confirmButtonColor: '#c026d3' });
+            return;
+        }
+        const esc = v => '"' + String(v).replace(/"/g, '""') + '"';
+        const lines = [['ID Karyawan', 'Nama', 'Jabatan - Cabang', 'Link Absensi'].map(esc).join(';')];
+        rows.forEach(r => {
+            const id = r.getAttribute('data-id');
+            lines.push([id, r.getAttribute('data-name'), r.getAttribute('data-role'), buildLink(id)].map(esc).join(';'));
+        });
+        const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+        const filterDropdown = document.getElementById('branchFilter');
+        const filterText = filterDropdown.options[filterDropdown.selectedIndex].text.replace(/\s+/g, '_');
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `Link_Absensi_${filterText}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+    }
+
     // ----- FUNGSI UNTUK MODAL TUNGGAL -----
     function openQrModal(name, id, role) {
-        // Ambil URL yang sesuai (misal untuk abensi, sama seperti sebelumnya: absen.php?id=...)
-        const qrContent = "<?php echo "http://" . $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']); ?>/absen.php?id=" + id;
-        
+        const qrContent = buildLink(id);
+
         document.getElementById('modalEmpName').textContent = name;
         document.getElementById('modalEmpId').textContent = id;
         document.getElementById('modalEmpRole').textContent = role;
@@ -426,7 +533,7 @@ sort($cabangs);
                     const name = row.getAttribute('data-name');
                     const id = row.getAttribute('data-id');
                     const role = row.getAttribute('data-role');
-                    const qrContent = "<?php echo "http://" . $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']); ?>/absen.php?id=" + id;
+                    const qrContent = buildLink(id);
                     const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=" + encodeURIComponent(qrContent);
 
                     // Desain kartu sedikit lebih kecil (lebar ~175px)
