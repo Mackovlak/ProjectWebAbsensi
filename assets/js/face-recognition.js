@@ -106,15 +106,28 @@ class FaceRecognitionSystem {
         console.log('🛑 Kamera dihentikan');
     }
 
+    // Position feedback only: no landmarks or descriptor work on rejected frames.
+    async detectFace() {
+        if (!this.videoElement || this.videoElement.readyState < 2) {
+            throw new Error('Video belum siap. Tunggu kamera aktif...');
+        }
+        return faceapi.detectSingleFace(this.videoElement, new faceapi.TinyFaceDetectorOptions({
+            inputSize: this.settings.inputSize,
+            scoreThreshold: this.settings.scoreThreshold
+        }));
+    }
+
     /**
      * Capture face descriptor dari video
      */
-    async captureFaceDescriptor() {
+    async captureFaceDescriptor(input = this.videoElement) {
         if (!this.isModelLoaded) {
             throw new Error('Model belum dimuat. Tunggu sebentar...');
         }
 
-        if (!this.videoElement || this.videoElement.readyState !== 4) {
+        // A still frame (canvas) passed in is already captured, so only the
+        // live video needs to be fully buffered here.
+        if (!this.videoElement || (input === this.videoElement && this.videoElement.readyState !== 4)) {
             throw new Error('Video belum siap. Tunggu kamera aktif...');
         }
 
@@ -122,7 +135,7 @@ class FaceRecognitionSystem {
             // Deteksi wajah dengan landmarks dan descriptor
             const detection = await faceapi
                 .detectSingleFace(
-                    this.videoElement,
+                    input,
                     new faceapi.TinyFaceDetectorOptions({
                         inputSize: this.settings.inputSize,
                         scoreThreshold: this.settings.scoreThreshold
@@ -211,10 +224,36 @@ class FaceRecognitionSystem {
     /**
      * Validate face quality
      */
-    validateFaceQuality(detection) {
+    validateFaceQuality(detection, guide = null) {
         const box = detection.detection.box;
         const videoWidth = this.videoElement.videoWidth;
         const videoHeight = this.videoElement.videoHeight;
+
+        if (guide) {
+            // Read rendered geometry so responsive layouts and the mirrored preview agree.
+            const videoRect = this.videoElement.getBoundingClientRect();
+            const rect = guide.getBoundingClientRect();
+            if (!videoRect.width || !videoRect.height || !rect.width || !rect.height) {
+                return {valid: false, message: 'Video belum siap. Tunggu kamera aktif...'};
+            }
+            const width = rect.width * videoWidth / videoRect.width;
+            const height = rect.height * videoHeight / videoRect.height;
+            const centerX = videoWidth * (1 - (rect.left + rect.width / 2 - videoRect.left) / videoRect.width);
+            const centerY = videoHeight * (rect.top + rect.height / 2 - videoRect.top) / videoRect.height;
+            // Detector boxes cover the face, while the oval includes the whole head.
+            if (box.width < width * 0.45 || box.height < height * 0.45) {
+                return {valid: false, message: 'Dekatkan wajah sedikit.'};
+            }
+            if (box.width > width * 0.95 || box.height > height * 0.95) {
+                return {valid: false, message: 'Jauhkan wajah sedikit.'};
+            }
+            const dx = (box.x + box.width / 2 - centerX) / (width * 0.2);
+            const dy = (box.y + box.height / 2 - centerY) / (height * 0.2);
+            if (dx * dx + dy * dy > 1) {
+                return {valid: false, message: 'Posisikan wajah di tengah oval.'};
+            }
+            return {valid: true, message: 'Tahan sebentar...'};
+        }
 
         // Cek ukuran wajah (minimal 20% dari frame)
         const faceArea = box.width * box.height;

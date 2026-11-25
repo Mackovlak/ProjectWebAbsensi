@@ -6,6 +6,9 @@ ini_set('display_errors', 0);
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 
+$retry_after = 0;
+$error_code = null;
+
 try {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         http_response_code(405);
@@ -23,13 +26,24 @@ try {
         throw new RuntimeException('Permintaan verifikasi tidak valid.');
     }
     $limit = checkRateLimit('attendance_face_' . $action, $action === 'start' ? 2 : 3);
-    if (!$limit['allowed']) throw new RuntimeException('Tunggu ' . $limit['remaining'] . ' detik lalu coba lagi.');
+    if (!$limit['allowed']) {
+        http_response_code(429);
+        $retry_after = (int)$limit['remaining'];
+        $error_code = 'rate_limited';
+        throw new RuntimeException('Tunggu ' . $retry_after . ' detik lalu coba lagi.');
+    }
     // Dibatasi juga per id_karyawan (bukan cuma per sesi/aksi) - endpoint ini
     // sessionless (kios bersama, siapa saja bisa mengetik ID siapa saja), jadi
     // tanpa ini satu sesi bisa mencoba banyak ID karyawan berbeda secepat
     // batas per-aksi mengizinkan, cuma diperlambat kalau menyasar ID yang sama.
     $limit_id = checkRateLimit('attendance_face_' . $action . '_' . $id, $action === 'start' ? 2 : 3);
-    if (!$limit_id['allowed']) throw new RuntimeException('Tunggu ' . $limit_id['remaining'] . ' detik lalu coba lagi.');
+    if (!$limit_id['allowed']) {
+        http_response_code(429);
+        // The per-action clock was also advanced by this request.
+        $retry_after = max((int)$limit_id['remaining'], $action === 'start' ? 2 : 3);
+        $error_code = 'rate_limited';
+        throw new RuntimeException('Tunggu ' . $retry_after . ' detik lalu coba lagi.');
+    }
 
     $stmt = $conn->prepare("SELECT u.face_descriptor FROM users u JOIN karyawan k ON k.id_karyawan = u.id_karyawan
                            WHERE u.id_karyawan = ? AND u.is_active = 1 AND k.status = 'aktif'");
@@ -65,9 +79,19 @@ try {
     if ($action === 'start') {
         $result = ['success' => true, 'nonce' => attendanceFaceIssueToken($_SESSION, 'attendance_face_challenges', $context), 'expires_in' => ATTENDANCE_FACE_TOKEN_TTL];
     } else {
-        attendanceFaceConsumeToken($_SESSION, 'attendance_face_challenges', $_POST['nonce'] ?? null, $context);
+        try {
+            attendanceFaceConsumeToken($_SESSION, 'attendance_face_challenges', $_POST['nonce'] ?? null, $context);
+        } catch (RuntimeException $e) {
+            // Missing/expired/used nonce: the client asks for a new one and retries.
+            $error_code = 'nonce_invalid';
+            throw $e;
+        }
         $confidence = attendanceFaceConfidence($_POST['face_descriptor'] ?? null, $account['face_descriptor']);
-        if ($confidence < ATTENDANCE_FACE_MIN_CONFIDENCE) throw new RuntimeException('Wajah tidak cocok. Coba lagi dengan posisi dan pencahayaan yang baik.');
+        if ($confidence < ATTENDANCE_FACE_MIN_CONFIDENCE) {
+            $retry_after = 3;
+            $error_code = 'face_mismatch';
+            throw new RuntimeException('Wajah tidak cocok. Coba lagi dengan posisi dan pencahayaan yang baik.');
+        }
         $photo = readAttendanceCapture($_FILES['foto_capture'] ?? null);
         $context['confidence'] = round($confidence, 2);
         $context['photo_hash'] = hash('sha256', $photo);
@@ -76,7 +100,8 @@ try {
             'expires_in' => ATTENDANCE_FACE_TOKEN_TTL];
     }
 } catch (RuntimeException $e) {
-    $result = ['success' => false, 'message' => $e->getMessage()];
+    $result = ['success' => false, 'message' => $e->getMessage(), 'code' => $error_code, 'retry_after' => $retry_after];
+    if ($retry_after > 0) header('Retry-After: ' . $retry_after);
 } catch (Throwable $e) {
     error_log('Attendance face verification: ' . $e->getMessage());
     http_response_code(500);

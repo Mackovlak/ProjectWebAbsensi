@@ -243,10 +243,17 @@ $pulang_cepat_sudah_ada_alasan = $absen_hari_ini
         }
         .face-guide {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 60%; aspect-ratio: 1; border: 3px dashed rgba(0, 255, 0, 0.85);
-            border-radius: 50%; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.72);
+            width: min(68%, 260px); height: 84%; border: 3px dashed rgba(255, 255, 255, 0.9);
+            border-radius: 46% 46% 44% 44% / 40% 40% 60% 60%;
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35);
             z-index: 3; pointer-events: none; transition: box-shadow 180ms ease, border-color 180ms ease;
         }
+        .face-guide::before {
+            content: ""; position: absolute; top: 40%; left: 16%; right: 16%;
+            border-top: 2px dashed rgba(255, 255, 255, 0.65);
+        }
+        .face-video-container.face-ready .face-guide { border-color: #10b981; }
+        .face-video-container.face-captured .face-guide::before { opacity: 0; }
         .face-video-container.face-captured .face-guide {
             box-shadow: none; border-color: rgba(16, 185, 129, 0.95);
         }
@@ -376,13 +383,13 @@ $pulang_cepat_sudah_ada_alasan = $absen_hari_ini
         <div class="face-verification-box">
             <h2><i class="fas fa-user-shield"></i> Verifikasi Wajah</h2>
             <p>Foto kamera saat verifikasi berhasil disimpan sebagai bukti absensi untuk HRD/SPV.</p>
-            <p id="liveness-instruction" style="font-size: 16px; font-weight: bold; color: #4f46e5; margin-bottom: 10px;">Posisikan wajah Anda di dalam panduan</p>
+            <p id="liveness-instruction" style="font-size: 16px; font-weight: bold; color: #4f46e5; margin-bottom: 10px;">Posisikan wajah di dalam oval. Sejajarkan mata dengan garis, lalu lihat ke kamera.</p>
             <div class="face-video-container">
                 <video id="face-video" autoplay playsinline></video>
                 <canvas id="face-canvas"></canvas>
                 <div class="face-guide"></div>
             </div>
-            <div class="face-status" id="face-status">
+            <div class="face-status" id="face-status" role="status" aria-live="polite">
                 <i class="fas fa-spinner fa-spin"></i> Memuat sistem face recognition...
             </div>
             <button class="btn btn-secondary" onclick="cancelFaceVerification()">
@@ -887,7 +894,7 @@ $pulang_cepat_sudah_ada_alasan = $absen_hari_ini
         </div>
     </div>
 
-    <script src="assets/js/face-recognition.js?v=2.0"></script>
+    <script src="assets/js/face-recognition.js?v=2.1"></script>
     <script>
         function updateFileName(inputId, textId) {
             const input = document.getElementById(inputId);
@@ -1376,11 +1383,13 @@ $pulang_cepat_sudah_ada_alasan = $absen_hari_ini
         let cancelActiveVerification = null;
 
         async function captureAttendancePhoto(video) {
-            if (!video.videoWidth || !video.videoHeight) throw new Error('Kamera belum siap.');
+            const width = video.videoWidth || video.width;
+            const height = video.videoHeight || video.height;
+            if (!width || !height) throw new Error('Kamera belum siap.');
             const frame = document.createElement('canvas');
-            const scale = Math.min(1, 1280 / Math.max(video.videoWidth, video.videoHeight));
-            frame.width = Math.round(video.videoWidth * scale);
-            frame.height = Math.round(video.videoHeight * scale);
+            const scale = Math.min(1, 1280 / Math.max(width, height));
+            frame.width = Math.round(width * scale);
+            frame.height = Math.round(height * scale);
             frame.getContext('2d').drawImage(video, 0, 0, frame.width, frame.height);
             const photo = await new Promise(resolve => frame.toBlob(resolve, 'image/jpeg', 0.75));
             if (!photo || photo.size > 512 * 1024) throw new Error('Gagal mengambil foto kamera. Silakan coba lagi.');
@@ -1395,7 +1404,24 @@ $pulang_cepat_sudah_ada_alasan = $absen_hari_ini
             const checkCancelled = () => {
                 if (controller.signal.aborted) throw new Error('Verifikasi dibatalkan.');
             };
-            const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+            let deadline = Infinity;
+            const pause = ms => new Promise((resolve, reject) => {
+                checkCancelled();
+                const onAbort = () => {
+                    clearTimeout(timer);
+                    reject(new Error('Verifikasi dibatalkan.'));
+                };
+                const timer = setTimeout(() => {
+                    controller.signal.removeEventListener('abort', onAbort);
+                    resolve();
+                }, Math.min(ms, Math.max(0, deadline - Date.now())));
+                controller.signal.addEventListener('abort', onAbort, {once: true});
+            });
+            const waitForRetry = async error => {
+                updateFaceStatus('error', error.message);
+                await pause(Math.max(3000, error.retryAfter * 1000 || 0));
+                checkCancelled();
+            };
             const request = async (action, fields = {}) => {
                 checkCancelled();
                 const body = new FormData();
@@ -1407,47 +1433,100 @@ $pulang_cepat_sudah_ada_alasan = $absen_hari_ini
                     if (value instanceof Blob) body.append(key, value, 'capture.jpg');
                     else body.append(key, value);
                 }
-                const response = await fetch('verify_attendance_face.php', {method: 'POST', body, signal: controller.signal});
+                // A transient failure (network drop, server error, bad reply,
+                // used-up nonce) is retried with a fresh nonce; only errors
+                // that cannot succeed on retry end the verification.
+                const transient = message => Object.assign(new Error(message), {retryable: true, retryAfter: 0});
+                let response;
+                try {
+                    response = await fetch('verify_attendance_face.php', {method: 'POST', body, signal: controller.signal});
+                } catch (error) {
+                    checkCancelled();
+                    throw transient('Koneksi ke server terputus. Mencoba lagi...');
+                }
                 let data;
                 try { data = await response.json(); }
-                catch { throw new Error('Respons verifikasi server tidak valid. Silakan coba lagi.'); }
+                catch {
+                    checkCancelled();
+                    throw transient('Respons verifikasi server tidak valid. Mencoba lagi...');
+                }
                 checkCancelled();
-                if (!response.ok || !data.success) throw new Error(data.message || 'Verifikasi server gagal.');
+                if (!response.ok || !data.success) {
+                    const error = new Error(data.message || 'Verifikasi server gagal.');
+                    error.retryAfter = Math.max(Number(data.retry_after) || 0, Number(response.headers.get('Retry-After')) || 0);
+                    error.retryable = ['face_mismatch', 'nonce_invalid'].includes(data.code)
+                        || response.status === 429 || response.status >= 500;
+                    throw error;
+                }
                 return data;
             };
             try {
                 document.getElementById('face-overlay').style.display = 'flex';
                 const videoContainer = document.querySelector('.face-video-container');
-                videoContainer?.classList.remove('face-captured');
+                videoContainer?.classList.remove('face-captured', 'face-ready');
+                const guide = videoContainer.querySelector('.face-guide');
+                const canvas = document.getElementById('face-canvas');
+                canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
                 const instructionEl = document.getElementById('liveness-instruction');
                 instructionEl.textContent = 'Memuat model AI...';
                 updateFaceStatus('loading', 'Memuat model AI...');
                 if (!faceSystem) faceSystem = new FaceRecognitionSystem();
+                faceSystem.settings.inputSize = 224;
                 if (!faceSystem.isModelLoaded) await faceSystem.loadModels();
                 checkCancelled();
                 await faceSystem.startCamera('face-video');
                 checkCancelled();
-                let challenge = await request('start');
-                instructionEl.textContent = 'Posisikan wajah Anda di dalam panduan';
+                deadline = Date.now() + 60000;
+                let challenge = null;
+                instructionEl.textContent = 'Posisikan wajah di dalam oval. Sejajarkan mata dengan garis, lalu lihat ke kamera.';
                 instructionEl.style.color = '';
-                const deadline = Date.now() + 60000;
+                let readySince = null;
                 while (Date.now() < deadline) {
                     checkCancelled();
                     let result;
+                    let frame;
                     try {
-                        result = await faceSystem.captureFaceDescriptor();
-                        const quality = faceSystem.validateFaceQuality(result);
+                        const detected = await faceSystem.detectFace();
+                        checkCancelled();
+                        canvas.width = faceSystem.videoElement.videoWidth;
+                        canvas.height = faceSystem.videoElement.videoHeight;
+                        if (detected) faceSystem.drawDetection({detection: detected}, canvas);
+                        const quality = detected
+                            ? faceSystem.validateFaceQuality({detection: detected}, guide)
+                            : {valid: false, message: 'Wajah belum terlihat.'};
+                        videoContainer.classList.toggle('face-ready', quality.valid);
                         if (!quality.valid) throw new Error(quality.message);
+                        updateFaceStatus('loading', 'Tahan sebentar...');
+                        if (readySince === null) readySince = Date.now();
+                        if (Date.now() - readySince < 600) {
+                            await pause(150);
+                            continue;
+                        }
+                        // Use one still frame for descriptor and evidence, even on a slow network.
+                        frame = document.createElement('canvas');
+                        frame.width = faceSystem.videoElement.videoWidth;
+                        frame.height = faceSystem.videoElement.videoHeight;
+                        frame.getContext('2d').drawImage(faceSystem.videoElement, 0, 0);
+                        result = await faceSystem.captureFaceDescriptor(frame);
+                        checkCancelled();
+                        const finalQuality = faceSystem.validateFaceQuality(result, guide);
+                        if (!finalQuality.valid) throw new Error(finalQuality.message);
+                        faceSystem.drawDetection(result, canvas);
                     } catch (error) {
                         checkCancelled();
+                        readySince = null;
+                        videoContainer.classList.remove('face-ready');
                         updateFaceStatus('error', error.message);
                         await pause(300);
                         continue;
                     }
                     checkCancelled();
-                    const photo = await captureAttendancePhoto(faceSystem.videoElement);
+                    let photo;
                     let matched;
                     try {
+                        updateFaceStatus('loading', 'Memverifikasi wajah...');
+                        if (!challenge) challenge = await request('start');
+                        photo = await captureAttendancePhoto(frame);
                         matched = await request('verify', {
                             nonce: challenge.nonce,
                             face_descriptor: JSON.stringify(result.descriptor),
@@ -1455,24 +1534,22 @@ $pulang_cepat_sudah_ada_alasan = $absen_hari_ini
                         });
                     } catch (error) {
                         checkCancelled();
-                        updateFaceStatus('error', error.message);
-                        // Nonce sudah terpakai begitu request('verify')
-                        // dikirim, walau hasilnya gagal (mis. wajah tak cocok) -
-                        // minta nonce baru dulu sebelum mencoba lagi, supaya
-                        // satu momen kurang pas (pencahayaan/sudut) tidak
-                        // menggagalkan seluruh proses verifikasi.
-                        challenge = await request('start');
-                        await pause(300);
+                        if (!error.retryable) throw error;
+                        // The nonce may have been consumed or the server may have
+                        // failed mid-request: get a fresh one after the cooldown.
+                        challenge = null;
+                        readySince = null;
+                        videoContainer.classList.remove('face-ready');
+                        await waitForRetry(error);
                         continue;
                     }
                     // The dark mask is only a live positioning aid. Remove it
                     // once the evidence photo has been captured successfully.
                     videoContainer?.classList.add('face-captured');
-                    const canvas = document.getElementById('face-canvas');
                     canvas.width = faceSystem.videoElement.videoWidth;
                     canvas.height = faceSystem.videoElement.videoHeight;
                     faceSystem.drawDetection(result, canvas);
-                    updateFaceStatus('success', `Wajah terverifikasi! (${matched.confidence.toFixed(1)}%)`);
+                    updateFaceStatus('success', `Wajah terverifikasi! (Skor kemiripan: ${matched.confidence.toFixed(1)})`);
                     await pause(1000);
                     checkCancelled();
                     return {photo, token: matched.verification_token};
