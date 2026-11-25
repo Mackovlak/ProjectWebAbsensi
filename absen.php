@@ -894,7 +894,7 @@ $pulang_cepat_sudah_ada_alasan = $absen_hari_ini
         </div>
     </div>
 
-    <script src="assets/js/face-recognition.js?v=2.1"></script>
+    <script src="assets/js/face-recognition.js?v=2.2"></script>
     <script>
         function updateFileName(inputId, textId) {
             const input = document.getElementById(inputId);
@@ -1471,7 +1471,6 @@ $pulang_cepat_sudah_ada_alasan = $absen_hari_ini
                 instructionEl.textContent = 'Memuat model AI...';
                 updateFaceStatus('loading', 'Memuat model AI...');
                 if (!faceSystem) faceSystem = new FaceRecognitionSystem();
-                faceSystem.settings.inputSize = 224;
                 if (!faceSystem.isModelLoaded) await faceSystem.loadModels();
                 checkCancelled();
                 await faceSystem.startCamera('face-video');

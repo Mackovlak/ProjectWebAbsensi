@@ -17,7 +17,11 @@ class FaceRecognitionSystem {
         this.settings = {
             scoreThreshold: 0.5,        // Minimum confidence untuk deteksi wajah
             matchThreshold: 0.6,        // Threshold untuk face matching (semakin rendah semakin strict)
-            inputSize: 160,             // Ukuran input untuk face detection
+            // Ukuran input TinyFaceDetector (kelipatan 32). 160 terlalu kecil:
+            // wajah yang agak jauh / redup sering tidak terdeteksi dan kotak
+            // wajahnya kurang akurat (descriptor jadi kurang mirip). 320 =
+            // default face-api, masih ringan di HP.
+            inputSize: 320,
             videoWidth: 640,
             videoHeight: 480
         };
