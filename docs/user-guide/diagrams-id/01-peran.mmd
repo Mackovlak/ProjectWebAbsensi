@@ -1,0 +1,23 @@
+flowchart LR
+  subgraph K["KARYAWAN"]
+    direction TB
+    K1(["Absen masuk dan pulang"]) ~~~ K2(["Daftarkan wajah"]) ~~~ K3(["Ajukan cuti, izin,<br/>atau dinas luar"]) ~~~ K4(["Minta persetujuan lembur"]) ~~~ K5(["Lihat absensi dan<br/>slip gaji sendiri"])
+  end
+  subgraph S["SUPERVISOR (SPV)"]
+    direction TB
+    S1(["Setujui atau tolak<br/>pengajuan"]) ~~~ S2(["Setujui lembur<br/>dan dinas luar"]) ~~~ S3(["Pantau kehadiran<br/>di cabangnya"])
+  end
+  subgraph A["ADMIN"]
+    direction TB
+    A1(["Kelola data karyawan,<br/>cabang, dan jadwal"]) ~~~ A2(["Atur hari libur dan<br/>aturan terlambat"]) ~~~ A3(["Susun dan simpan<br/>slip gaji"]) ~~~ A4(["Izinkan daftar<br/>wajah ulang"]) ~~~ A5(["Periksa dan koreksi<br/>catatan absen"])
+  end
+  subgraph O["OWNER"]
+    direction TB
+    O1(["Lihat laporan<br/>dan statistik"]) ~~~ O2(["Lihat data penggajian"])
+  end
+  K ~~~ S ~~~ A ~~~ O
+  classDef kar fill:#DCE6F1,stroke:#4F6D9A,stroke-width:2px,color:#14253D;
+  classDef spv fill:#FDF1DC,stroke:#B4750A,stroke-width:2px,color:#3A2604;
+  classDef adm fill:#E6E3F4,stroke:#6A5FB0,stroke-width:2px,color:#241C52;
+  classDef own fill:#E3F1E3,stroke:#3C8A4E,stroke-width:2px,color:#12361C;
+  class K1,K2,K3,K4,K5 kar; class S1,S2,S3 spv; class A1,A2,A3,A4,A5 adm; class O1,O2 own;

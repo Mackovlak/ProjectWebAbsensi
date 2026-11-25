@@ -1,0 +1,12 @@
+flowchart LR
+  ADMIN(["Admin"]) --> WHERE{"Which scope?"}
+  WHERE -- "global" --> SAVEGLOBAL["slip_gaji_form.php panel<br/>ajax_save_kebijakan_keterlambatan.php<br/>CSRF + bounds-checked"]
+  WHERE -- "one branch" --> SAVEBRANCH["admin_detail_cabang.php<br/>simpan_pengaturan_keterlambatan"]
+  SAVEGLOBAL --> SETTINGS[("system_settings<br/>keterlambatan_*")]
+  SAVEBRANCH --> SETTINGS2[("system_settings<br/>c{id}_keterlambatan_*")]
+  SETTINGS2 -. "shadows" .-> SETTINGS
+
+  classDef decision fill:#ffffff,stroke:#4f46e5,stroke-width:2px,color:#181b29;
+  classDef store fill:#eceafd,stroke:#4f46e5,stroke-width:2px,color:#181b29;
+  class WHERE decision;
+  class SETTINGS,SETTINGS2 store;

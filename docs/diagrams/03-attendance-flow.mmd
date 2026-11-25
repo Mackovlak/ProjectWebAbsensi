@@ -1,0 +1,43 @@
+flowchart TD
+  START(["Kiosk opens absen.php<br/>with id_karyawan"]) --> ROWCHK{"absensi row<br/>for today?"}
+
+  ROWCHK -- "no" --> KETPICK{"keterangan"}
+  KETPICK -- "Hadir" --> ONSITE{"karyawan.mode_absen<br/>= onsite?"}
+  ONSITE -- "yes: skip geofence" --> FACE1["Face token challenge/verify<br/>(face-api.js descriptor)"]
+  ONSITE -- "no" --> GPS["validateLokasiAbsen()<br/>radius + GPS-accuracy tolerance<br/>capped at GPS_TOLERANCE_MAKS_METER"]
+  GPS -- "outside radius" --> REJECT1(["reject: outside branch radius"])
+  GPS -- "inside" --> FACE1
+  FACE1 -- "fail / no descriptor" --> REJECT2(["reject: face required"])
+  FACE1 -- "ok" --> LATE{"is_hari_kerja<br/>(not overtime day)?"}
+  LATE -- "yes" --> CALC["menit_terlambat = check-in minus jam_masuk_akhir<br/>apakahTerlambat() vs grace: branch override else global"]
+  LATE -- "no, Sabtu dll." --> SKIP["no lateness computed"]
+  CALC --> INSERT1["INSERT absensi<br/>keterangan=Hadir, is_onsite flag, status_masuk"]
+  SKIP --> INSERT1
+
+  KETPICK -- "Sakit / Cuti / OFF / Alpha" --> INSERT2["INSERT absensi<br/>no face / GPS required"]
+  KETPICK -- "Dinas Luar" --> DINASCHK{"pre-approved<br/>pengajuan_izin dinas luar<br/>for today?"}
+  DINASCHK -- "yes" --> INSERT3["INSERT absensi<br/>keterangan=Dinas Luar directly"]
+  DINASCHK -- "no" --> PENDING["INSERT absensi<br/>keterangan=Pending Dinas"]
+  PENDING --> APPROVE["awaits admin review:<br/>proses_persetujuan_dinas.php"]
+
+  ROWCHK -- "yes, jam_pulang empty" --> PULANGKET{"original keterangan?"}
+  PULANGKET -- "Hadir / Dinas Luar" --> FACE2["Face verification required again"]
+  FACE2 --> GPS2{"onsite?"}
+  GPS2 -- "yes" --> OVERTIME{"checkout after<br/>shift jam_pulang?"}
+  GPS2 -- "no" --> GPSCHECK["validateLokasiAbsen() again"]
+  GPSCHECK --> OVERTIME
+  OVERTIME -- "yes" --> EVIDENCE["require alasan_pulang + foto_pulang"]
+  OVERTIME -- "no" --> UPDATE1["UPDATE absensi SET jam_pulang, ..."]
+  EVIDENCE --> UPDATE1
+  PULANGKET -- "OFF / Sakit / Cuti / Alpha" --> UPDATE1
+
+  ROWCHK -- "yes, jam_pulang already set" --> DONE(["reject: already checked out"])
+
+  classDef decision fill:#ffffff,stroke:#4f46e5,stroke-width:2px,color:#181b29;
+  classDef reject fill:#fbe6ee,stroke:#c9184a,stroke-width:2px,color:#5c0a25;
+  classDef success fill:#e5f8f1,stroke:#0f9d6e,stroke-width:2px,color:#0b3b2c;
+  classDef pending fill:#fdf2e0,stroke:#b4750a,stroke-width:2px,color:#3a2604;
+  class ROWCHK,KETPICK,ONSITE,LATE,DINASCHK,PULANGKET,GPS2,OVERTIME decision;
+  class REJECT1,REJECT2,DONE reject;
+  class INSERT1,INSERT2,INSERT3,UPDATE1 success;
+  class PENDING,APPROVE pending;

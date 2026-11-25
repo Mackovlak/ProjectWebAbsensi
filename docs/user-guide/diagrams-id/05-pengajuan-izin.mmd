@@ -1,0 +1,14 @@
+flowchart TD
+  A["Pilih jenis dan<br/>tanggal pengajuan"] --> B{"Sisa jatah<br/>cukup?"}
+  B -- "Tidak" --> C(["Tidak terkirim:<br/>ubah tanggalnya"])
+  B -- "Ya" --> D["Menunggu keputusan<br/>jatah ditahan sementara"]
+  D --> E{"SPV memutuskan"}
+  E -- "Setuju" --> F(["Hari kerja yang berlaku<br/>muncul di absensi"])
+  E -- "Tolak" --> G(["Jatah kembali"])
+  D -. "Dibatalkan karyawan" .-> G
+  classDef step fill:#DCE6F1,stroke:#4F6D9A,stroke-width:2px,color:#14253D;
+  classDef ask fill:#FFFFFF,stroke:#4F6D9A,stroke-width:2px,color:#14253D;
+  classDef ok fill:#E3F1E3,stroke:#3C8A4E,stroke-width:2px,color:#12361C;
+  classDef warn fill:#FDF1DC,stroke:#B4750A,stroke-width:2px,color:#3A2604;
+  classDef bad fill:#FBE6EE,stroke:#B03A5B,stroke-width:2px,color:#4A0F20;
+  class A step; class B,E ask; class D warn; class F ok; class C,G bad;

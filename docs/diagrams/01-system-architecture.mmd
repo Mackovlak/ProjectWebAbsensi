@@ -1,0 +1,63 @@
+flowchart TB
+  subgraph CLIENT["Browser"]
+    KIOSK["absen.php<br/>sessionless kiosk, id_karyawan in URL"]
+    DASH["Role dashboards<br/>staff_ / supervisor_ / admin_ / owner_"]
+    FACEAPI["face-api.js (CDN)<br/>computes descriptor client-side"]
+  end
+
+  subgraph BOOT["config.php bootstrap (required by every page)"]
+    SESS["Session + role guards<br/>requireAdmin / requireStaff / ..."]
+    CSRF["generateCSRFToken / verifyCSRFToken"]
+    HELPERS["izin_functions · kalender_functions<br/>keterlambatan_functions · lembur_functions<br/>security_functions"]
+    ENV[".env via phpdotenv<br/>DB creds, REGISTRATION_MASTER_KEY"]
+  end
+
+  subgraph PROC["Processors"]
+    ABSENAPI["proses_absen.php<br/>JSON check-in/out API"]
+    MASTER["master_process.php<br/>dispatch-by-POST-key admin CRUD"]
+    IZIN["proses_pengajuan_izin.php<br/>proses_persetujuan_dinas.php"]
+    LATEAJAX["ajax_save_kebijakan_keterlambatan.php (global)<br/>admin_detail_cabang.php (per-branch)"]
+  end
+
+  subgraph DATA["MySQL: db_absensi.kry"]
+    T1[("karyawan · users · cabang")]
+    T2[("absensi<br/>1 row / employee / day")]
+    T3[("pengajuan_izin")]
+    T4[("system_settings<br/>global + per-branch cN_ overrides")]
+    T5[("schema_migrations")]
+  end
+
+  KIOSK -- "face descriptor + GPS coords" --> ABSENAPI
+  DASH -- "CRUD forms" --> MASTER
+  DASH -- "leave / dinas luar" --> IZIN
+  DASH -- "lateness policy edits" --> LATEAJAX
+  FACEAPI -.captures on device.-> KIOSK
+
+  KIOSK --> SESS
+  DASH --> SESS
+  SESS --> CSRF
+  SESS --> HELPERS
+
+  ABSENAPI --> HELPERS
+  MASTER --> HELPERS
+  IZIN --> HELPERS
+  LATEAJAX --> HELPERS
+
+  ABSENAPI --> T2
+  MASTER --> T1
+  MASTER --> T4
+  IZIN --> T3
+  IZIN --> T2
+  LATEAJAX --> T4
+
+  MIGRATE["migrate.php + migrations/001-012"] --> T5
+  MIGRATE -.alters schema.-> DATA
+
+  ENV --> BOOT
+
+  classDef proc fill:#eceafd,stroke:#4f46e5,stroke-width:2px,color:#181b29;
+  classDef data fill:#fdf2e0,stroke:#b4750a,stroke-width:2px,color:#181b29;
+  classDef client fill:#e5f8f1,stroke:#0f9d6e,stroke-width:2px,color:#181b29;
+  class ABSENAPI,MASTER,IZIN,LATEAJAX proc;
+  class T1,T2,T3,T4,T5 data;
+  class KIOSK,DASH,FACEAPI client;

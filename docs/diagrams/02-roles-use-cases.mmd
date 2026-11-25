@@ -1,0 +1,27 @@
+flowchart LR
+  subgraph STAFF["STAFF"]
+    direction TB
+    UC1(["Check in / out via kiosk"]) ~~~ UC2(["Register face"]) ~~~ UC3(["Submit leave /<br/>Dinas Luar request"]) ~~~ UC4(["Request overtime approval"]) ~~~ UC5(["View own attendance<br/>& payslip"])
+  end
+  subgraph SPV["SUPERVISOR (branch-scoped)"]
+    direction TB
+    UC6(["Approve / reject<br/>leave requests"]) ~~~ UC7(["Approve Dinas Luar<br/>/ overtime"]) ~~~ UC8(["View branch attendance"])
+  end
+  subgraph ADMIN["ADMIN"]
+    direction TB
+    UC9(["Manage employees,<br/>branches, shifts"]) ~~~ UC10(["Configure lateness policy<br/>global + per-branch"]) ~~~ UC11(["Generate payroll slip"]) ~~~ UC12(["Run DB migrations"]) ~~~ UC13(["Manage face-reset<br/>permissions"]) ~~~ UC14(["Seed / backfill<br/>attendance data"])
+  end
+  subgraph OWNER["OWNER (read-mostly)"]
+    direction TB
+    UC15(["View reports & statistics"]) ~~~ UC16(["View payroll (locked)"])
+  end
+  STAFF ~~~ SPV ~~~ ADMIN ~~~ OWNER
+
+  classDef staffUC fill:#e3ecff,stroke:#3457d5,stroke-width:2px,color:#12224f;
+  classDef spvUC fill:#fdf2e0,stroke:#b4750a,stroke-width:2px,color:#3a2604;
+  classDef adminUC fill:#eceafd,stroke:#4f46e5,stroke-width:2px,color:#221c66;
+  classDef ownerUC fill:#e5f8f1,stroke:#0f9d6e,stroke-width:2px,color:#0b3b2c;
+  class UC1,UC2,UC3,UC4,UC5 staffUC;
+  class UC6,UC7,UC8 spvUC;
+  class UC9,UC10,UC11,UC12,UC13,UC14 adminUC;
+  class UC15,UC16 ownerUC;

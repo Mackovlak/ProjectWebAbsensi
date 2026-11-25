@@ -1,0 +1,47 @@
+erDiagram
+  cabang ||--o{ karyawan : "id_cabang"
+  cabang ||--o{ jam_kerja : "id_cabang"
+  cabang ||--o{ users : "supervisor scope"
+  cabang |o--o{ hari_libur : "optional id_cabang"
+  jabatan ||--o{ karyawan : "id_jabatan"
+  karyawan ||--o| users : "id_karyawan (1:1)"
+  karyawan ||--o{ absensi : "id_karyawan"
+  karyawan ||--o{ pengajuan_izin : "id_karyawan"
+  pengajuan_izin |o--o{ absensi : "id_pengajuan"
+
+  cabang {
+    decimal latitude
+    decimal longitude
+    int radius_meter
+  }
+  jabatan {
+    decimal tunjangan_jabatan
+    bool overtime_sabtu
+  }
+  karyawan {
+    string id_karyawan "11 digit YYYYMMDDXXX"
+    enum status "aktif / nonaktif"
+    int jatah_cuti "default 12"
+    enum mode_absen "tetap / onsite"
+  }
+  users {
+    enum role "admin owner supervisor staff"
+    text face_descriptor
+    bool is_active
+  }
+  absensi {
+    date tanggal
+    time jam_masuk
+    time jam_pulang
+    string keterangan
+    string status_masuk
+    int menit_terlambat
+    bool is_manual_entry
+  }
+  pengajuan_izin {
+    string jenis
+    date tanggal_mulai
+    date tanggal_selesai
+    string status
+    bool potong_kuota
+  }

@@ -1,0 +1,12 @@
+flowchart TD
+  A["Hari dinas luar:<br/>karyawan absen"] --> B{"Pengajuan dinas luar<br/>sudah disetujui?"}
+  B -- "Sudah" --> C["Kamera tetap diperiksa<br/>lokasi tidak dibatasi"]
+  C --> D(["Tercatat Dinas Luar"])
+  B -- "Belum" --> E["Tercatat Pending Dinas<br/>menunggu persetujuan Admin"]
+  E -- "Setelah disetujui" --> D
+  classDef step fill:#DCE6F1,stroke:#4F6D9A,stroke-width:2px,color:#14253D;
+  classDef ask fill:#FFFFFF,stroke:#4F6D9A,stroke-width:2px,color:#14253D;
+  classDef ok fill:#E3F1E3,stroke:#3C8A4E,stroke-width:2px,color:#12361C;
+  classDef warn fill:#FDF1DC,stroke:#B4750A,stroke-width:2px,color:#3A2604;
+  classDef bad fill:#FBE6EE,stroke:#B03A5B,stroke-width:2px,color:#4A0F20;
+  class A,C step; class B ask; class D ok; class E warn;

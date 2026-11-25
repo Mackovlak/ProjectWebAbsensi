@@ -1,0 +1,15 @@
+sequenceDiagram
+  participant S as Staff
+  participant F as staff_pengajuan_izin.php
+  participant R as kelola_pengajuan_izin.php
+  participant P as proses_pengajuan_izin.php
+  participant DB as absensi / pengajuan_izin
+
+  S->>F: submit jenis + date range
+  F->>P: ajukan_izin (checks tersedia = jatah - terpakai - tertahan)
+  P->>DB: INSERT pengajuan_izin (status=Pending)
+  Note over R: Supervisor sees only its branch,<br/>Owner is read-only here
+  R->>P: review_izin (approve)
+  P->>P: hitungHariIzin() recomputed fresh,<br/>not trusted from submission
+  P->>DB: materialisasiIzin():<br/>1 absensi row / effective work day<br/>is_manual_entry = 0
+  Note over DB: Dinas Luar is the exception:<br/>never materialised, checked live<br/>at check-in via getIzinDinasDisetujui()

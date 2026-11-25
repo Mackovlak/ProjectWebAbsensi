@@ -1,0 +1,17 @@
+flowchart TD
+  OPEN["Admin opens slip_gaji_form.php<br/>for 1 employee + period"] --> FETCH["Fetch absensi rows:<br/>Hadir / Dinas Luar with status_masuk = Terlambat"]
+  FETCH --> RESOLVE["For each late day, resolve policy:<br/>per-branch cN_keterlambatan_* if set,<br/>else global keterlambatan_* default"]
+  RESOLVE --> HASMIN{"menit_terlambat<br/>recorded?"}
+  HASMIN -- "yes" --> TIERED["hitungPotonganKeterlambatan():<br/>grace, then tier 1 flat, then tier 2 per interval,<br/>frozen past maks_jam"]
+  HASMIN -- "no: pre-migration 007<br/>or unfixed dummy data" --> LEGACY["Fallback: karyawan.rate_keterlambatan<br/>flat rate, tagged legacy_flat"]
+  TIERED --> SUM["Sum into total + total_menit<br/>+ per-day rincian"]
+  LEGACY --> SUM
+  SUM --> PANEL["'Cara Hitung & Kebijakan' panel:<br/>late days, total minutes, plain-language rule"]
+  PANEL --> SLIP["Save slip_gaji row<br/>locked read-only after 5 days"]
+
+  classDef decision fill:#ffffff,stroke:#4f46e5,stroke-width:2px,color:#181b29;
+  classDef good fill:#e5f8f1,stroke:#0f9d6e,stroke-width:2px,color:#0b3b2c;
+  classDef warnc fill:#fdf2e0,stroke:#b4750a,stroke-width:2px,color:#3a2604;
+  class HASMIN decision;
+  class TIERED,SUM good;
+  class LEGACY warnc;
