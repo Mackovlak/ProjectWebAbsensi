@@ -5,9 +5,11 @@
  * Sessionless, sama seperti proses_absen.php - diidentifikasi lewat
  * id_karyawan, bukan sesi login. Karyawan yang sudah absen masuk (Hadir/
  * Dinas Luar) hari ini dan belum absen pulang bisa mengajukan izin pulang
- * lebih awal. Butuh persetujuan Admin/Supervisor sebelum absen pulang lebih
- * awal dari jam pulang shift diterima (lihat proses_absen.php). Tidak
- * memotong kuota tahunan sama sekali - hanya menandai baris absensi hari ini.
+ * lebih awal. OPSIONAL - pemberitahuan di muka saja: absen pulang lebih awal
+ * TIDAK menunggu persetujuan (lihat jamPulangCepatPerluTinjau() di
+ * izin_functions.php); alasan yang dikirim di sini dipakai saat absen pulang
+ * sehingga tidak perlu diisi ulang, lalu ditinjau Admin/Supervisor kemudian.
+ * Tidak memotong kuota tahunan sama sekali - hanya menandai baris absensi hari ini.
  */
 require 'config.php';
 
@@ -57,23 +59,39 @@ try {
     }
 
     if ($row['izin_pulang_cepat'] === 'Pending') {
-        outputJSON(['success' => false, 'message' => 'Pengajuan izin pulang cepat Anda hari ini masih menunggu persetujuan.']);
+        outputJSON(['success' => false, 'message' => 'Pengajuan izin pulang cepat Anda hari ini sudah terkirim. Anda bisa langsung absen pulang tanpa menunggu persetujuan.']);
     }
 
     if ($row['izin_pulang_cepat'] === 'Disetujui') {
         outputJSON(['success' => false, 'message' => 'Izin pulang cepat Anda hari ini sudah disetujui. Silakan langsung absen pulang.']);
     }
 
+    $alasan = mb_substr($alasan, 0, 255);
     $stmt_upd = $conn->prepare("UPDATE absensi SET izin_pulang_cepat = 'Pending', alasan_pulang_cepat = ? WHERE id = ?");
     $stmt_upd->bind_param("si", $alasan, $row['id']);
 
     if ($stmt_upd->execute()) {
         $stmt_upd->close();
         logActivity($conn, 'ajukan_pulang_cepat', "Ajukan izin pulang cepat via kiosk absen", $id_karyawan);
+
+        $stmt_cb = $conn->prepare("SELECT nama_karyawan, id_cabang FROM karyawan WHERE id_karyawan = ?");
+        $stmt_cb->bind_param("s", $id_karyawan);
+        $stmt_cb->execute();
+        $kry_push = $stmt_cb->get_result()->fetch_assoc();
+        $stmt_cb->close();
+        if ($kry_push) {
+            $pulang_cepat_ke = urutanPulangCepatBulan($conn, $id_karyawan, $tanggal);
+            $tanda_batas = $pulang_cepat_ke > PULANG_CEPAT_MAKS_PER_BULAN
+                ? " · ke-{$pulang_cepat_ke} bulan ini ⚠ melebihi batas " . PULANG_CEPAT_MAKS_PER_BULAN . "x"
+                : '';
+            pushAntreApprover($conn, (int)$kry_push['id_cabang'], 'Rencana pulang cepat',
+                $kry_push['nama_karyawan'] . ' · ' . $alasan . $tanda_batas, 'kelola_pengajuan_izin.php',
+                'pulang-cepat-' . $id_karyawan . '-' . $tanggal);
+        }
         outputJSON([
             'success' => true,
             'title' => 'Permintaan Terkirim',
-            'message' => 'Pengajuan izin pulang cepat Anda telah dikirim dan menunggu persetujuan atasan. Anda tetap bisa absen pulang seperti biasa pada jam pulang normal tanpa perlu izin ini.'
+            'message' => 'Pemberitahuan pulang cepat Anda telah dikirim ke atasan. Anda bisa langsung absen pulang kapan saja tanpa menunggu persetujuan - atasan akan meninjaunya kemudian.'
         ]);
     } else {
         $stmt_upd->close();

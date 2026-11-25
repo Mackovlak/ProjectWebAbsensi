@@ -139,12 +139,15 @@ $stmt_dinas_ht->execute();
 $daftar_dinas_ht = $stmt_dinas_ht->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt_dinas_ht->close();
 
-$sql_pulang_cepat_ht = "SELECT a.id, a.tanggal, a.alasan_pulang_cepat, a.jam_masuk,
-                                k.nama_karyawan, k.id_karyawan, c.nama_cabang
+// Pulang cepat TIDAK dibatasi CURDATE(): absen pulang lebih awal tidak lagi
+// menunggu ACC (lihat jamPulangCepatPerluTinjau() di izin_functions.php), jadi
+// tinjauannya memang sering terjadi setelah karyawan pulang - bahkan besoknya.
+$sql_pulang_cepat_ht = "SELECT a.id, a.tanggal, a.alasan_pulang_cepat, a.jam_masuk, a.jam_pulang,
+                                k.nama_karyawan, k.id_karyawan, k.id_cabang, c.nama_cabang
                          FROM absensi a
                          JOIN karyawan k ON a.id_karyawan = k.id_karyawan
                          LEFT JOIN cabang c ON k.id_cabang = c.id
-                         WHERE a.izin_pulang_cepat = 'Pending' AND a.tanggal = CURDATE()";
+                         WHERE a.izin_pulang_cepat = 'Pending'";
 $params_pc_ht = [];
 $types_pc_ht = '';
 if ($cabang_reviewer !== null) {
@@ -152,7 +155,7 @@ if ($cabang_reviewer !== null) {
     $params_pc_ht[] = $cabang_reviewer;
     $types_pc_ht .= 'i';
 }
-$sql_pulang_cepat_ht .= " ORDER BY a.tanggal DESC";
+$sql_pulang_cepat_ht .= " ORDER BY a.tanggal ASC, a.jam_pulang ASC LIMIT 50";
 $stmt_pc_ht = $conn->prepare($sql_pulang_cepat_ht);
 if (!empty($params_pc_ht)) {
     $stmt_pc_ht->bind_param($types_pc_ht, ...$params_pc_ht);
@@ -160,6 +163,14 @@ if (!empty($params_pc_ht)) {
 $stmt_pc_ht->execute();
 $daftar_pulang_cepat_ht = $stmt_pc_ht->get_result()->fetch_all(MYSQLI_ASSOC);
 $stmt_pc_ht->close();
+foreach ($daftar_pulang_cepat_ht as &$pc_row) {
+    $pc_row['jam_pulang_shift'] = !empty($pc_row['jam_masuk'])
+        ? getJamPulangShift($conn, (int)$pc_row['id_cabang'], $pc_row['jam_masuk'])
+        : null;
+    // Batas bulanan hanya tanda (PULANG_CEPAT_MAKS_PER_BULAN), tanpa potongan.
+    $pc_row['pulang_cepat_ke'] = urutanPulangCepatBulan($conn, $pc_row['id_karyawan'], $pc_row['tanggal']);
+}
+unset($pc_row);
 
 // Dinas luar dadakan saat PULANG (proses_absen.php): beda dari dua daftar di
 // atas, ini bukan sesuatu yang perlu ACC/Tolak - absen pulangnya sudah
@@ -208,12 +219,12 @@ $stmt_dp_ht->close();
 <?php include 'alert_messages.php'; ?>
 
 <?php if (!empty($daftar_dinas_ht) || !empty($daftar_pulang_cepat_ht)): ?>
-<!-- Hari Ini: Dinas Luar & Pulang Cepat dadakan (kiosk absen.php) -->
+<!-- Kiosk: Dinas Luar dadakan (hari ini) & Pulang Cepat (menunggu tinjauan) -->
 <div class="mb-8">
     <div class="flex items-center gap-2 mb-3">
         <i class="ph-duotone ph-lightning text-xl text-amber-500"></i>
-        <h2 class="font-bold text-slate-800 dark:text-white">Permintaan Hari Ini (Kiosk Absen)</h2>
-        <span class="text-xs text-slate-400">&mdash; dinas luar & pulang cepat dadakan, terpisah dari pengajuan izin rentang tanggal</span>
+        <h2 class="font-bold text-slate-800 dark:text-white">Permintaan dari Kiosk Absen</h2>
+        <span class="text-xs text-slate-400">&mdash; dinas luar dadakan hari ini & pulang cepat yang menunggu tinjauan, terpisah dari pengajuan izin rentang tanggal</span>
     </div>
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <?php foreach ($daftar_dinas_ht as $nd): ?>
@@ -264,13 +275,31 @@ $stmt_dp_ht->close();
                 <div class="flex items-start justify-between gap-3 mb-2">
                     <div class="min-w-0">
                         <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold border uppercase tracking-wide bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800/50">
-                            <i class="ph-bold ph-clock"></i> Izin Pulang Cepat
+                            <i class="ph-bold ph-clock"></i> Pulang Cepat
                         </span>
+                        <?php if (!empty($pc['jam_pulang']) && $pc['jam_pulang'] !== '00:00:00'): ?>
+                            <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold border bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-700/50 dark:text-slate-300 dark:border-slate-600">Sudah pulang</span>
+                        <?php else: ?>
+                            <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold border bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-700/50 dark:text-slate-300 dark:border-slate-600">Pemberitahuan di muka</span>
+                        <?php endif; ?>
                         <h3 class="text-base font-bold text-slate-800 dark:text-white mt-1.5"><?php echo safe_output($pc['nama_karyawan']); ?></h3>
                         <p class="text-xs text-slate-400">
                             <?php echo safe_output($pc['id_karyawan']); ?>
                             <?php if (!empty($pc['nama_cabang'])): ?> &middot; <?php echo safe_output($pc['nama_cabang']); ?><?php endif; ?>
-                            &middot; Masuk <?php echo !empty($pc['jam_masuk']) ? date('H:i', strtotime($pc['jam_masuk'])) : '-'; ?>
+                            &middot; <?php echo date('d/m/Y', strtotime($pc['tanggal'])); ?>
+                        </p>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                            Masuk <?php echo !empty($pc['jam_masuk']) ? date('H:i', strtotime($pc['jam_masuk'])) : '-'; ?>
+                            &middot; Pulang <b><?php echo (!empty($pc['jam_pulang']) && $pc['jam_pulang'] !== '00:00:00') ? date('H:i', strtotime($pc['jam_pulang'])) : '-'; ?></b>
+                            <?php if (!empty($pc['jam_pulang_shift'])): ?>
+                                (jam pulang shift <?php echo date('H:i', strtotime($pc['jam_pulang_shift'])); ?>)
+                            <?php endif; ?>
+                        </p>
+                        <?php $pc_lewat_batas = $pc['pulang_cepat_ke'] > PULANG_CEPAT_MAKS_PER_BULAN; ?>
+                        <p class="text-xs mt-0.5 <?php echo $pc_lewat_batas ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-slate-500 dark:text-slate-400'; ?>">
+                            <?php if ($pc_lewat_batas): ?><i class="ph-bold ph-warning"></i><?php endif; ?>
+                            Pulang cepat ke-<?php echo (int)$pc['pulang_cepat_ke']; ?> bulan ini
+                            (batas wajar <?php echo PULANG_CEPAT_MAKS_PER_BULAN; ?>x<?php echo $pc_lewat_batas ? ' &mdash; melebihi batas, tanpa potongan' : ''; ?>)
                         </p>
                     </div>
                 </div>
@@ -398,6 +427,8 @@ $stmt_dp_ht->close();
                 $kuota_kar = getRingkasanKuotaIzin($conn, $row['id_karyawan'], (int)date('Y', strtotime($row['tanggal_mulai'])));
                 $rincian   = hitungHariIzin($conn, $row['id_karyawan'], $row['tanggal_mulai'], $row['tanggal_selesai']);
                 $is_pending = ($row['status'] === 'Pending');
+                $setengah_ke = 0;
+                $lewat_batas = false;
             ?>
             <div class="bg-white dark:bg-slate-800 rounded-2xl border <?php echo $is_pending ? 'border-amber-200 dark:border-amber-800/50' : 'border-slate-200 dark:border-slate-700'; ?> shadow-sm overflow-hidden">
                 <div class="p-6">
@@ -463,6 +494,19 @@ $stmt_dp_ht->close();
                                 <?php echo ($row['jenis'] === 'Sakit') ? 'Sakit + bukti - tidak memotong kuota' : 'Tidak memotong kuota'; ?>
                             </span>
                         <?php endif; ?>
+                        <?php if (!empty($row['setengah_hari'])): ?>
+                            <?php
+                                // Urutan pengajuan setengah hari ini di bulannya (berdasar urutan diajukan).
+                                // Ke-4 dst. melewati batas wajar; pengajuan tetap boleh disetujui.
+                                $setengah_ke = urutanPengajuanSetengahHariBulan($conn, $row['id_karyawan'], $row['tanggal_mulai'], (int)$row['id']);
+                                $lewat_batas = $setengah_ke > IZIN_SETENGAH_HARI_MAKS_PER_BULAN;
+                            ?>
+                            <span class="<?php echo $lewat_batas ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-slate-500 dark:text-slate-400'; ?>">
+                                <?php if ($lewat_batas): ?><i class="ph-bold ph-warning"></i><?php endif; ?>
+                                Setengah hari ke-<?php echo $setengah_ke; ?> bulan ini
+                                (batas wajar <?php echo IZIN_SETENGAH_HARI_MAKS_PER_BULAN; ?>x<?php echo $lewat_batas ? ' &mdash; melebihi batas, tanpa potongan' : ''; ?>)
+                            </span>
+                        <?php endif; ?>
                         <?php if ($is_pending && empty($row['setengah_hari']) && $rincian['hari_efektif'] !== (int)$row['jumlah_hari_kerja']): ?>
                             <span class="text-amber-600 dark:text-amber-400 font-semibold">
                                 <i class="ph-bold ph-warning"></i>
@@ -489,7 +533,7 @@ $stmt_dp_ht->close();
                     <?php endif; ?>
 
                     <?php if ($is_pending && $boleh_review): ?>
-                        <form action="proses_pengajuan_izin.php" method="POST" class="form-review border-t border-slate-100 dark:border-slate-700 pt-4">
+                        <form action="proses_pengajuan_izin.php" method="POST" class="form-review border-t border-slate-100 dark:border-slate-700 pt-4" data-setengah="<?php echo !empty($row['setengah_hari']) ? '1' : '0'; ?>">
                             <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
                             <input type="hidden" name="review_izin" value="1">
                             <input type="hidden" name="id_pengajuan" value="<?php echo (int)$row['id']; ?>">
@@ -551,7 +595,9 @@ document.querySelectorAll('.form-review').forEach(function (form) {
             Swal.fire({
                 title: aksi === 'setujui' ? 'Setujui pengajuan ini?' : 'Tolak pengajuan ini?',
                 text: aksi === 'setujui'
-                    ? 'Absensi karyawan pada tanggal tersebut akan tercatat otomatis.'
+                    ? (form.dataset.setengah === '1'
+                        ? 'Karyawan tetap absen di tanggal tersebut; izin setengah hari berlaku saat absen.'
+                        : 'Absensi karyawan pada tanggal tersebut akan tercatat otomatis.')
                     : 'Karyawan akan melihat alasan penolakan Anda.',
                 icon: 'question',
                 showCancelButton: true,

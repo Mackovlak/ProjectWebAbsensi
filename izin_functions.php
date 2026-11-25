@@ -27,6 +27,7 @@ define('IZIN_JATAH_DEFAULT', 12);
 // Jenis yang boleh diajukan setengah hari. Hanya Cuti & Izin: keduanya wajib
 // diajukan SEBELUM hari-H, jadi setengah hari selalu terencana (tidak ada
 // kasus mundur). Sakit/Dinas/cuti khusus sengaja tidak termasuk.
+// Setengah hari TIDAK memotong jatah tahunan (potong_kuota = 0).
 define('IZIN_JENIS_SETENGAH_HARI', ['Cuti', 'Izin']);
 define('IZIN_SESI_SETENGAH_HARI', ['Masuk Siang', 'Pulang Awal']);
 
@@ -191,7 +192,8 @@ function getRingkasanKuotaIzin($conn, $id_karyawan, $tahun = null) {
     $row = $stmt->get_result()->fetch_assoc();
     $stmt->close();
 
-    // float, bukan int: pengajuan setengah hari memotong 0,5.
+    // float, bukan int: jumlah_hari_kerja berupa DECIMAL (0,5 untuk setengah hari).
+    // Setengah hari tidak pernah masuk sini (potong_kuota = 0).
     $terpakai = (float)($row['terpakai'] ?? 0);
     $tertahan = (float)($row['tertahan'] ?? 0);
 
@@ -318,44 +320,110 @@ function getIzinDinasDisetujui($conn, $id_karyawan, $tanggal) {
 }
 
 /**
- * Batas izin setengah hari per karyawan per bulan kalender, berlaku untuk
- * pengajuan setengah hari DAN konversi "Tidak Absen Masuk" (dihitung
- * bersama, lihat hitungSetengahHariBulanIni). Angka ini kebijakan perusahaan
- * (mengikuti Talenta). Konversi murni reklasifikasi hari yang sudah tercatat
- * sehingga tidak memotong jatah_cuti; pengajuan setengah hari memotong 0,5.
+ * Batas WAJAR izin setengah hari per karyawan per bulan kalender (kebijakan
+ * perusahaan). Batas ini TIDAK pernah memblokir dan TIDAK ada potongan gaji -
+ * yang melewatinya hanya DITANDAI untuk atasan (admin/SPV/owner):
+ *  - Pengajuan setengah hari oleh karyawan: ke-4 dst. (urutan: lihat
+ *    urutanPengajuanSetengahHariBulan) diberi tanda "melebihi batas" di
+ *    kelola_pengajuan_izin.php dan di notifikasi push ke atasan.
+ *  - Konversi "Tidak Absen Masuk" oleh admin/SPV: konversi ke-4 dst. tetap
+ *    dijalankan, pesannya memberi tanda (konversiTidakAbsenMasukKeSetengahHari).
+ * Pulang cepat punya batas sendiri yang terpisah: PULANG_CEPAT_MAKS_PER_BULAN.
+ * Keduanya TIDAK memotong jatah_cuti tahunan (12 hari): setengah hari adalah
+ * jatah tersendiri, terpisah dari Cuti/Izin/Sakit satu hari penuh.
  */
 define('IZIN_SETENGAH_HARI_MAKS_PER_BULAN', 3);
 
 /**
- * Berapa kali karyawan ini memakai jatah setengah hari pada bulan/tahun
- * tertentu. Batas IZIN_SETENGAH_HARI_MAKS_PER_BULAN berlaku untuk dua jalur
- * sekaligus, supaya karyawan tidak bisa menghindarinya dengan berganti jalur:
- *  1. pengajuan setengah hari (Pending/Disetujui) di pengajuan_izin, dihitung
- *     per bulan tanggal pelaksanaan;
- *  2. konversi "Tidak Absen Masuk" oleh admin/SPV. Baris absensi hasil
- *     pengajuan (id_pengajuan terisi) tidak dihitung lagi di sini - sudah
- *     terwakili jalur 1.
- * $exclude_id = pengajuan yang sedang direview, agar tidak menghitung dirinya
- * sendiri saat persetujuan.
+ * Batas WAJAR pulang cepat per karyawan per bulan kalender - terpisah dari
+ * batas setengah hari di atas (3 setengah hari + 3 pulang cepat). Sama:
+ * hanya tanda untuk atasan, tidak memblokir dan tanpa potongan.
  */
-function hitungSetengahHariBulanIni($conn, $id_karyawan, $bulan, $tahun, $exclude_id = 0) {
-    $stmt = $conn->prepare("SELECT COUNT(*) AS jumlah FROM pengajuan_izin
-        WHERE id_karyawan = ? AND setengah_hari = 1 AND status IN ('Pending','Disetujui')
-          AND id <> ? AND MONTH(tanggal_mulai) = ? AND YEAR(tanggal_mulai) = ?");
-    $stmt->bind_param("siii", $id_karyawan, $exclude_id, $bulan, $tahun);
-    $stmt->execute();
-    $dari_pengajuan = (int)($stmt->get_result()->fetch_assoc()['jumlah'] ?? 0);
-    $stmt->close();
+define('PULANG_CEPAT_MAKS_PER_BULAN', 3);
 
+/**
+ * Urutan pulang cepat pada tanggal ini di bulannya (1, 2, 3, ...): pulang cepat
+ * karyawan yang sama pada tanggal-tanggal SEBELUMNYA di bulan yang sama + 1.
+ * Satu tanggal = satu baris absensi, jadi urutan tanggal = urutan kejadian.
+ *
+ * "Pulang cepat" = izin_pulang_cepat terisi (Pending/Disetujui/Ditolak) DAN
+ * jam_pulang sebelum jam pulang shift - atau belum absen pulang sama sekali
+ * (pemberitahuan di muka). Baris yang akhirnya pulang normal tidak dihitung.
+ * Dipakai untuk menandai yang ke-(PULANG_CEPAT_MAKS_PER_BULAN + 1) dst.
+ */
+function urutanPulangCepatBulan($conn, $id_karyawan, $tanggal) {
+    $stmt = $conn->prepare("SELECT COUNT(*) AS jumlah
+        FROM absensi a
+        JOIN karyawan k ON a.id_karyawan = k.id_karyawan
+        WHERE a.id_karyawan = ?
+          AND a.izin_pulang_cepat IS NOT NULL
+          AND a.tanggal < ? AND a.tanggal >= DATE_FORMAT(?, '%Y-%m-01')
+          AND (
+              a.jam_pulang IS NULL OR a.jam_pulang = '00:00:00'
+              OR a.jam_pulang < (
+                  SELECT jk.jam_pulang FROM jam_kerja jk WHERE jk.id_cabang = k.id_cabang
+                  ORDER BY ABS(TIMESTAMPDIFF(MINUTE, a.jam_masuk, jk.jam_masuk_akhir)) ASC LIMIT 1
+              )
+          )");
+    $stmt->bind_param("sss", $id_karyawan, $tanggal, $tanggal);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    return (int)($row['jumlah'] ?? 0) + 1;
+}
+
+/**
+ * Berapa kali karyawan ini sudah mengonversi Tidak Absen Masuk jadi izin
+ * setengah hari pada bulan/tahun tertentu. Baris absensi hasil pengajuan
+ * (id_pengajuan terisi) tidak dihitung - itu jalur pengajuan, bukan konversi.
+ */
+function hitungKonversiSetengahHariBulanIni($conn, $id_karyawan, $bulan, $tahun) {
     $stmt = $conn->prepare("SELECT COUNT(*) AS jumlah FROM absensi
         WHERE id_karyawan = ? AND dikonversi_izin_setengah_hari = 1 AND id_pengajuan IS NULL
           AND MONTH(tanggal) = ? AND YEAR(tanggal) = ?");
     $stmt->bind_param("sii", $id_karyawan, $bulan, $tahun);
     $stmt->execute();
-    $dari_konversi = (int)($stmt->get_result()->fetch_assoc()['jumlah'] ?? 0);
+    $row = $stmt->get_result()->fetch_assoc();
     $stmt->close();
+    return (int)($row['jumlah'] ?? 0);
+}
 
-    return $dari_pengajuan + $dari_konversi;
+/**
+ * Berapa pengajuan setengah hari (Pending/Disetujui) karyawan ini pada
+ * bulan/tahun tanggal pelaksanaan. $exclude_id = pengajuan yang sedang
+ * ditampilkan, supaya tidak menghitung dirinya sendiri. Hanya informasi -
+ * tidak pernah dipakai untuk menolak pengajuan.
+ */
+function hitungPengajuanSetengahHariBulan($conn, $id_karyawan, $bulan, $tahun, $exclude_id = 0) {
+    $stmt = $conn->prepare("SELECT COUNT(*) AS jumlah FROM pengajuan_izin
+        WHERE id_karyawan = ? AND setengah_hari = 1 AND status IN ('Pending','Disetujui')
+          AND id <> ? AND MONTH(tanggal_mulai) = ? AND YEAR(tanggal_mulai) = ?");
+    $stmt->bind_param("siii", $id_karyawan, $exclude_id, $bulan, $tahun);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    return (int)($row['jumlah'] ?? 0);
+}
+
+/**
+ * Urutan pengajuan setengah hari ini di bulannya (1, 2, 3, ...), berdasarkan
+ * urutan pengajuan (id): hanya pengajuan Pending/Disetujui milik karyawan yang
+ * sama pada bulan tanggal pelaksanaan yang sama dan diajukan LEBIH DULU yang
+ * dihitung. Dipakai untuk menentukan mana yang melewati batas
+ * IZIN_SETENGAH_HARI_MAKS_PER_BULAN - bukan jumlah total, supaya lima
+ * pengajuan yang masih menunggu tidak semuanya dianggap "melewati batas".
+ */
+function urutanPengajuanSetengahHariBulan($conn, $id_karyawan, $tanggal_mulai, $id_pengajuan) {
+    $bulan = (int)date('n', strtotime($tanggal_mulai));
+    $tahun = (int)date('Y', strtotime($tanggal_mulai));
+    $stmt = $conn->prepare("SELECT COUNT(*) AS jumlah FROM pengajuan_izin
+        WHERE id_karyawan = ? AND setengah_hari = 1 AND status IN ('Pending','Disetujui')
+          AND id < ? AND MONTH(tanggal_mulai) = ? AND YEAR(tanggal_mulai) = ?");
+    $stmt->bind_param("siii", $id_karyawan, $id_pengajuan, $bulan, $tahun);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    return (int)($row['jumlah'] ?? 0) + 1;
 }
 
 /**
@@ -372,6 +440,48 @@ function getIzinSetengahHariDisetujui($conn, $id_karyawan, $tanggal) {
     $row = $stmt->get_result()->fetch_assoc();
     $stmt->close();
     return $row ?: null;
+}
+
+/**
+ * Jam pulang shift yang berlaku untuk satu baris absensi: aturan jam_kerja
+ * cabang yang jam_masuk_akhir-nya paling dekat ke jam_masuk aktual (pola yang
+ * sama dengan perhitungan Terlambat/lembur). null bila cabang tanpa aturan.
+ */
+function getJamPulangShift($conn, $id_cabang, $jam_masuk) {
+    $stmt = $conn->prepare("SELECT jam_pulang FROM jam_kerja WHERE id_cabang = ?
+                            ORDER BY ABS(TIMESTAMPDIFF(MINUTE, ?, jam_masuk_akhir)) ASC LIMIT 1");
+    $stmt->bind_param("is", $id_cabang, $jam_masuk);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    return $row['jam_pulang'] ?? null;
+}
+
+/**
+ * Pulang cepat = absen pulang sebelum jam pulang shift. TIDAK menahan absen
+ * pulang (atasan tidak selalu sempat ACC di tempat): absen pulang langsung
+ * tercatat, karyawan cukup mengisi alasan, dan baris absensinya masuk antrean
+ * tinjau (izin_pulang_cepat = 'Pending') di kelola_pengajuan_izin.php untuk
+ * disetujui/ditolak belakangan. Ditolak untuk saat ini hanya catatan - belum
+ * ada potongan gaji (slip gaji tetap memakai aturan durasi < 5,5 jam yang ada).
+ *
+ * Mengembalikan jam pulang shift (string 'H:i:s') bila absen pulang pada
+ * $waktu ini butuh alasan + tinjauan, atau null bila tidak. Tidak berlaku
+ * untuk: keterangan selain Hadir, hari lembur (Sabtu - tanpa jam pulang
+ * tetap), izin setengah hari 'Pulang Awal' yang sudah disetujui, dan pulang
+ * cepat yang sudah Disetujui sebelumnya. Dipakai bersama oleh absen.php
+ * (minta alasan SEBELUM verifikasi wajah) dan proses_absen.php (validasi).
+ *
+ * $absen wajib memuat keterangan, jam_masuk, izin_pulang_cepat.
+ */
+function jamPulangCepatPerluTinjau($conn, array $absen, $id_cabang, $tanggal, $waktu, $izin_setengah_hari = null) {
+    if (($absen['keterangan'] ?? null) !== 'Hadir' || empty($absen['jam_masuk'])) return null;
+    if (($absen['izin_pulang_cepat'] ?? null) === 'Disetujui') return null;
+    if ($izin_setengah_hari && ($izin_setengah_hari['sesi_setengah_hari'] ?? null) === 'Pulang Awal') return null;
+    if (isHariOvertime($conn, $tanggal)) return null;
+    $target = getJamPulangShift($conn, (int)$id_cabang, $absen['jam_masuk']);
+    if ($target === null || $waktu >= $target) return null;
+    return $target;
 }
 
 /**
@@ -411,13 +521,9 @@ function konversiTidakAbsenMasukKeSetengahHari($conn, $id_absensi, $id_reviewer)
 
     $bulan = (int)date('n', strtotime($absen['tanggal']));
     $tahun = (int)date('Y', strtotime($absen['tanggal']));
-    $jumlah_bulan_ini = hitungSetengahHariBulanIni($conn, $absen['id_karyawan'], $bulan, $tahun);
-    if ($jumlah_bulan_ini >= IZIN_SETENGAH_HARI_MAKS_PER_BULAN) {
-        return [
-            'sukses' => false,
-            'pesan'  => 'Batas konversi izin setengah hari (' . IZIN_SETENGAH_HARI_MAKS_PER_BULAN . 'x/bulan) sudah tercapai untuk karyawan ini di bulan ' . date('F Y', strtotime($absen['tanggal'])) . '.',
-        ];
-    }
+    // Batas bulanan hanya tanda, bukan blokir (lihat IZIN_SETENGAH_HARI_MAKS_PER_BULAN).
+    $konversi_ke = hitungKonversiSetengahHariBulanIni($conn, $absen['id_karyawan'], $bulan, $tahun) + 1;
+    $lewat_batas = $konversi_ke > IZIN_SETENGAH_HARI_MAKS_PER_BULAN;
 
     $stmt = $conn->prepare("UPDATE absensi
         SET dikonversi_izin_setengah_hari = 1, dikonversi_oleh = ?, dikonversi_at = NOW()
@@ -429,10 +535,17 @@ function konversiTidakAbsenMasukKeSetengahHari($conn, $id_absensi, $id_reviewer)
     }
     $stmt->close();
 
+    $pesan = 'Berhasil dikonversi menjadi izin setengah hari (konversi ke-' . $konversi_ke . ' bulan ini, batas wajar '
+        . IZIN_SETENGAH_HARI_MAKS_PER_BULAN . 'x).';
+    if ($lewat_batas) {
+        $pesan .= ' <b>⚠ Melebihi batas wajar bulanan</b> - tetap dikonversi, tanpa potongan.';
+    }
     return [
-        'sukses' => true,
-        'pesan'  => 'Berhasil dikonversi menjadi izin setengah hari (' . ($jumlah_bulan_ini + 1) . '/' . IZIN_SETENGAH_HARI_MAKS_PER_BULAN . ' bulan ini).',
-        'absen'  => $absen,
+        'sukses'      => true,
+        'pesan'       => $pesan,
+        'absen'       => $absen,
+        'konversi_ke' => $konversi_ke,
+        'lewat_batas' => $lewat_batas,
     ];
 }
 

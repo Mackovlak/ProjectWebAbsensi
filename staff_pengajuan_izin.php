@@ -52,14 +52,18 @@ $id_cabang_staff = $row_cbg_izin ? (int)$row_cbg_izin['id_cabang'] : null;
 
 $hari_kerja_js = getHariKerja($conn);
 // Ambil libur setahun ke depan supaya estimasi klien ikut melewatinya
-$libur_js = array_keys(getHariLibur(
+$libur_map = getHariLibur(
     $conn,
     date('Y-m-d', strtotime('-1 month')),
     date('Y-m-d', strtotime('+13 months')),
     $id_cabang_staff
-));
-// Pemakaian setengah hari bulan ini, untuk info batas 3x/bulan di form.
-$setengah_bulan_ini = hitungSetengahHariBulanIni($conn, $id_karyawan_staff, (int)date('n'), (int)date('Y'));
+);
+$libur_js = array_keys($libur_map);
+// tanggal => nama hari libur, untuk tooltip & penanda di kalender
+$libur_nama_js = array_map(function ($h) { return $h['nama'] ?? 'Hari libur'; }, $libur_map);
+$tanggal_maks_js = date('Y-m-d', strtotime('+13 months'));
+// Jumlah pengajuan setengah hari bulan ini, hanya sebagai info (tidak memblokir).
+$setengah_bulan_ini = hitungPengajuanSetengahHariBulan($conn, $id_karyawan_staff, (int)date('n'), (int)date('Y'));
 $persen_terpakai = $kuota['jatah'] > 0 ? min(100, round(($kuota['terpakai'] / $kuota['jatah']) * 100)) : 0;
 
 // Riwayat pengajuan pada tahun terpilih
@@ -141,7 +145,7 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
             </li>
             <li class="flex gap-2.5">
                 <i class="ph-duotone ph-clock-half text-fuchsia-500 text-lg shrink-0"></i>
-                <span><b>Cuti</b> dan <b>Izin</b> bisa diajukan <b>setengah hari</b> (memotong 0,5 hari kuota), maksimal <b><?php echo IZIN_SETENGAH_HARI_MAKS_PER_BULAN; ?>x per bulan</b>. Tetap diajukan sebelum hari-H.</span>
+                <span><b>Setengah hari</b> (Cuti/Izin) adalah jatah tersendiri: <b>tidak memotong</b> kuota <?php echo $kuota['jatah']; ?> hari. Batas wajar <?php echo IZIN_SETENGAH_HARI_MAKS_PER_BULAN; ?>x per bulan &mdash; lebih dari itu tetap bisa diajukan tanpa potongan, hanya ditandai untuk atasan. Tetap diajukan sebelum hari-H.</span>
             </li>
             <li class="flex gap-2.5">
                 <i class="ph-duotone ph-briefcase text-sky-500 text-lg shrink-0"></i>
@@ -194,16 +198,56 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
                 <p class="text-xs text-slate-400 mt-1.5" id="info-lampiran">Surat dokter / undangan / bukti pendukung. JPG, PNG, atau PDF maks 6 MB.</p>
             </div>
 
-            <div>
-                <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Tanggal Mulai</label>
-                <input type="date" name="tanggal_mulai" id="tanggal-mulai" required
-                       class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:ring-2 focus:ring-fuchsia-500 focus:border-transparent outline-none transition">
-            </div>
+            <!-- Pemilih tanggal: satu kalender rentang (menggantikan dua input date bawaan browser) -->
+            <div class="md:col-span-2">
+                <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                    Tanggal
+                    <span class="font-normal text-slate-400" id="petunjuk-tanggal">&mdash; klik tanggal mulai, lalu tanggal selesai</span>
+                </label>
 
-            <div>
-                <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Tanggal Selesai</label>
-                <input type="date" name="tanggal_selesai" id="tanggal-selesai" required
-                       class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-white text-sm focus:ring-2 focus:ring-fuchsia-500 focus:border-transparent outline-none transition">
+                <div class="flex flex-col md:flex-row gap-5 items-start">
+                    <div id="kalender-izin" class="shrink-0 max-w-full">
+                        <input type="text" id="picker-tanggal" class="hidden" aria-label="Pilih tanggal pengajuan">
+                    </div>
+
+                    <div class="flex-1 w-full space-y-4">
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" id="btn-hari-ini"
+                                    class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold text-fuchsia-700 dark:text-fuchsia-300 bg-fuchsia-50 dark:bg-fuchsia-900/20 border border-fuchsia-200 dark:border-fuchsia-800/50 hover:bg-fuchsia-100 dark:hover:bg-fuchsia-900/40 transition">
+                                <i class="ph-bold ph-calendar-dot"></i> Hari ini
+                            </button>
+                            <button type="button" id="btn-besok"
+                                    class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition">
+                                <i class="ph-bold ph-calendar-plus"></i> Besok
+                            </button>
+                            <button type="button" id="btn-hapus-tanggal"
+                                    class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition">
+                                <i class="ph-bold ph-x"></i> Hapus
+                            </button>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-700/40 border border-slate-200 dark:border-slate-600/50">
+                                <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wide mb-0.5">Mulai</p>
+                                <p class="text-sm font-semibold text-slate-800 dark:text-white" id="teks-mulai">&mdash;</p>
+                            </div>
+                            <div class="px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-700/40 border border-slate-200 dark:border-slate-600/50">
+                                <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wide mb-0.5">Selesai</p>
+                                <p class="text-sm font-semibold text-slate-800 dark:text-white" id="teks-selesai">&mdash;</p>
+                            </div>
+                        </div>
+
+                        <ul class="flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-slate-500 dark:text-slate-400">
+                            <li class="inline-flex items-center gap-1.5"><span class="inline-block w-2.5 h-2.5 rounded-full bg-fuchsia-500"></span> Dipilih</li>
+                            <li class="inline-flex items-center gap-1.5"><span class="inline-block w-2.5 h-2.5 rounded-full bg-slate-300 dark:bg-slate-600"></span> Akhir pekan / hari lembur (tidak dihitung)</li>
+                            <li class="inline-flex items-center gap-1.5"><span class="inline-block w-2.5 h-2.5 rounded-full bg-rose-400"></span> Hari libur (tidak dihitung)</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Nilai yang dikirim ke server; diisi oleh kalender -->
+                <input type="hidden" name="tanggal_mulai" id="tanggal-mulai">
+                <input type="hidden" name="tanggal_selesai" id="tanggal-selesai">
             </div>
         </div>
 
@@ -230,9 +274,9 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
                     <option value="Pulang Awal">Pulang Awal (masuk pagi, pulang sebelum jam pulang)</option>
                 </select>
                 <p class="text-xs text-slate-400 mt-1.5">
-                    Memotong 0,5 hari kuota. Satu tanggal saja. Anda tetap absen (wajah &amp; lokasi).
+                    <b>Tidak memotong kuota tahunan</b>. Satu tanggal saja. Anda tetap absen (wajah &amp; lokasi).
                     <b>Masuk Siang</b>: tidak dihitung terlambat. <b>Pulang Awal</b>: tidak perlu izin pulang cepat.
-                    Bulan ini sudah dipakai <b><?php echo $setengah_bulan_ini; ?>/<?php echo IZIN_SETENGAH_HARI_MAKS_PER_BULAN; ?></b>.
+                    Bulan ini sudah diajukan <b><?php echo $setengah_bulan_ini; ?>x</b> (batas wajar <?php echo IZIN_SETENGAH_HARI_MAKS_PER_BULAN; ?>x &mdash; lebih dari itu tetap bisa diajukan tanpa potongan, hanya ditandai untuk atasan).
                 </p>
             </div>
         </div>
@@ -353,6 +397,43 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
     <?php endif; ?>
 </div>
 
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css"
+      integrity="sha384-RkASv+6KfBMW9eknReJIJ6b3UnjKOKC5bOUaNgIY778NFbQ8MtWq9Lr/khUgqtTt" crossorigin="anonymous">
+<style>
+    /* Kalender rentang tanggal: warna mengikuti tema fuchsia halaman & mode gelap (class .dark) */
+    #kalender-izin .flatpickr-calendar.inline { box-shadow: none; border: 1px solid #e2e8f0; border-radius: 1rem; width: 320px; max-width: 100%; }
+    #kalender-izin .flatpickr-innerContainer, #kalender-izin .flatpickr-rContainer, #kalender-izin .dayContainer { width: 100%; min-width: 100%; max-width: 100%; }
+    #kalender-izin .flatpickr-day { max-width: none; height: 40px; line-height: 40px; border-radius: 0.6rem; }
+    #kalender-izin .flatpickr-day.today { border-color: #c026d3; }
+    #kalender-izin .flatpickr-day.selected, #kalender-izin .flatpickr-day.startRange, #kalender-izin .flatpickr-day.endRange {
+        background: #c026d3; border-color: #c026d3; color: #fff; }
+    #kalender-izin .flatpickr-day.inRange { background: #fae8ff; border-color: #fae8ff; box-shadow: -5px 0 0 #fae8ff, 5px 0 0 #fae8ff; color: #86198f; }
+    #kalender-izin .flatpickr-day.fp-pekan { color: #94a3b8; background: #f8fafc; }
+    #kalender-izin .flatpickr-day.fp-libur { color: #e11d48; background: #fff1f2; font-weight: 600; }
+    #kalender-izin .flatpickr-day.flatpickr-disabled { color: #cbd5e1; background: transparent; }
+    #kalender-izin .flatpickr-day.selected.fp-pekan, #kalender-izin .flatpickr-day.selected.fp-libur,
+    #kalender-izin .flatpickr-day.startRange.fp-pekan, #kalender-izin .flatpickr-day.endRange.fp-pekan,
+    #kalender-izin .flatpickr-day.startRange.fp-libur, #kalender-izin .flatpickr-day.endRange.fp-libur { color: #fff; background: #c026d3; }
+
+    .dark #kalender-izin .flatpickr-calendar { background: #1e293b; border-color: #334155; }
+    .dark #kalender-izin .flatpickr-months .flatpickr-month, .dark #kalender-izin .flatpickr-current-month .flatpickr-monthDropdown-months,
+    .dark #kalender-izin .flatpickr-current-month input.cur-year { color: #f1f5f9; fill: #f1f5f9; background: transparent; }
+    .dark #kalender-izin .flatpickr-current-month .flatpickr-monthDropdown-months option { background: #1e293b; }
+    .dark #kalender-izin .flatpickr-months .flatpickr-prev-month svg, .dark #kalender-izin .flatpickr-months .flatpickr-next-month svg { fill: #cbd5e1; }
+    .dark #kalender-izin span.flatpickr-weekday { color: #94a3b8; background: transparent; }
+    .dark #kalender-izin .flatpickr-day { color: #e2e8f0; }
+    .dark #kalender-izin .flatpickr-day:hover { background: #334155; border-color: #334155; }
+    .dark #kalender-izin .flatpickr-day.fp-pekan { color: #64748b; background: #0f172a; }
+    .dark #kalender-izin .flatpickr-day.fp-libur { color: #fb7185; background: rgba(225, 29, 72, 0.12); }
+    .dark #kalender-izin .flatpickr-day.flatpickr-disabled { color: #475569; background: transparent; }
+    .dark #kalender-izin .flatpickr-day.inRange { background: rgba(192, 38, 211, 0.22); border-color: transparent; box-shadow: -5px 0 0 rgba(192, 38, 211, 0.22), 5px 0 0 rgba(192, 38, 211, 0.22); color: #f5d0fe; }
+    .dark #kalender-izin .flatpickr-day.selected, .dark #kalender-izin .flatpickr-day.startRange, .dark #kalender-izin .flatpickr-day.endRange { background: #c026d3; color: #fff; }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"
+        integrity="sha384-5JqMv4L/Xa0hfvtF06qboNdhvuYXUku9ZrhZh3bSk8VXF0A/RuSLHpLsSV9Zqhl6" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/id.js"
+        integrity="sha384-KMhDAY3QD073iimt/X068iLaMgNPBD+J57j7adrjgvlWbfAv2ONSvLFyOtU9TzDN" crossorigin="anonymous"></script>
+
 <script>
 (function () {
     const jenisEl     = document.getElementById('jenis-izin');
@@ -386,13 +467,40 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
         blokSesi.classList.toggle('hidden', !setengah);
         inputSetengah.value = setengah ? '1' : '';
         sesiEl.disabled = !setengah;
-        selesaiEl.readOnly = setengah;
-        if (setengah && mulaiEl.value) selesaiEl.value = mulaiEl.value;
+        terapkanModeKalender(setengah);
+    }
+
+    // Setengah hari = satu tanggal (klik sekali); selain itu rentang (mulai -> selesai).
+    function terapkanModeKalender(setengah) {
+        if (!picker) return;
+        const mode = setengah ? 'single' : 'range';
+        if (picker.config.mode === mode) return;
+        const pertama = picker.selectedDates[0] || null;
+        picker.set('mode', mode);
+        if (pertama) picker.setDate(pertama, true); else picker.clear();
+        petunjukEl.innerHTML = setengah
+            ? '&mdash; pilih satu tanggal'
+            : '&mdash; klik tanggal mulai, lalu tanggal selesai';
     }
     const hariIni = '<?php echo date('Y-m-d'); ?>';
     // 1 = Senin ... 7 = Minggu, mengikuti pengaturan hari kerja perusahaan
     const hariKerja = <?php echo json_encode($hari_kerja_js); ?>;
     const tanggalLibur = <?php echo json_encode($libur_js); ?>;
+    const namaLibur = <?php echo json_encode($libur_nama_js, JSON_UNESCAPED_UNICODE); ?>;
+    const tanggalMaks = '<?php echo $tanggal_maks_js; ?>';
+
+    // Tanggal lokal -> 'Y-m-d' (toISOString() memakai UTC dan bisa mundur sehari di WIB)
+    function ymd(d) {
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+    function parseYmd(str) { return new Date(str + 'T00:00:00'); }
+    function tambahHari(str, n) { const d = parseYmd(str); d.setDate(d.getDate() + n); return ymd(d); }
+    const formatTampil = new Intl.DateTimeFormat('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+    const teksMulaiEl = document.getElementById('teks-mulai');
+    const teksSelesaiEl = document.getElementById('teks-selesai');
+    const petunjukEl = document.getElementById('petunjuk-tanggal');
+    let picker = null; // diisi setelah semua fungsi terdefinisi (lihat bawah)
 
     const keteranganJenis = {
         'Cuti':             'Memotong kuota tahunan Anda.',
@@ -422,17 +530,38 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
     }
 
     function batasTanggalMinimum() {
-        // Hanya Sakit yang boleh mundur ke belakang
-        return jenisEl.value === 'Sakit'
-            ? new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10)
-            : hariIni;
+        // Hanya Sakit yang boleh mundur ke belakang (maks 14 hari)
+        return jenisEl.value === 'Sakit' ? tambahHari(hariIni, -14) : hariIni;
     }
 
     function perbaruiBatas() {
         const min = batasTanggalMinimum();
-        mulaiEl.min = min;
-        selesaiEl.min = mulaiEl.value || min;
+        if (picker) {
+            picker.set('minDate', min);
+            // Pilihan lama yang jatuh sebelum batas baru dihapus supaya tidak lolos diam-diam
+            if (mulaiEl.value && mulaiEl.value < min) picker.clear();
+        }
         infoEl.textContent = keteranganJenis[jenisEl.value] || '';
+    }
+
+    // Tampilkan tanggal terpilih di panel samping kalender
+    function tampilkanTanggalTerpilih() {
+        teksMulaiEl.textContent = mulaiEl.value ? formatTampil.format(parseYmd(mulaiEl.value)) : '\u2014';
+        teksSelesaiEl.textContent = selesaiEl.value ? formatTampil.format(parseYmd(selesaiEl.value)) : '\u2014';
+    }
+
+    // Kalender -> input tersembunyi yang dikirim ke server
+    function sinkronkanDariKalender(dipilih) {
+        if (!dipilih.length) {
+            mulaiEl.value = '';
+            selesaiEl.value = '';
+        } else {
+            mulaiEl.value = ymd(dipilih[0]);
+            // Klik pertama langsung berarti satu hari; klik kedua memperpanjang rentang
+            selesaiEl.value = ymd(dipilih[dipilih.length - 1]);
+        }
+        tampilkanTanggalTerpilih();
+        hitungRingkasan();
     }
 
     // Hitung perkiraan hari kerja (lewati hari Minggu). Angka pasti tetap
@@ -443,24 +572,21 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
             return;
         }
 
-        const mulai = new Date(mulaiEl.value);
-        const selesai = new Date(selesaiEl.value);
+        const mulai = parseYmd(mulaiEl.value);
+        const selesai = parseYmd(selesaiEl.value);
         if (mulai > selesai) {
             ringkasan.classList.add('hidden');
             return;
         }
 
-        const setengah = isSetengahHari();
         let total = 0, efektif = 0, dilewati = 0;
         for (let d = new Date(mulai); d <= selesai; d.setDate(d.getDate() + 1)) {
             total++;
             // getDay(): 0 = Minggu. Ubah ke ISO 1-7 agar cocok dengan hariKerja.
             const iso = d.getDay() === 0 ? 7 : d.getDay();
-            const ymd = d.getFullYear() + '-' +
-                        String(d.getMonth() + 1).padStart(2, '0') + '-' +
-                        String(d.getDate()).padStart(2, '0');
+            const tgl = ymd(d);
 
-            if (hariKerja.indexOf(iso) === -1 || tanggalLibur.indexOf(ymd) !== -1) {
+            if (hariKerja.indexOf(iso) === -1 || tanggalLibur.indexOf(tgl) !== -1) {
                 dilewati++;
             } else {
                 efektif++;
@@ -469,22 +595,21 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
 
         const adaLampiran = lampiranEl.files && lampiranEl.files.length > 0;
         const sakitDenganBukti = jenisEl.value === 'Sakit' && adaLampiran;
-        const potong = !jenisQuotaExempt.includes(jenisEl.value) && !sakitDenganBukti;
+        // Setengah hari berdiri sendiri: tidak pernah memotong kuota tahunan.
+        const setengahHari = isSetengahHari();
+        const potong = !setengahHari && !jenisQuotaExempt.includes(jenisEl.value) && !sakitDenganBukti;
         let teks = `<b>${total} hari kalender</b>, perkiraan <b>${efektif} hari kerja</b>`;
         teks += dilewati > 0
             ? ` (${dilewati} hari dilewati: akhir pekan/hari lembur/libur nasional).`
             : '.';
 
-        if (setengah) {
+        if (setengahHari) {
             teks = efektif > 0
-                ? `<b>Setengah hari</b> (${sesiEl.value}) &mdash; memotong <b>0,5 hari</b> kuota.`
+                ? `<b>Setengah hari</b> (${sesiEl.value}) &mdash; <b>tidak memotong</b> kuota tahunan.`
                 : '';
-        }
-
-        const butuh = setengah ? 0.5 : efektif;
-        if (potong) {
+        } else if (potong) {
             teks += ` Sisa kuota yang bisa dipakai: <b>${fmtHari(kuotaTersedia)} hari</b>.`;
-            if (butuh > kuotaTersedia) {
+            if (efektif > kuotaTersedia) {
                 teks += ` <span class="font-bold text-rose-600 dark:text-rose-400">Melebihi kuota Anda.</span>`;
             }
         } else if (sakitDenganBukti) {
@@ -496,6 +621,9 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
         if (efektif === 0) {
             teks += ' <span class="font-bold text-rose-600 dark:text-rose-400">Tidak ada hari kerja pada rentang ini.</span>';
         }
+        if (mulai.getFullYear() !== selesai.getFullYear()) {
+            teks += ' <span class="font-bold text-rose-600 dark:text-rose-400">Pengajuan tidak boleh melewati pergantian tahun &mdash; buat dua pengajuan terpisah.</span>';
+        }
 
         ringkasan.innerHTML = teks;
         ringkasan.classList.remove('hidden');
@@ -505,17 +633,67 @@ if (!in_array((int)date('Y'), $daftar_tahun)) {
     radioPenuh.addEventListener('change', function () { perbaruiDurasi(); hitungRingkasan(); });
     radioSetengah.addEventListener('change', function () { perbaruiDurasi(); hitungRingkasan(); });
     sesiEl.addEventListener('change', hitungRingkasan);
-    mulaiEl.addEventListener('change', function () {
-        selesaiEl.min = mulaiEl.value;
-        if (selesaiEl.value && selesaiEl.value < mulaiEl.value) selesaiEl.value = mulaiEl.value;
-        if (isSetengahHari()) selesaiEl.value = mulaiEl.value;
-        hitungRingkasan();
-    });
-    selesaiEl.addEventListener('change', hitungRingkasan);
     lampiranEl.addEventListener('change', function () { perbaruiInfoLampiran(); hitungRingkasan(); });
+
+    // ---------- Kalender rentang tanggal ----------
+    if (typeof flatpickr === 'undefined') {
+        // CDN tidak termuat: jangan biarkan form terlihat normal tapi tidak bisa dipakai.
+        petunjukEl.innerHTML = '<span class="font-semibold text-rose-600 dark:text-rose-400">&mdash; kalender gagal dimuat, muat ulang halaman.</span>';
+    } else {
+        picker = flatpickr('#picker-tanggal', {
+            inline: true,
+            mode: 'range',
+            dateFormat: 'Y-m-d',
+            locale: Object.assign({}, flatpickr.l10ns.id, { firstDayOfWeek: 1 }),   // Senin pertama, seperti kalender dashboard
+            minDate: batasTanggalMinimum(),
+            maxDate: tanggalMaks,
+            disableMobile: true,
+            onChange: function (dipilih) { sinkronkanDariKalender(dipilih); },
+            // Tandai akhir pekan/hari lembur dan hari libur supaya jelas mana yang tidak dihitung
+            onDayCreate: function (_d, _s, _fp, el) {
+                const tgl = ymd(el.dateObj);
+                const iso = el.dateObj.getDay() === 0 ? 7 : el.dateObj.getDay();
+                if (namaLibur[tgl] !== undefined) {
+                    el.classList.add('fp-libur');
+                    el.title = namaLibur[tgl];
+                } else if (hariKerja.indexOf(iso) === -1) {
+                    el.classList.add('fp-pekan');
+                }
+            }
+        });
+
+        document.getElementById('btn-hari-ini').addEventListener('click', function () {
+            picker.setDate(hariIni, true);
+            picker.jumpToDate(hariIni);
+        });
+        document.getElementById('btn-besok').addEventListener('click', function () {
+            const besok = tambahHari(hariIni, 1);
+            picker.setDate(besok, true);
+            picker.jumpToDate(besok);
+        });
+        document.getElementById('btn-hapus-tanggal').addEventListener('click', function () { picker.clear(); });
+    }
+
     perbaruiBatas();
     perbaruiDurasi();
     perbaruiInfoLampiran();
+    tampilkanTanggalTerpilih();
+
+    // Input tanggal kini tersembunyi, jadi atribut `required` tidak berlaku: periksa manual.
+    document.getElementById('form-izin').addEventListener('submit', function (e) {
+        let pesan = '';
+        if (!mulaiEl.value || !selesaiEl.value) {
+            pesan = 'Pilih tanggal pengajuan pada kalender terlebih dahulu.';
+        } else if (mulaiEl.value.slice(0, 4) !== selesaiEl.value.slice(0, 4)) {
+            pesan = 'Pengajuan tidak boleh melewati pergantian tahun. Buat dua pengajuan terpisah.';
+        }
+        if (pesan) {
+            e.preventDefault();
+            if (typeof Swal !== 'undefined') Swal.fire({ icon: 'warning', title: 'Tanggal belum lengkap', text: pesan, confirmButtonColor: '#c026d3' });
+            else alert(pesan);
+            document.getElementById('kalender-izin').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    });
 
     // Konfirmasi pembatalan
     document.querySelectorAll('.form-batal').forEach(function (form) {

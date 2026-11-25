@@ -58,8 +58,9 @@ if ($result_izin) {
 $sql_pulang_cepat = "SELECT a.id, a.tanggal, a.alasan_pulang_cepat, k.nama_karyawan
                       FROM absensi a
                       JOIN karyawan k ON a.id_karyawan = k.id_karyawan
-                      WHERE a.izin_pulang_cepat = 'Pending' AND a.tanggal = CURDATE()
-                      ORDER BY a.tanggal DESC";
+                      WHERE a.izin_pulang_cepat = 'Pending'
+                      ORDER BY a.tanggal DESC
+                      LIMIT 20";
 $result_pulang_cepat = $conn->query($sql_pulang_cepat);
 $notif_pulang_cepat = [];
 if ($result_pulang_cepat) {

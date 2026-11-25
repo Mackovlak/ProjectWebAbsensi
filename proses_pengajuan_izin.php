@@ -145,25 +145,17 @@ if (isset($_POST['ajukan_izin'])) {
     $ada_lampiran = isset($_FILES['lampiran']) && $_FILES['lampiran']['error'] == 0 && $_FILES['lampiran']['size'] > 0;
 
     $rincian = hitungHariIzin($conn, $id_karyawan, $tanggal_mulai, $tanggal_selesai);
-    $potong_kuota = izinPotongKuota($jenis, $ada_lampiran) ? 1 : 0;
+    // Setengah hari berdiri sendiri: tidak memotong jatah tahunan.
+    $potong_kuota = (!$setengah_hari && izinPotongKuota($jenis, $ada_lampiran)) ? 1 : 0;
 
     if ($rincian['hari_efektif'] < 1) {
         selesai("❌ Tidak ada hari kerja efektif pada rentang tersebut (semuanya hari libur, akhir pekan, atau sudah memiliki absensi).", false);
     }
 
-    // Kuota yang dipotong: 0,5 untuk setengah hari, selain itu = hari efektif.
+    // Hari yang dicatat pada pengajuan (0,5 untuk setengah hari). Hanya
+    // informasi: setengah hari tidak memotong kuota (potong_kuota = 0 di atas)
+    // dan tidak dibatasi 3x/bulan - atasan melihat penandanya saat review.
     $jumlah_kuota = $setengah_hari ? 0.5 : (float)$rincian['hari_efektif'];
-
-    // Batas setengah hari per bulan (sama dengan batas konversi Tidak Absen Masuk)
-    if ($setengah_hari) {
-        $bulan_izin = (int)date('n', strtotime($tanggal_mulai));
-        $tahun_izin = (int)date('Y', strtotime($tanggal_mulai));
-        $terpakai_bulan = hitungSetengahHariBulanIni($conn, $id_karyawan, $bulan_izin, $tahun_izin);
-        if ($terpakai_bulan >= IZIN_SETENGAH_HARI_MAKS_PER_BULAN) {
-            selesai("❌ Batas izin setengah hari " . IZIN_SETENGAH_HARI_MAKS_PER_BULAN . "x per bulan sudah tercapai untuk bulan "
-                . date('F Y', strtotime($tanggal_mulai)) . " ({$terpakai_bulan}x sudah diajukan/disetujui).", false);
-        }
-    }
 
     if ($potong_kuota) {
         $kuota = getRingkasanKuotaIzin($conn, $id_karyawan, (int)date('Y', strtotime($tanggal_mulai)));
@@ -226,11 +218,21 @@ if (isset($_POST['ajukan_izin'])) {
             "Mengajukan {$jenis} {$rentang} ({$label_durasi}) - #{$id_baru}",
             $_SESSION['user_id']);
 
+        $tanda_setengah = "";
+        if ($setengah_hari) {
+            $setengah_ke = urutanPengajuanSetengahHariBulan($conn, $id_karyawan, $tanggal_mulai, $id_baru);
+            $tanda_setengah = $setengah_ke > IZIN_SETENGAH_HARI_MAKS_PER_BULAN
+                ? " (setengah hari ke-{$setengah_ke} bulan ini ⚠ melebihi batas " . IZIN_SETENGAH_HARI_MAKS_PER_BULAN . "x)"
+                : " (setengah hari)";
+        }
+        pushAntreApprover($conn, $id_cabang, "Pengajuan {$jenis} baru",
+            pushNamaKaryawan($conn, $id_karyawan) . " · {$rentang}" . $tanda_setengah,
+            'kelola_pengajuan_izin.php', 'izin-' . $id_baru, [$_SESSION['user_id']]);
 
         $ket_kuota = (!$potong_kuota && $jenis === 'Sakit')
             ? " Karena dilampiri bukti, pengajuan ini <b>tidak memotong kuota tahunan</b> Anda."
             : "";
-        $ket_setengah = $setengah_hari ? " (setengah hari - {$sesi_setengah}, memotong 0,5 hari kuota)" : "";
+        $ket_setengah = $setengah_hari ? " (setengah hari - {$sesi_setengah}, tidak memotong kuota tahunan)" : "";
         selesai("✅ Pengajuan {$jenis} untuk {$rentang}{$ket_setengah} berhasil dikirim dan menunggu persetujuan atasan.{$ket_kuota}");
     } else {
         $stmt->close();
@@ -369,6 +371,8 @@ if (isset($_POST['review_izin'])) {
                 "Menolak pengajuan {$data['jenis']} {$data['nama_karyawan']} ({$rentang}) - #{$id_pengajuan}",
                 $_SESSION['user_id']);
 
+            pushAntreKaryawan($conn, $data['id_karyawan'], "Pengajuan {$data['jenis']} ditolak",
+                $rentang . ($catatan !== '' ? " · {$catatan}" : ''), 'staff_pengajuan_izin.php', 'izin-' . $id_pengajuan);
 
             selesai("✅ Pengajuan {$data['jenis']} milik {$data['nama_karyawan']} ({$rentang}) telah ditolak.");
         }
@@ -383,17 +387,18 @@ if (isset($_POST['review_izin'])) {
         }
 
         // Setengah hari selalu 0,5 (satu tanggal); selain itu = hari efektif terkini.
+        // Tidak ada pengecekan batas 3x/bulan: setengah hari boleh disetujui
+        // berapa pun jumlahnya, dan tidak memotong kuota (potong_kuota = 0).
         $is_setengah_hari = !empty($data['setengah_hari']);
         $jumlah_kuota = $is_setengah_hari ? 0.5 : (float)$rincian['hari_efektif'];
 
-        // Batas setengah hari per bulan dicek ulang (konversi admin bisa saja
-        // bertambah sejak diajukan). Pengajuan ini sendiri dikecualikan.
+        // Melewati batas bulanan setengah hari hanya dicatat sebagai tanda - tidak
+        // ada potongan (urutan pengajuan: lihat urutanPengajuanSetengahHariBulan).
+        $setengah_ke = 0;
+        $setengah_lewat_batas = false;
         if ($is_setengah_hari) {
-            $terpakai_bulan = hitungSetengahHariBulanIni($conn, $data['id_karyawan'],
-                (int)date('n', strtotime($data['tanggal_mulai'])), (int)date('Y', strtotime($data['tanggal_mulai'])), $id_pengajuan);
-            if ($terpakai_bulan >= IZIN_SETENGAH_HARI_MAKS_PER_BULAN) {
-                throw new Exception("Batas izin setengah hari " . IZIN_SETENGAH_HARI_MAKS_PER_BULAN . "x per bulan sudah tercapai untuk karyawan ini. Pengajuan sebaiknya ditolak.");
-            }
+            $setengah_ke = urutanPengajuanSetengahHariBulan($conn, $data['id_karyawan'], $data['tanggal_mulai'], $id_pengajuan);
+            $setengah_lewat_batas = $setengah_ke > IZIN_SETENGAH_HARI_MAKS_PER_BULAN;
         }
 
         // Verifikasi ulang kuota terhadap kondisi terkini
@@ -421,14 +426,22 @@ if (isset($_POST['review_izin'])) {
         $conn->commit();
 
         logActivity($conn, 'acc_izin',
-            "Menyetujui pengajuan {$data['jenis']} {$data['nama_karyawan']} ({$rentang}, " . ($is_setengah_hari ? "setengah hari - {$data['sesi_setengah_hari']}" : "{$rincian['hari_efektif']} hari") . ") - #{$id_pengajuan}",
+            "Menyetujui pengajuan {$data['jenis']} {$data['nama_karyawan']} ({$rentang}, " . ($is_setengah_hari ? "setengah hari ke-{$setengah_ke} - {$data['sesi_setengah_hari']}" . ($setengah_lewat_batas ? ", melebihi batas wajar " . IZIN_SETENGAH_HARI_MAKS_PER_BULAN . "x" : "") : "{$rincian['hari_efektif']} hari") . ") - #{$id_pengajuan}",
             $_SESSION['user_id']);
 
+        pushAntreKaryawan($conn, $data['id_karyawan'], "Pengajuan {$data['jenis']} disetujui ✅",
+            $rentang . ($is_setengah_hari ? " · setengah hari ({$data['sesi_setengah_hari']})" : " · {$rincian['hari_efektif']} hari kerja"),
+            'staff_pengajuan_izin.php', 'izin-' . $id_pengajuan);
 
         if ($is_setengah_hari) {
-            $info_absensi = $data['sesi_setengah_hari'] === 'Masuk Siang'
-                ? " Karyawan tetap absen di hari tersebut dan tidak dihitung terlambat."
-                : " Karyawan tetap absen di hari tersebut dan boleh pulang awal tanpa izin pulang cepat.";
+            if ($data['sesi_setengah_hari'] === 'Masuk Siang') {
+                $info_absensi = " Karyawan tetap absen di hari tersebut dan tidak dihitung terlambat.";
+            } else {
+                $info_absensi = " Karyawan tetap absen di hari tersebut dan boleh pulang awal tanpa izin pulang cepat.";
+            }
+            if ($setengah_lewat_batas) {
+                $info_absensi .= " <b>⚠ Setengah hari ke-{$setengah_ke} bulan ini</b> (melebihi batas wajar " . IZIN_SETENGAH_HARI_MAKS_PER_BULAN . "x, tanpa potongan).";
+            }
         } else {
             $info_absensi = $jumlah_baris > 0
                 ? " {$jumlah_baris} hari absensi otomatis tercatat."

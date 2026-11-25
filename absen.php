@@ -127,6 +127,22 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
     $disable_pulang = true;
     $alasan_disable = $absen_hari_ini['keterangan'];
 }
+
+// Jam pulang shift hari ini bila absen pulang sebelum jam itu terhitung pulang
+// cepat (butuh alasan + ditinjau belakangan, TIDAK menunggu ACC - lihat
+// jamPulangCepatPerluTinjau()). Waktu '00:00:00' dipakai supaya fungsi hanya
+// menjawab "berlaku hari ini?" - perbandingan dengan jam sekarang dilakukan JS
+// saat tombol ditekan, karena kiosk bisa dibiarkan terbuka lama.
+$jam_pulang_shift_cepat = null;
+if ($status_absen === 'sudah_masuk' && !$disable_pulang) {
+    $jam_pulang_shift_cepat = jamPulangCepatPerluTinjau(
+        $conn, $absen_hari_ini, $absen_hari_ini['id_cabang'], $today, '00:00:00',
+        getIzinSetengahHariDisetujui($conn, $id_karyawan, $today)
+    );
+}
+$pulang_cepat_sudah_ada_alasan = $absen_hari_ini
+    && $absen_hari_ini['izin_pulang_cepat'] === 'Pending'
+    && !empty($absen_hari_ini['alasan_pulang_cepat']);
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -570,8 +586,8 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                 </div>
             </div>
             <?php endif; ?>
-            <form id="form-absen-pulang" onsubmit="event.preventDefault(); submitAbsenPulang();">
-                <button type="button" class="btn btn-pulang" onclick="submitAbsenPulang()" <?php echo $disable_pulang ? 'disabled' : ''; ?>>
+            <form id="form-absen-pulang" onsubmit="event.preventDefault(); mulaiAbsenPulang();">
+                <button type="button" class="btn btn-pulang" onclick="mulaiAbsenPulang()" <?php echo $disable_pulang ? 'disabled' : ''; ?>>
                     <i class="fas fa-sign-out-alt"></i> Absen Pulang
                 </button>
             </form>
@@ -580,7 +596,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                 <?php if ($absen_hari_ini['izin_pulang_cepat'] === 'Pending'): ?>
                     <div class="info-disabled" style="background-color: #fff3cd; border-color: #ffeeba; color: #856404; margin-top: 12px;">
                         <i class="fas fa-hourglass-half"></i>
-                        <div><strong>Menunggu Persetujuan Pulang Cepat</strong><br>Anda tetap bisa absen pulang seperti biasa pada jam pulang normal.</div>
+                        <div><strong>Pulang Cepat Sudah Diajukan</strong><br>Anda bisa langsung absen pulang kapan saja tanpa menunggu persetujuan - atasan akan meninjaunya kemudian.</div>
                     </div>
                 <?php elseif ($absen_hari_ini['izin_pulang_cepat'] === 'Disetujui'): ?>
                     <div class="info-disabled" style="background-color: #d1fae5; border-color: #6ee7b7; color: #065f46; margin-top: 12px;">
@@ -590,7 +606,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                 <?php elseif ($absen_hari_ini['izin_pulang_cepat'] === 'Ditolak'): ?>
                     <div class="info-disabled" style="background-color: #fee2e2; border-color: #fecaca; color: #991b1b; margin-top: 12px;">
                         <i class="fas fa-times-circle"></i>
-                        <div><strong>Izin Pulang Cepat Ditolak</strong><br>Silakan absen pulang pada jam pulang normal.</div>
+                        <div><strong>Izin Pulang Cepat Ditolak</strong><br>Sebaiknya absen pulang pada jam pulang normal. Bila tetap pulang lebih awal, Anda akan diminta alasan dan atasan akan meninjau ulang.</div>
                     </div>
                 <?php else: ?>
                     <button type="button" onclick="bukaModalPulangCepat()" class="btn-retry" style="background: #f59e0b; margin-top: 12px; color: white; box-shadow: 0 4px 0 #b45309; border-color: #b45309;">
@@ -856,7 +872,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
     <div id="modal-pulang-cepat" class="face-overlay" style="align-items: center; z-index: 10001;">
         <div class="face-verification-box" style="text-align: left; padding: 25px; border-radius: 20px; width: 90%; max-width: 400px; max-height: 90vh; overflow-y: auto;">
             <h2 style="margin-bottom: 5px;"><i class="fas fa-clock text-brand-500"></i> Izin Pulang Cepat</h2>
-            <p style="font-size: 13px; margin-bottom: 20px;">Anda akan pulang sebelum jam pulang shift. Isi alasan di bawah untuk meminta persetujuan Admin/Supervisor. Ini tidak memotong kuota cuti tahunan Anda.</p>
+            <p style="font-size: 13px; margin-bottom: 20px;">Opsional: beri tahu atasan lebih dulu bahwa Anda akan pulang sebelum jam pulang shift. Anda <b>tidak perlu menunggu persetujuan</b> untuk absen pulang - alasan ini akan ditinjau Admin/Supervisor kemudian. Ini tidak memotong kuota cuti tahunan Anda.</p>
 
             <form id="form-pulang-cepat" onsubmit="event.preventDefault(); submitPulangCepatForm();">
                 <div style="margin-bottom: 20px;">
@@ -865,7 +881,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                 </div>
                 <div style="display: flex; gap: 10px;">
                     <button type="button" class="btn" style="background: #f1f5f9; color: #475569;" onclick="document.getElementById('modal-pulang-cepat').style.display='none'">Batal</button>
-                    <button type="submit" id="btn-submit-pulang-cepat" class="btn" style="background: #f59e0b; color: white;"><i class="fas fa-paper-plane"></i> Minta Persetujuan</button>
+                    <button type="submit" id="btn-submit-pulang-cepat" class="btn" style="background: #f59e0b; color: white;"><i class="fas fa-paper-plane"></i> Kirim Pemberitahuan</button>
                 </div>
             </form>
         </div>
@@ -890,6 +906,60 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
         // A radius rejection happens before the server consumes the verified
         // face receipt. Retain it briefly for the immediate Dinas Luar retry.
         let pendingMasukVerification = null;
+
+        // ===== Pulang cepat: alasan diminta SEBELUM verifikasi wajah, tidak
+        // menunggu ACC (lihat jamPulangCepatPerluTinjau() di izin_functions.php).
+        // Jam dibandingkan dengan jam SERVER (detik sejak tengah malam saat
+        // halaman dimuat + waktu berjalan), bukan jam/zona waktu perangkat.
+        const jamPulangShiftCepat = <?php echo json_encode($jam_pulang_shift_cepat ? date('H:i', strtotime($jam_pulang_shift_cepat)) : null); ?>;
+        const pulangCepatSudahAdaAlasan = <?php echo $pulang_cepat_sudah_ada_alasan ? 'true' : 'false'; ?>;
+        const detikServerSaatMuat = <?php echo time() - strtotime('today'); ?>;
+        const waktuMuatHalaman = Date.now();
+        let alasanPulangCepat = null;
+        let argsAbsenPulangTerakhir = [];
+
+        function perluAlasanPulangCepat() {
+            if (!jamPulangShiftCepat || pulangCepatSudahAdaAlasan || alasanPulangCepat) return false;
+            const [jam, menit] = jamPulangShiftCepat.split(':').map(Number);
+            const detikSekarang = detikServerSaatMuat + (Date.now() - waktuMuatHalaman) / 1000;
+            return detikSekarang < jam * 3600 + menit * 60;
+        }
+
+        function mintaAlasanPulangCepat(jamShift) {
+            return Swal.fire({
+                title: 'Pulang Lebih Awal?',
+                html: `Jam pulang shift Anda <b>${jamShift}</b>. Anda tetap bisa absen pulang sekarang tanpa menunggu persetujuan.<br><br>Mohon isi alasan pulang cepat - Admin/Supervisor akan meninjaunya kemudian.`,
+                icon: 'question',
+                input: 'textarea',
+                inputPlaceholder: 'Contoh: Ada urusan keluarga mendadak',
+                inputValidator: (value) => {
+                    if (!value || value.trim().length < 5) {
+                        return 'Alasan wajib diisi (minimal 5 karakter).';
+                    }
+                },
+                showCancelButton: true,
+                confirmButtonColor: '#f59e0b',
+                cancelButtonColor: '#64748b',
+                confirmButtonText: '<i class="fas fa-sign-out-alt"></i> Lanjut Absen Pulang',
+                cancelButtonText: 'Batal',
+                reverseButtons: true,
+                customClass: { popup: 'rounded-3xl' }
+            }).then((result) => {
+                if (!result.isConfirmed) return false;
+                alasanPulangCepat = result.value.trim();
+                return true;
+            });
+        }
+
+        function mulaiAbsenPulang() {
+            if (!perluAlasanPulangCepat()) {
+                submitAbsenPulang();
+                return;
+            }
+            mintaAlasanPulangCepat(jamPulangShiftCepat).then((lanjut) => {
+                if (lanjut) submitAbsenPulang();
+            });
+        }
 
         document.addEventListener('DOMContentLoaded', function() {
             const statusLokasi = document.getElementById('status-lokasi');
@@ -1258,6 +1328,7 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
         async function submitAbsenPulang(alasanTidakMasuk = null, alasanDinasPulang = null, isDinasLuarPulang = false) {
             if (cancelActiveVerification) return;
             currentAbsenType = 'pulang';
+            argsAbsenPulangTerakhir = [alasanTidakMasuk, alasanDinasPulang, isDinasLuarPulang];
             const lokasiValue = document.getElementById('lokasi-pulang').value;
             if (!lokasiValue || lokasiValue === '') {
                 alert('⚠️ Lokasi GPS wajib untuk absen PULANG!\n\nPastikan GPS aktif dan Anda telah memberikan izin lokasi.');
@@ -1279,6 +1350,9 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                 if (isDinasLuarPulang) {
                     formData.append('is_dinas_luar', 'true');
                     formData.append('alasan_pulang', alasanDinasPulang);
+                }
+                if (alasanPulangCepat) {
+                    formData.append('alasan_pulang_cepat', alasanPulangCepat);
                 }
                 return formData;
             };
@@ -1466,15 +1540,16 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                             location.reload();
                         });
                         
-                    } else if (data.type === 'pulang_cepat_required') {
+                    } else if (data.type === 'alasan_pulang_cepat_required') {
+                        // Cadangan bila cek di mulaiAbsenPulang() terlewat (mis.
+                        // halaman dimuat sebelum absen masuk tercatat). Server
+                        // menolak SEBELUM token wajah dipakai; setelah alasan
+                        // diisi, absen pulang diulang dengan argumen yang sama.
                         pendingMasukVerification = null;
-                        mainContainer.innerHTML = '';
-                        Swal.fire({
-                            icon: 'warning',
-                            title: 'Belum Waktunya Pulang',
-                            text: data.message,
-                            confirmButtonText: 'OK'
-                        }).then(() => location.reload());
+                        mintaAlasanPulangCepat(data.jam_pulang_shift || '-').then((lanjut) => {
+                            if (lanjut) submitAbsenPulang(...argsAbsenPulangTerakhir);
+                            else location.reload();
+                        });
                     } else {
                         if (data.type !== 'location_error') pendingMasukVerification = null;
                         mainContainer.innerHTML = `

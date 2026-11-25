@@ -1013,7 +1013,7 @@ function exportAbsensiExcel() {
 function konversiSetengahHari(idAbsensi, nama) {
     Swal.fire({
         title: 'Konversi ke Izin Setengah Hari?',
-        html: `Baris "Tidak Absen Masuk" milik <b>${nama}</b> akan ditandai sebagai izin setengah hari.<br><br>Maksimal 3x per bulan per karyawan - sistem menolak otomatis kalau batas ini sudah tercapai.`,
+        html: `Baris "Tidak Absen Masuk" milik <b>${nama}</b> akan ditandai sebagai izin setengah hari.<br><br>Batas wajar <?php echo IZIN_SETENGAH_HARI_MAKS_PER_BULAN; ?>x per bulan per karyawan - lebih dari itu tetap dikonversi tanpa potongan, hanya ditandai.`,
         icon: 'question',
         showCancelButton: true,
         confirmButtonColor: '#059669',

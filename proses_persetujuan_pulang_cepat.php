@@ -2,10 +2,13 @@
 /**
  * Persetujuan Izin Pulang Cepat (Setengah Hari)
  * ==============================================
- * Karyawan yang sudah absen masuk (Hadir) bisa mengajukan izin pulang lebih
- * awal dari jam pulang shift lewat absen.php. Baris absensi hari itu tetap
- * ada (jam_masuk sudah terisi) - yang berubah hanya kolom izin_pulang_cepat,
- * bukan keterangan. Tidak memotong kuota tahunan sama sekali.
+ * Pulang cepat tidak lagi menahan absen pulang (lihat jamPulangCepatPerluTinjau()
+ * di izin_functions.php): baris berstatus 'Pending' bisa berupa pemberitahuan
+ * di muka (belum absen pulang) ATAU pulang cepat yang sudah terjadi (jam_pulang
+ * terisi) - keduanya ditinjau di sini, tidak dibatasi tanggal hari ini.
+ * Yang berubah hanya kolom izin_pulang_cepat, bukan keterangan/jam. Ditolak
+ * untuk saat ini hanya catatan (belum ada potongan gaji). Tidak memotong
+ * kuota tahunan sama sekali.
  */
 require 'config.php';
 requireLogin();
@@ -42,7 +45,7 @@ if ($id_absensi <= 0 || !in_array($action, ['acc', 'tolak'], true)) {
     exit;
 }
 
-$stmt = $conn->prepare("SELECT a.id, a.id_karyawan, a.izin_pulang_cepat, k.nama_karyawan, k.id_cabang
+$stmt = $conn->prepare("SELECT a.id, a.id_karyawan, a.tanggal, a.jam_pulang, a.izin_pulang_cepat, k.nama_karyawan, k.id_cabang
                         FROM absensi a
                         JOIN karyawan k ON a.id_karyawan = k.id_karyawan
                         WHERE a.id = ?");
@@ -76,20 +79,33 @@ if ($data['izin_pulang_cepat'] !== 'Pending') {
 }
 
 $status_baru = ($action === 'acc') ? 'Disetujui' : 'Ditolak';
+$sudah_pulang = !empty($data['jam_pulang']) && $data['jam_pulang'] !== '00:00:00';
+$tanggal_label = date('d/m/Y', strtotime($data['tanggal']));
 $stmt_upd = $conn->prepare("UPDATE absensi SET izin_pulang_cepat = ? WHERE id = ?");
 $stmt_upd->bind_param("si", $status_baru, $id_absensi);
 if ($stmt_upd->execute()) {
     if ($action === 'acc') {
-        $_SESSION['success_message'] = "Izin pulang cepat untuk {$data['nama_karyawan']} disetujui. Karyawan bisa absen pulang lebih awal hari ini.";
-        logActivity($conn, 'acc_pulang_cepat', "Menyetujui izin pulang cepat {$data['nama_karyawan']}", $data['id_karyawan']);
+        $_SESSION['success_message'] = "Pulang cepat {$data['nama_karyawan']} tanggal $tanggal_label disetujui.";
+        logActivity($conn, 'acc_pulang_cepat', "Menyetujui pulang cepat {$data['nama_karyawan']} tanggal $tanggal_label", $data['id_karyawan']);
     } else {
-        $_SESSION['success_message'] = "Izin pulang cepat untuk {$data['nama_karyawan']} ditolak.";
-        logActivity($conn, 'tolak_pulang_cepat', "Menolak izin pulang cepat {$data['nama_karyawan']}", $data['id_karyawan']);
+        $_SESSION['success_message'] = "Pulang cepat {$data['nama_karyawan']} tanggal $tanggal_label ditolak (dicatat).";
+        logActivity($conn, 'tolak_pulang_cepat', "Menolak pulang cepat {$data['nama_karyawan']} tanggal $tanggal_label", $data['id_karyawan']);
     }
 } else {
     $_SESSION['error_message'] = "Gagal memproses izin pulang cepat.";
 }
 $stmt_upd->close();
+
+if ($sudah_pulang) {
+    $push_body = "Pulang cepat Anda tanggal $tanggal_label sudah ditinjau atasan.";
+} else {
+    $push_body = $action === 'acc'
+        ? 'Anda bisa absen pulang lebih awal hari ini.'
+        : 'Sebaiknya absen pulang pada jam normal. Bila tetap pulang lebih awal, alasan Anda akan ditinjau ulang.';
+}
+pushAntreKaryawan($conn, $data['id_karyawan'],
+    $action === 'acc' ? 'Pulang cepat disetujui ✅' : 'Pulang cepat ditolak',
+    $push_body, 'login.php', 'pulang-cepat-hasil');
 
 header("Location: $redirect_url");
 exit;

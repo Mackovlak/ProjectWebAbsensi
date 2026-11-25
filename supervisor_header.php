@@ -91,7 +91,7 @@ $notif_pulang_cepat = [];
 $stmt_pc = $conn->prepare("SELECT a.id, a.tanggal, a.alasan_pulang_cepat, k.nama_karyawan
                            FROM absensi a
                            JOIN karyawan k ON a.id_karyawan = k.id_karyawan
-                           WHERE a.izin_pulang_cepat = 'Pending' AND a.tanggal = CURDATE() AND k.id_cabang = ?
+                           WHERE a.izin_pulang_cepat = 'Pending' AND k.id_cabang = ?
                            ORDER BY a.tanggal DESC
                            LIMIT 20");
 $stmt_pc->bind_param("i", $cabang_supervisor);

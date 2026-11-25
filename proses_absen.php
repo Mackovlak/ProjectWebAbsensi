@@ -156,7 +156,7 @@ try {
     $stmt_duplicate->close();
 
     // Cek status absensi hari ini
-    $stmt_check = $conn->prepare("SELECT id, jam_masuk, jam_pulang, keterangan FROM absensi WHERE id_karyawan = ? AND tanggal = ?");
+    $stmt_check = $conn->prepare("SELECT id, jam_masuk, jam_pulang, keterangan, izin_pulang_cepat, alasan_pulang_cepat FROM absensi WHERE id_karyawan = ? AND tanggal = ?");
     $stmt_check->bind_param("ss", $id_karyawan, $tanggal);
     $stmt_check->execute();
     $result_check = $stmt_check->get_result();
@@ -179,8 +179,36 @@ try {
     // tidak pernah menerbitkan token untuk status ini (masih menunggu ACC
     // admin), jadi cabang ini dibiarkan gagal di pengecekan $is_pending_dinas
     // di bawah yang pesannya jauh lebih jelas, bukan dipaksa lewat sini dulu.
+    // ============== PULANG CEPAT =================
+    // Absen pulang sebelum jam pulang shift TIDAK lagi diblokir menunggu ACC
+    // (lihat jamPulangCepatPerluTinjau() di izin_functions.php): cukup alasan,
+    // lalu absen pulang tercatat dan baris ini masuk antrean tinjau. Dicek di
+    // sini - SEBELUM token verifikasi wajah dikonsumsi - supaya kalau alasan
+    // belum terisi, kiosk bisa memintanya tanpa token wajah ikut hangus.
+    // Pengajuan Pending dari tombol "Izin Pulang Cepat" (proses_pulang_cepat.php)
+    // sudah membawa alasan, jadi tidak perlu diisi ulang.
+    $pulang_cepat_target = null;
+    $alasan_pulang_cepat_baru = null;
+    if ($row_ada && $is_absen_pulang && (empty($attendance_row['jam_pulang']) || $attendance_row['jam_pulang'] === '00:00:00')) {
+        $pulang_cepat_target = jamPulangCepatPerluTinjau($conn, $attendance_row, $id_cabang, $tanggal, $waktu, $izin_setengah_hari_ini);
+    }
+    if ($pulang_cepat_target !== null) {
+        $alasan_post = isset($_POST['alasan_pulang_cepat']) ? sanitizeInput($_POST['alasan_pulang_cepat']) : '';
+        $sudah_ada_alasan = $attendance_row['izin_pulang_cepat'] === 'Pending' && !empty($attendance_row['alasan_pulang_cepat']);
+        if ($alasan_post !== '' && mb_strlen($alasan_post) >= 5) {
+            $alasan_pulang_cepat_baru = mb_substr($alasan_post, 0, 255);
+        } elseif (!$sudah_ada_alasan) {
+            outputJSON([
+                'success' => false,
+                'message' => 'Anda absen pulang sebelum jam pulang shift (' . date('H:i', strtotime($pulang_cepat_target)) . '). Mohon isi alasan pulang cepat (minimal 5 karakter).',
+                'jam_pulang_shift' => date('H:i', strtotime($pulang_cepat_target)),
+                'type' => 'alasan_pulang_cepat_required'
+            ]);
+        }
+    }
+
     $needs_face = $is_absen_pulang
-        ? ($row_ada ? in_array($attendance_row['keterangan'], ['Hadir', 'Dinas Luar'], true) : true)
+        ?($row_ada ? in_array($attendance_row['keterangan'], ['Hadir', 'Dinas Luar'], true) : true)
         : ($keterangan_param === 'Hadir' || $is_dinas_luar || $izin_dinas_hari_ini);
     if ($needs_face) {
         $context = attendanceFaceContext($id_karyawan, $row_ada ? $attendance_row : null, $karyawan_data['face_descriptor'], $tanggal, $is_absen_pulang ? 'pulang' : 'masuk');
@@ -267,6 +295,9 @@ try {
         if ($stmt_izin_insert->execute()) {
             $stmt_izin_insert->close();
             logActivity($conn, 'ajukan_izin', "Ajukan $keterangan_param dadakan via kiosk absen", $id_karyawan);
+            pushAntreApprover($conn, (int)$id_cabang, "Pengajuan $keterangan_param baru",
+                pushNamaKaryawan($conn, $id_karyawan) . ' · hari ini (via kiosk absen)',
+                'kelola_pengajuan_izin.php', 'izin-kiosk-' . $id_karyawan . '-' . $tanggal);
             $ket_kuota = (!$potong_kuota && $keterangan_param === 'Sakit')
                 ? ' Karena dilampiri bukti, permohonan ini tidak memotong kuota tahunan Anda.'
                 : '';
@@ -396,7 +427,7 @@ try {
         }
 
         // VALIDASI LOKASI untuk absen pulang (hanya jika keterangan aslinya adalah Hadir)
-        $stmt_get_ket = $conn->prepare("SELECT keterangan, izin_pulang_cepat FROM absensi WHERE id = ?");
+        $stmt_get_ket = $conn->prepare("SELECT keterangan FROM absensi WHERE id = ?");
         $stmt_get_ket->bind_param("i", $data_absen['id']);
         $stmt_get_ket->execute();
         $ket_data = $stmt_get_ket->get_result()->fetch_assoc();
@@ -468,46 +499,12 @@ try {
         }
 
         // ============== CEK PULANG CEPAT =================
-        // Overtime lewat jam pulang shift TIDAK LAGI otomatis terdeteksi/
-        // diblokir di sini - sejak fitur izin lembur (pengajuan_lembur), jam
-        // lemburnya dihitung nanti di slip gaji dari selisih jam_pulang aktual
-        // vs jam pulang shift, HANYA untuk hari yang punya izin lembur
-        // Disetujui (lihat hitungJamLemburDisetujui() di lembur_functions.php).
-        // Karyawan yang pulang telat tanpa izin lembur tetap absen normal -
-        // tidak dianggap lembur berbayar, tapi juga tidak diblokir/dipaksa
-        // isi alasan+foto di sini.
-        if ($is_hadir_masuk && !isHariOvertime($conn, $tanggal)) {
-            $stmt_jam_pulang = $conn->prepare("
-                SELECT jk.jam_pulang
-                FROM jam_kerja jk
-                WHERE jk.id_cabang = ?
-                ORDER BY ABS(TIMESTAMPDIFF(MINUTE, ?, jk.jam_masuk_akhir)) ASC
-                LIMIT 1
-            ");
-            $stmt_jam_pulang->bind_param("is", $id_cabang, $data_absen['jam_masuk']);
-            $stmt_jam_pulang->execute();
-            $result_jam_pulang = $stmt_jam_pulang->get_result();
-            if ($result_jam_pulang->num_rows > 0) {
-                $target_jam_pulang = $result_jam_pulang->fetch_assoc()['jam_pulang'];
-                $bebas_pulang_cepat = $izin_setengah_hari_ini
-                    && $izin_setengah_hari_ini['sesi_setengah_hari'] === 'Pulang Awal';
-                if ($waktu < $target_jam_pulang && $ket_data['izin_pulang_cepat'] !== 'Disetujui' && !$bebas_pulang_cepat) {
-                    // Pulang lebih awal dari jam pulang shift wajib punya izin
-                    // pulang cepat yang sudah Disetujui Admin/Supervisor.
-                    $stmt_jam_pulang->close();
-                    $stmt_check->close();
-                    $pesan_pulang_cepat = $ket_data['izin_pulang_cepat'] === 'Pending'
-                        ? 'Pengajuan izin pulang cepat Anda masih menunggu persetujuan. Silakan tunggu, atau absen pulang pada jam pulang normal.'
-                        : 'Anda mencoba pulang sebelum jam pulang. Ajukan izin pulang cepat terlebih dahulu lewat menu "Izin Pulang Cepat" pada halaman ini.';
-                    outputJSON([
-                        'success' => false,
-                        'message' => $pesan_pulang_cepat,
-                        'type' => 'pulang_cepat_required'
-                    ]);
-                }
-            }
-            $stmt_jam_pulang->close();
-        }
+        // Sudah ditangani di atas (blok PULANG CEPAT sebelum token wajah
+        // dikonsumsi) - absen pulang lebih awal tidak lagi diblokir, hanya
+        // ditandai untuk ditinjau lewat kolom izin_pulang_cepat di UPDATE bawah.
+        // Overtime lewat jam pulang shift juga tidak diblokir: jam lemburnya
+        // dihitung di slip gaji hanya untuk hari dengan izin lembur Disetujui
+        // (lihat hitungJamLemburDisetujui() di lembur_functions.php).
 
         // $alasan_pulang sudah dibaca di atas (dibutuhkan lebih awal untuk
         // validasi dinas dadakan saat pulang).
@@ -524,12 +521,24 @@ try {
         // $face_verified and $face_confidence come only from the consumed server receipt.
         
         $dinas_pulang_dadakan_flag = $dinas_pulang_dadakan ? 1 : 0;
+        // Status pulang cepat: pulang sebelum jam shift -> 'Pending' (antrean
+        // tinjau, alasan baru menimpa yang lama bila diisi); pulang normal
+        // dengan pengajuan yang masih Pending -> dikosongkan karena ternyata
+        // tidak jadi pulang cepat. 'Disetujui' tidak pernah ditimpa (bisa saja
+        // di-ACC atasan di sela request ini).
+        $pulang_cepat_flag = $pulang_cepat_target !== null ? 1 : 0;
+        $sql_pulang_cepat = ", izin_pulang_cepat = CASE
+                WHEN izin_pulang_cepat = 'Disetujui' THEN izin_pulang_cepat
+                WHEN ? = 1 THEN 'Pending'
+                WHEN izin_pulang_cepat = 'Pending' THEN NULL
+                ELSE izin_pulang_cepat END,
+            alasan_pulang_cepat = COALESCE(?, alasan_pulang_cepat)";
         if ($face_verified) {
-            $stmt_update = $conn->prepare("UPDATE absensi SET jam_pulang = ?, lokasi_pulang = ?, face_verified = 1, face_confidence = ?, alasan_pulang = ?, foto_pulang = ?, dinas_pulang_dadakan = ? WHERE id = ? AND (jam_pulang IS NULL OR jam_pulang = '00:00:00')");
-            $stmt_update->bind_param("ssdssii", $waktu, $lokasi, $face_confidence, $alasan_pulang, $foto_pulang_name, $dinas_pulang_dadakan_flag, $data_absen['id']);
+            $stmt_update = $conn->prepare("UPDATE absensi SET jam_pulang = ?, lokasi_pulang = ?, face_verified = 1, face_confidence = ?, alasan_pulang = ?, foto_pulang = ?, dinas_pulang_dadakan = ?$sql_pulang_cepat WHERE id = ? AND (jam_pulang IS NULL OR jam_pulang = '00:00:00')");
+            $stmt_update->bind_param("ssdssiisi", $waktu, $lokasi, $face_confidence, $alasan_pulang, $foto_pulang_name, $dinas_pulang_dadakan_flag, $pulang_cepat_flag, $alasan_pulang_cepat_baru, $data_absen['id']);
         } else {
-            $stmt_update = $conn->prepare("UPDATE absensi SET jam_pulang = ?, lokasi_pulang = ?, alasan_pulang = ?, foto_pulang = ?, dinas_pulang_dadakan = ? WHERE id = ? AND (jam_pulang IS NULL OR jam_pulang = '00:00:00')");
-            $stmt_update->bind_param("ssssii", $waktu, $lokasi, $alasan_pulang, $foto_pulang_name, $dinas_pulang_dadakan_flag, $data_absen['id']);
+            $stmt_update = $conn->prepare("UPDATE absensi SET jam_pulang = ?, lokasi_pulang = ?, alasan_pulang = ?, foto_pulang = ?, dinas_pulang_dadakan = ?$sql_pulang_cepat WHERE id = ? AND (jam_pulang IS NULL OR jam_pulang = '00:00:00')");
+            $stmt_update->bind_param("ssssiisi", $waktu, $lokasi, $alasan_pulang, $foto_pulang_name, $dinas_pulang_dadakan_flag, $pulang_cepat_flag, $alasan_pulang_cepat_baru, $data_absen['id']);
         }
         
         if ($stmt_update->execute() && $stmt_update->affected_rows > 0) {
@@ -540,6 +549,10 @@ try {
             } else {
                 $log_message = "Absen pulang jam $waktu" . ($face_verified ? " (Face Verified: {$face_confidence}%)" : "");
                 logActivity($conn, 'absen_pulang', $log_message, $id_karyawan);
+            }
+            if ($pulang_cepat_target !== null) {
+                logActivity($conn, 'absen_pulang_cepat',
+                    "Absen pulang cepat jam $waktu (jam pulang shift $pulang_cepat_target) - perlu ditinjau", $id_karyawan);
             }
 
             if ($face_verified) {
@@ -561,13 +574,29 @@ try {
             if ($dinas_pulang_dadakan) {
                 $pesan_pulang .= "<br><br>Karena tercatat di luar radius kantor, absensi pulang ini ditandai sebagai dinas luar dan akan ditinjau Admin/Supervisor.";
             }
+            if ($pulang_cepat_target !== null) {
+                $pesan_pulang .= "<br><br>Karena sebelum jam pulang shift (" . date('H:i', strtotime($pulang_cepat_target)) . "), pulang cepat Anda akan ditinjau Admin/Supervisor.";
+                $stmt_nama = $conn->prepare("SELECT nama_karyawan FROM karyawan WHERE id_karyawan = ?");
+                $stmt_nama->bind_param("s", $id_karyawan);
+                $stmt_nama->execute();
+                $nama_push = $stmt_nama->get_result()->fetch_assoc()['nama_karyawan'] ?? $id_karyawan;
+                $stmt_nama->close();
+                // Batas bulanan pulang cepat hanya tanda untuk atasan (PULANG_CEPAT_MAKS_PER_BULAN).
+                $pulang_cepat_ke = urutanPulangCepatBulan($conn, $id_karyawan, $tanggal);
+                $tanda_batas = $pulang_cepat_ke > PULANG_CEPAT_MAKS_PER_BULAN
+                    ? " · ke-{$pulang_cepat_ke} bulan ini ⚠ melebihi batas " . PULANG_CEPAT_MAKS_PER_BULAN . "x"
+                    : "";
+                pushAntreApprover($conn, (int)$id_cabang, 'Pulang cepat perlu ditinjau',
+                    $nama_push . ' pulang ' . date('H:i', strtotime($waktu)) . ' (shift ' . date('H:i', strtotime($pulang_cepat_target)) . ')' . $tanda_batas,
+                    'kelola_pengajuan_izin.php', 'pulang-cepat-' . $id_karyawan . '-' . $tanggal);
+            }
             if ($face_verified) {
                 $pesan_pulang .= " <br><small style='color: #28a745;'>🛡️ Wajah terverifikasi ({$face_confidence}%)</small>";
             }
             outputJSON([
                 'success' => true,
                 'message' => $pesan_pulang,
-                'title' => $dinas_pulang_dadakan ? "Dinas Luar Tercatat" : "Selamat Beristirahat!"
+                'title' => $dinas_pulang_dadakan ? "Dinas Luar Tercatat" : ($pulang_cepat_target !== null ? "Pulang Cepat Tercatat" : "Selamat Beristirahat!")
             ]);
         } else {
             $conn->rollback();
@@ -749,6 +778,9 @@ try {
                         $pesan_sukses = "Status ALPHA telah dicatat. Silakan konfirmasi dengan atasan jika ada kendala.";
                         break;
                     case 'Pending Dinas':
+                        pushAntreApprover($conn, (int)$id_cabang, 'Permintaan Dinas Luar menunggu ACC',
+                            pushNamaKaryawan($conn, $id_karyawan) . " absen masuk $waktu",
+                            'kelola_pengajuan_izin.php', 'dinas-' . $id_karyawan . '-' . $tanggal);
                         $judul_sukses = "Permintaan Dinas Terkirim";
                         $pesan_sukses = "Permohonan Dinas Luar Anda telah dikirim dan menunggu persetujuan Admin.";
                         if ($face_verified) {
