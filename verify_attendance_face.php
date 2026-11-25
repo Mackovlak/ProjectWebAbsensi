@@ -79,7 +79,13 @@ try {
     if ($action === 'start') {
         $result = ['success' => true, 'nonce' => attendanceFaceIssueToken($_SESSION, 'attendance_face_challenges', $context), 'expires_in' => ATTENDANCE_FACE_TOKEN_TTL];
     } else {
-        attendanceFaceConsumeToken($_SESSION, 'attendance_face_challenges', $_POST['nonce'] ?? null, $context);
+        try {
+            attendanceFaceConsumeToken($_SESSION, 'attendance_face_challenges', $_POST['nonce'] ?? null, $context);
+        } catch (RuntimeException $e) {
+            // Missing/expired/used nonce: the client asks for a new one and retries.
+            $error_code = 'nonce_invalid';
+            throw $e;
+        }
         $confidence = attendanceFaceConfidence($_POST['face_descriptor'] ?? null, $account['face_descriptor']);
         if ($confidence < ATTENDANCE_FACE_MIN_CONFIDENCE) {
             $retry_after = 3;

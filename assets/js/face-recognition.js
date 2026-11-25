@@ -125,7 +125,9 @@ class FaceRecognitionSystem {
             throw new Error('Model belum dimuat. Tunggu sebentar...');
         }
 
-        if (!this.videoElement || this.videoElement.readyState !== 4) {
+        // A still frame (canvas) passed in is already captured, so only the
+        // live video needs to be fully buffered here.
+        if (!this.videoElement || (input === this.videoElement && this.videoElement.readyState !== 4)) {
             throw new Error('Video belum siap. Tunggu kamera aktif...');
         }
 

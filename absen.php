@@ -1359,16 +1359,29 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                     if (value instanceof Blob) body.append(key, value, 'capture.jpg');
                     else body.append(key, value);
                 }
-                const response = await fetch('verify_attendance_face.php', {method: 'POST', body, signal: controller.signal});
+                // A transient failure (network drop, server error, bad reply,
+                // used-up nonce) is retried with a fresh nonce; only errors
+                // that cannot succeed on retry end the verification.
+                const transient = message => Object.assign(new Error(message), {retryable: true, retryAfter: 0});
+                let response;
+                try {
+                    response = await fetch('verify_attendance_face.php', {method: 'POST', body, signal: controller.signal});
+                } catch (error) {
+                    checkCancelled();
+                    throw transient('Koneksi ke server terputus. Mencoba lagi...');
+                }
                 let data;
                 try { data = await response.json(); }
-                catch { throw new Error('Respons verifikasi server tidak valid. Silakan coba lagi.'); }
+                catch {
+                    checkCancelled();
+                    throw transient('Respons verifikasi server tidak valid. Mencoba lagi...');
+                }
                 checkCancelled();
                 if (!response.ok || !data.success) {
                     const error = new Error(data.message || 'Verifikasi server gagal.');
                     error.retryAfter = Math.max(Number(data.retry_after) || 0, Number(response.headers.get('Retry-After')) || 0);
-                    // Only a match failure or rate limit is automatically retryable.
-                    error.retryable = data.code === 'face_mismatch' || response.status === 429;
+                    error.retryable = ['face_mismatch', 'nonce_invalid'].includes(data.code)
+                        || response.status === 429 || response.status >= 500;
                     throw error;
                 }
                 return data;
@@ -1448,7 +1461,8 @@ if ($status_absen === 'sudah_masuk' && $absen_hari_ini['keterangan'] !== 'Hadir'
                     } catch (error) {
                         checkCancelled();
                         if (!error.retryable) throw error;
-                        // A nonce may have been consumed; always obtain a fresh one after cooldown.
+                        // The nonce may have been consumed or the server may have
+                        // failed mid-request: get a fresh one after the cooldown.
                         challenge = null;
                         readySince = null;
                         videoContainer.classList.remove('face-ready');

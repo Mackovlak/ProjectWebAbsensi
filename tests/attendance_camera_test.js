@@ -25,10 +25,23 @@ assert.equal(quality(60, 100, 200, 280).valid, false);
 rect.width = 0;
 assert.equal(quality(180, 100, 280, 280).valid, false);
 
+// A still frame is accepted while the live stream is not fully buffered,
+// but the live video itself still needs readyState 4.
+async function descriptorCheck() {
+    const faceapiStub = {detectSingleFace: () => ({withFaceLandmarks: () => ({withFaceDescriptor: async () => null})})};
+    const ctx = {window: {}, console, faceapi: {...faceapiStub, TinyFaceDetectorOptions: function () {}}};
+    vm.runInNewContext(source, ctx);
+    const sys = new ctx.window.FaceRecognitionSystem();
+    sys.isModelLoaded = true;
+    sys.videoElement = {readyState: 2, videoWidth: 640, videoHeight: 480};
+    await assert.rejects(sys.captureFaceDescriptor(), /Video belum siap/);
+    await assert.rejects(sys.captureFaceDescriptor({}), error => !/Video belum siap/.test(error.message));
+}
+
 const page = fs.readFileSync(path.join(__dirname, '../absen.php'), 'utf8');
 const flow = page.slice(page.indexOf('        async function verifyFace()'), page.indexOf('        function cancelFaceVerification()'));
 
-async function runFlow({rateStart = false, mismatch = false, abortCooldown = false, invalidPosition = false} = {}) {
+async function runFlow({rateStart = false, mismatch = false, abortCooldown = false, invalidPosition = false, failVerify = null} = {}) {
     let now = 0;
     let cancelActiveVerification = null;
     const calls = [], statuses = [], classes = new Set();
@@ -76,13 +89,23 @@ async function runFlow({rateStart = false, mismatch = false, abortCooldown = fal
             if (mismatch && calls.filter(c => c.action === 'verify').length === 1 && action === 'verify') {
                 data = {success: false, code: 'face_mismatch', retry_after: 3, message: 'mismatch'};
             }
-            return {ok: status === 200, status, headers: {get: () => null}, json: async () => data};
+            let badJson = false;
+            if (failVerify && action === 'verify' && (failVerify === 'fatal' || calls.filter(c => c.action === 'verify').length === 1)) {
+                if (failVerify === 'network') throw new TypeError('Failed to fetch');
+                if (failVerify === 'server') {status = 500; data = {success: false, message: 'Verifikasi server gagal. Silakan coba lagi.'};}
+                if (failVerify === 'badjson') {status = 502; badJson = true;}
+                if (failVerify === 'nonce') data = {success: false, code: 'nonce_invalid', retry_after: 0, message: 'Silakan verifikasi ulang.'};
+                if (failVerify === 'fatal') data = {success: false, code: null, retry_after: 0, message: 'Registrasi wajah aktif diperlukan.'};
+            }
+            return {ok: status === 200, status, headers: {get: () => null},
+                json: async () => { if (badJson) throw new SyntaxError('Unexpected token <'); return data; }};
         }
     };
     vm.createContext(sandbox);
     vm.runInContext(flow + '\nthis.run = verifyFace;', sandbox);
     if (abortCooldown) await assert.rejects(sandbox.run(), /dibatalkan/);
     else if (invalidPosition) await assert.rejects(sandbox.run(), /Waktu verifikasi habis/);
+    else if (failVerify === 'fatal') await assert.rejects(sandbox.run(), /Registrasi wajah aktif diperlukan/);
     else assert.equal((await sandbox.run()).token, 'receipt');
     assert.equal(stops, 1);
     assert.equal(elements['face-overlay'].style.display, 'none');
@@ -95,6 +118,14 @@ async function runFlow({rateStart = false, mismatch = false, abortCooldown = fal
         assert.notEqual(verifies[0].nonce, verifies[1].nonce);
     }
     if (abortCooldown) assert.equal(calls.length, 1);
+    if (failVerify === 'fatal') assert.equal(calls.filter(c => c.action === 'verify').length, 1);
+    else if (failVerify) {
+        // Transient failure: cooldown, fresh nonce, then a second verify succeeds.
+        const verifies = calls.filter(c => c.action === 'verify');
+        assert.equal(verifies.length, 2);
+        assert.ok(verifies[1].now - verifies[0].now >= 3000);
+        assert.notEqual(verifies[0].nonce, verifies[1].nonce);
+    }
     assert.ok(statuses.some(s => s.message === 'Wajah belum terlihat.'));
 }
 
@@ -104,5 +135,7 @@ async function runFlow({rateStart = false, mismatch = false, abortCooldown = fal
     await runFlow({mismatch: true});
     await runFlow({rateStart: true, abortCooldown: true});
     await runFlow({invalidPosition: true});
-    console.log('PASS: guide geometry, positioning gate, cooldowns, nonce renewal and cancellation.');
+    for (const failVerify of ['network', 'server', 'badjson', 'nonce', 'fatal']) await runFlow({failVerify});
+    await descriptorCheck();
+    console.log('PASS: guide geometry, positioning gate, cooldowns, nonce renewal, transient-error retry, still-frame capture and cancellation.');
 })().catch(error => {console.error(error); process.exitCode = 1;});
