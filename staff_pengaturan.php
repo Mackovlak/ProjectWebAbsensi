@@ -38,6 +38,8 @@ $ttd = $ttd_data['ttd_path'] ? 'assets/uploads/' . $ttd_data['ttd_path'] : null;
         <p class="text-slate-500 dark:text-slate-400">Atur kredensial login dan lengkapi profil biodata diri Anda.</p>
     </div>
 
+    <?php include __DIR__ . '/pwa_notif_card.php'; ?>
+
     <!-- Top Row: Photo, TTD, Banner -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6 items-stretch">
         

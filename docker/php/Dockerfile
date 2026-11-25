@@ -1,12 +1,14 @@
 FROM php:8.3-apache
 
+# libgmp-dev/gmp: minishlink/web-push (notifikasi PWA) memakainya untuk enkripsi
+# payload - jalan juga tanpa GMP tapi jauh lebih lambat.
 # libzip-dev is a build-time dependency of the zip extension (needed by
 # xlsx_writer.php's use of ZipArchive to generate real .xlsx exports) - it
 # also pulls in the runtime libzip shared library the compiled extension
 # links against, so it's kept rather than purged after install.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libzip-dev \
-    && docker-php-ext-install mysqli zip \
+    && apt-get install -y --no-install-recommends libzip-dev libgmp-dev \
+    && docker-php-ext-install mysqli zip gmp \
     && a2enmod rewrite headers \
     && rm -rf /var/lib/apt/lists/*
 

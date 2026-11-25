@@ -89,7 +89,7 @@ sudo apt update
 ```bash
 sudo apt install -y nginx mysql-server composer \
   php8.3-fpm php8.3-mysqli php8.3-mbstring php8.3-xml php8.3-curl \
-  php8.3-gd php8.3-zip php8.3-opcache
+  php8.3-gd php8.3-zip php8.3-opcache php8.3-gmp
 
 php -v            # sanity check: should report PHP 8.3.x
 composer --version
@@ -280,6 +280,13 @@ DB_NAME=db_absensi.kry
 # is missing or under 32 characters. It derives the admin/owner/supervisor
 # self-registration codes (see README.md §3), so treat it like a password.
 REGISTRATION_MASTER_KEY=CHANGE_ME_TO_A_LONG_RANDOM_SECRET_AT_LEAST_32_CHARS
+
+# Web Push (PWA notifications) - generate once with:
+#   php generate_vapid_keys.php
+# Never rotate after users have subscribed (all subscriptions become invalid).
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+VAPID_SUBJECT=mailto:admin@your-domain.com
 ```
 
 Leave out `WEB_PORT`/`DB_PORT`/`PHPMYADMIN_PORT`/`FACE_BYPASS_TEST_ID` —
@@ -387,6 +394,13 @@ server {
         # Matches docker/php/uploads.ini so overtime/manual-entry photo
         # uploads (up to ~6MB per proses_absen.php) actually go through.
         client_max_body_size 12m;
+    }
+
+    # PWA service worker: must NOT be cached for long, or app updates (and
+    # push fixes) never reach installed clients. Placed before the generic
+    # static-assets block; `=` match wins over regex locations.
+    location = /sw.js {
+        add_header Cache-Control "no-cache, max-age=0, must-revalidate";
     }
 
     # Static assets: long cache, no PHP handling
@@ -501,6 +515,20 @@ schedule to compensate:
 ```bash
 sudo timedatectl set-timezone Asia/Jakarta
 timedatectl
+```
+
+### Optional: PWA push-notification reminders
+
+`cron_push_reminder.php` (CLI-only, 404 over HTTP) sends a Web Push reminder
+to employees who have notifications enabled. It only fires on work days that
+aren't holidays, and skips anyone who already has an attendance row, approved
+leave, or approved Dinas Luar. It requires the VAPID keys in `.env` (see
+`PWA.md`) and is independent of the WhatsApp cron above:
+
+```cron
+# 07:45 WIB - belum absen masuk; 17:15 WIB - sudah masuk tapi belum absen pulang
+45 7  * * 1-6 /usr/bin/php8.3 /var/www/absenslip/cron_push_reminder.php masuk  >> /var/log/absenslip-cron.log 2>&1
+15 17 * * 1-6 /usr/bin/php8.3 /var/www/absenslip/cron_push_reminder.php pulang >> /var/log/absenslip-cron.log 2>&1
 ```
 
 ---

@@ -60,6 +60,14 @@ if ($action === 'acc_admin') {
     $bind_params = array_merge([$user_id], $id_slips);
     $stmt->bind_param($bind_types, ...$bind_params);
     if ($stmt->execute()) {
+        // Slip kini menunggu owner. Jumlah saja yang dikirim - tanpa nominal/nama,
+        // karena notifikasi bisa tampil di layar terkunci.
+        pushAntre($conn, pushPenerimaOwner($conn), [
+            'title' => 'Slip gaji menunggu persetujuan',
+            'body'  => count($id_slips) . ' slip gaji sudah di-ACC admin dan menunggu tanda tangan Anda.',
+            'url'   => 'owner_approval_gaji.php',
+            'tag'   => 'slip-owner',
+        ]);
         echo json_encode(['success' => true, 'message' => 'Slip gaji berhasil di-ACC.']);
     } else {
         echo json_encode(['success' => false, 'message' => 'Gagal mengupdate database.']);
@@ -110,6 +118,12 @@ if ($action === 'acc_admin') {
             $stmt_wa->execute();
             $res_wa = $stmt_wa->get_result()->fetch_assoc();
             $stmt_wa->close();
+
+            // Notifikasi PWA ke karyawan (tanpa nominal gaji: bisa tampil di layar terkunci).
+            if ($res_wa) {
+                pushAntreKaryawan($conn, $res_wa['id_karyawan'], 'Slip gaji Anda sudah terbit ✅',
+                    'Slip gaji telah disetujui. Ketuk untuk melihat rinciannya.', 'staff_laporan_gaji.php', 'slip-gaji');
+            }
 
             if ($res_wa && !empty($res_wa['no_whatsapp']) && !empty($res_wa['wa_token'])) {
                 $target = $res_wa['no_whatsapp'];

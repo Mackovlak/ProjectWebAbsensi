@@ -85,6 +85,8 @@ if ($action === 'tolak') {
     if ($stmt_del->execute()) {
         $_SESSION['success'] = "Permintaan Dinas Luar untuk {$data['nama_karyawan']} berhasil ditolak dan dihapus.";
         logActivity($conn, 'tolak_dinas', "Menolak dan menghapus permintaan dinas luar {$data['nama_karyawan']}", $data['id_karyawan']);
+        pushAntreKaryawan($conn, $data['id_karyawan'], 'Dinas Luar ditolak',
+            'Permintaan Dinas Luar Anda hari ini ditolak. Hubungi atasan bila ada kendala.', 'login.php', 'dinas-hasil');
     } else {
         $_SESSION['error'] = "Gagal menolak permintaan dinas.";
     }
@@ -96,6 +98,8 @@ if ($action === 'tolak') {
     if ($stmt_upd->execute()) {
         $_SESSION['success'] = "Permintaan Dinas Luar untuk {$data['nama_karyawan']} berhasil disetujui.";
         logActivity($conn, 'acc_dinas', "Menyetujui permintaan dinas luar {$data['nama_karyawan']}", $data['id_karyawan']);
+        pushAntreKaryawan($conn, $data['id_karyawan'], 'Dinas Luar disetujui ✅',
+            'Permintaan Dinas Luar Anda hari ini sudah disetujui.', 'login.php', 'dinas-hasil');
     } else {
         $_SESSION['error'] = "Gagal menyetujui permintaan dinas.";
     }

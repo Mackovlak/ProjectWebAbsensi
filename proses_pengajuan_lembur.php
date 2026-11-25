@@ -130,6 +130,10 @@ if (isset($_POST['ajukan_lembur'])) {
         $rentang = formatRentangTanggal($tanggal_mulai, $tanggal_selesai);
         logActivity($conn, 'ajukan_lembur', "Mengajukan izin lembur {$rentang} - #{$id_baru}", $_SESSION['user_id']);
 
+        pushAntreApprover($conn, $id_cabang, 'Pengajuan lembur baru',
+            pushNamaKaryawan($conn, $id_karyawan) . " · {$rentang}",
+            'kelola_pengajuan_lembur.php', 'lembur-' . $id_baru, [$_SESSION['user_id']]);
+
         selesai("✅ Pengajuan izin lembur untuk {$rentang} berhasil dikirim dan menunggu persetujuan atasan.");
     } else {
         $stmt->close();
@@ -249,6 +253,10 @@ if (isset($_POST['review_lembur'])) {
         logActivity($conn, 'review_lembur',
             ($aksi === 'setujui' ? "Menyetujui" : "Menolak") . " pengajuan lembur {$data['nama_karyawan']} ({$rentang}) - #{$id_pengajuan}",
             $_SESSION['user_id']);
+
+        pushAntreKaryawan($conn, $data['id_karyawan'],
+            $aksi === 'setujui' ? 'Pengajuan lembur disetujui ✅' : 'Pengajuan lembur ditolak',
+            $rentang . ($catatan !== '' ? " · {$catatan}" : ''), 'staff_pengajuan_lembur.php', 'lembur-' . $id_pengajuan);
 
         $pesan = $aksi === 'setujui'
             ? "✅ Pengajuan lembur {$data['nama_karyawan']} ({$rentang}) disetujui. Jam lembur akan dihitung otomatis dari absensi aktual saat slip gaji dibuat."
@@ -381,6 +389,13 @@ if (isset($_POST['tugaskan_lembur'])) {
             logActivity($conn, 'tugaskan_lembur',
                 "Menugaskan lembur {$kry['nama_karyawan']} " . formatRentangTanggal($tanggal_mulai, $tanggal_selesai)
                 . " {$jam_mulai}-{$jam_selesai} - #{$stmt_ins->insert_id}", $_SESSION['user_id']);
+
+            pushAntre($conn, [(int)$kry['user_id']], [
+                'title' => 'Penugasan lembur baru',
+                'body'  => formatRentangTanggal($tanggal_mulai, $tanggal_selesai) . " · {$jam_mulai}-{$jam_selesai}. Mohon terima/tolak.",
+                'url'   => 'staff_pengajuan_lembur.php',
+                'tag'   => 'lembur-' . $stmt_ins->insert_id,
+            ]);
         } else {
             $gagal[] = "{$nama} (gagal disimpan)";
         }
@@ -457,6 +472,16 @@ if (isset($_POST['respon_penugasan'])) {
         logActivity($conn, 'respon_penugasan_lembur',
             ($aksi === 'terima' ? "Menerima" : "Menolak") . " penugasan lembur {$rentang} - #{$id_pengajuan}",
             $_SESSION['user_id']);
+
+        // Kabari atasan yang menugaskan (users.id tersimpan di ditugaskan_oleh).
+        if (!empty($data['ditugaskan_oleh'])) {
+            pushAntre($conn, [(int)$data['ditugaskan_oleh']], [
+                'title' => $aksi === 'terima' ? 'Penugasan lembur diterima ✅' : 'Penugasan lembur ditolak',
+                'body'  => pushNamaKaryawan($conn, $id_karyawan) . " · {$rentang}" . ($aksi === 'tolak' ? " · {$alasan}" : ''),
+                'url'   => 'kelola_pengajuan_lembur.php',
+                'tag'   => 'lembur-' . $id_pengajuan,
+            ]);
+        }
 
         selesai($aksi === 'terima'
             ? "✅ Penugasan lembur {$rentang} diterima. Jam lembur dihitung dari absen pulang Anda, maksimal sampai jam selesai yang ditugaskan."

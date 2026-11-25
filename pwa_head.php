@@ -10,3 +10,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="AbsenKita">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
+<?php if (!empty($_SESSION['user_id']) && function_exists('generateCSRFToken')): ?>
+<meta name="csrf-token" content="<?php echo htmlspecialchars(generateCSRFToken(), ENT_QUOTES, 'UTF-8'); ?>">
+<?php endif; ?>
+<script src="assets/js/pwa.js" defer></script>
