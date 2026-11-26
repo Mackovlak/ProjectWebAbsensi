@@ -88,6 +88,8 @@ class FaceRecognitionSystem {
             });
         } catch (error) {
             console.error('❌ Error starting camera:', error);
+            // Pesan + langkah mengizinkan ulang sesuai platform (izin-perangkat.js).
+            if (window.AbsenIzin) throw window.AbsenIzin.errorKamera(error);
             throw new Error('Gagal mengakses kamera. Pastikan izin kamera diberikan.');
         }
     }

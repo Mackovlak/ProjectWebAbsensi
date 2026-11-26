@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>AbsenKita</title>
+  <script src="config.js"></script>
+</head>
+<body style="font-family: system-ui, sans-serif; display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0; background:#0f172a; color:#fff;">
+  <p>Memuat AbsenKita…</p>
+  <script>
+    // Normalnya tidak pernah tampil: aplikasi langsung memuat server.url.
+    if (window.ABSENKITA_URL) location.replace(window.ABSENKITA_URL);
+  </script>
+</body>
+</html>

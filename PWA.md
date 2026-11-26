@@ -4,6 +4,9 @@ Aplikasi bisa dipasang (install) seperti aplikasi native dan mengirim **notifika
 walau aplikasi sedang ditutup. Absensi, slip gaji, dan pengajuan tetap **online-only** —
 tidak ada antrean absensi offline maupun sinkronisasi latar belakang.
 
+> Aplikasi native Android/iOS (Capacitor, folder `mobile/`) dan login "Tetap masuk" 30 hari
+> dijelaskan di `MOBILE.md`. Di dalam aplikasi native, service worker & Web Push tidak dipakai.
+
 ## Komponen
 
 | File | Fungsi |

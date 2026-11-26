@@ -93,6 +93,10 @@ $stmt = $conn->prepare($sql);
 $stmt->bind_param($types, ...$params);
 
 if ($stmt->execute()) {
+    if (!empty($password_baru)) {
+        // Perangkat lain yang "Tetap masuk" harus login ulang dengan password baru.
+        rememberCabutSemuaToken($conn, $user_id, true);
+    }
     if ($is_privileged) {
         logActivity($conn, 'ganti_password', 'Mengganti password akun sendiri', $user_id);
     }

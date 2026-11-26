@@ -29,6 +29,7 @@ if ($result->num_rows > 0) {
     $staff_foto = $data['foto'] ?? '';
 } else {
     echo "<script>alert('Error: Akun staff Anda tidak terhubung dengan data karyawan. Hubungi Admin.');</script>";
+    rememberCabutTokenIni($conn);
     session_destroy();
     header("Location: login.php");
     exit();

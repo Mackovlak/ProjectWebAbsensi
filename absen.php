@@ -894,7 +894,7 @@ $pulang_cepat_sudah_ada_alasan = $absen_hari_ini
         </div>
     </div>
 
-    <script src="assets/js/face-recognition.js?v=2.2"></script>
+    <script src="assets/js/face-recognition.js?v=2.3"></script>
     <script>
         function updateFileName(inputId, textId) {
             const input = document.getElementById(inputId);
@@ -974,45 +974,60 @@ $pulang_cepat_sudah_ada_alasan = $absen_hari_ini
             const lokasiPulangInput = document.getElementById('lokasi-pulang');
             const akurasiInput = document.getElementById('akurasi-lokasi');
             if (!statusLokasi) return;
-            if (!navigator.geolocation) {
-                statusLokasi.innerHTML = `<i class="fas fa-exclamation-triangle" style="color: #dc3545;"></i><span>Browser Anda tidak mendukung deteksi lokasi</span>`;
-                statusLokasi.className = 'lokasi-gagal';
-                return;
-            }
-            statusLokasi.innerHTML = `<i class="fas fa-spinner fa-spin" style="color: #00e5ff;"></i> <span>Mendeteksi lokasi Anda...</span>`;
-            statusLokasi.className = '';
-            navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    const { latitude, longitude, accuracy } = position.coords;
-                    const lokasiValue = `${latitude},${longitude}`;
-                    if (lokasiInput) lokasiInput.value = lokasiValue;
-                    if (lokasiPulangInput) lokasiPulangInput.value = lokasiValue;
-                    if (akurasiInput) akurasiInput.value = accuracy;
-                    statusLokasi.innerHTML = `<i class="fas fa-check-circle" style="color: #28a745;"></i> <span>Lokasi terdeteksi (Akurasi: ${Math.round(accuracy)}m)</span>`;
-                    statusLokasi.className = 'lokasi-berhasil';
-                },
-                (error) => {
-                    let errorMsg = "";
-                    let errorIcon = "fa-exclamation-triangle";
-                    switch(error.code) {
-                        case error.PERMISSION_DENIED:
-                            errorMsg = "Izin lokasi ditolak. Absen dinonaktifkan.";
-                            errorIcon = "fa-lock";
-                            break;
-                        case error.POSITION_UNAVAILABLE:
-                            errorMsg = "Lokasi tidak tersedia. Absen dinonaktifkan.";
-                            break;
-                        case error.TIMEOUT:
-                            errorMsg = "Timeout. Coba lagi atau periksa GPS Anda.";
-                            break;
-                        default:
-                            errorMsg = "Gagal deteksi lokasi. Absen dinonaktifkan.";
-                    }
-                    statusLokasi.innerHTML = `<i class="fas ${errorIcon}" style="color: #dc3545;"></i> <span>${errorMsg}</span>`;
+            // Lokasi lewat izin-perangkat.js: plugin native di aplikasi Android/iOS,
+            // navigator.geolocation di browser. Saat gagal tampilkan langkah
+            // mengizinkan ulang untuk platform ini + tombol coba lagi.
+            const deteksiLokasi = () => {
+                if (!window.AbsenIzin) {
+                    statusLokasi.innerHTML = `<i class="fas fa-exclamation-triangle" style="color: #dc3545;"></i><span>Gagal memuat modul lokasi. Muat ulang halaman.</span>`;
                     statusLokasi.className = 'lokasi-gagal';
-                },
-                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-            );
+                    return;
+                }
+                statusLokasi.innerHTML = `<i class="fas fa-spinner fa-spin" style="color: #00e5ff;"></i> <span>Mendeteksi lokasi Anda...</span>`;
+                statusLokasi.className = '';
+                window.AbsenIzin.ambilLokasi({ enableHighAccuracy: true, timeout: 15000, maximumAge: 0 })
+                    .then(({ latitude, longitude, accuracy }) => {
+                        const lokasiValue = `${latitude},${longitude}`;
+                        if (lokasiInput) lokasiInput.value = lokasiValue;
+                        if (lokasiPulangInput) lokasiPulangInput.value = lokasiValue;
+                        if (akurasiInput) akurasiInput.value = accuracy;
+                        statusLokasi.innerHTML = `<i class="fas fa-check-circle" style="color: #28a745;"></i> <span>Lokasi terdeteksi (Akurasi: ${Math.round(accuracy)}m)</span>`;
+                        statusLokasi.className = 'lokasi-berhasil';
+                    })
+                    .catch((error) => {
+                        const ditolak = error.kode === 'denied' || error.kode === 'imprecise';
+                        const icon = ditolak ? 'fa-lock' : 'fa-exclamation-triangle';
+                        const pesan = (error.message || 'Gagal deteksi lokasi.') + ' Absen Hadir dinonaktifkan.';
+                        const span = (teks, gaya) => {
+                            const el = document.createElement('span');
+                            el.textContent = teks;
+                            if (gaya) el.style.cssText = gaya;
+                            return el;
+                        };
+                        statusLokasi.innerHTML = `<i class="fas ${icon}" style="color: #dc3545;"></i>`;
+                        const isi = document.createElement('span');
+                        isi.appendChild(span(pesan));
+                        if (ditolak || error.kode === 'unavailable') {
+                            isi.appendChild(document.createElement('br'));
+                            isi.appendChild(span(window.AbsenIzin.panduan('lokasi'), 'font-size: 0.85em; opacity: 0.85;'));
+                        }
+                        isi.appendChild(document.createElement('br'));
+                        const coba = document.createElement('button');
+                        coba.type = 'button';
+                        coba.textContent = 'Coba lagi';
+                        coba.style.cssText = 'margin-top: 6px; text-decoration: underline; font-weight: 600;';
+                        coba.addEventListener('click', deteksiLokasi);
+                        isi.appendChild(coba);
+                        statusLokasi.appendChild(isi);
+                        statusLokasi.className = 'lokasi-gagal';
+                    });
+            };
+            deteksiLokasi();
+            // Setelah pengguna mengizinkan di Pengaturan lalu kembali ke aplikasi/tab,
+            // coba lagi otomatis tanpa harus muat ulang.
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible' && statusLokasi.className === 'lokasi-gagal') deteksiLokasi();
+            });
         });
 
         function submitBuatAkun() {
