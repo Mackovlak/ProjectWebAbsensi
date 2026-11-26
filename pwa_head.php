@@ -13,4 +13,5 @@
 <?php if (!empty($_SESSION['user_id']) && function_exists('generateCSRFToken')): ?>
 <meta name="csrf-token" content="<?php echo htmlspecialchars(generateCSRFToken(), ENT_QUOTES, 'UTF-8'); ?>">
 <?php endif; ?>
+<script src="assets/js/izin-perangkat.js" defer></script>
 <script src="assets/js/pwa.js" defer></script>

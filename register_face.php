@@ -85,7 +85,7 @@ try {
     
     <!-- Face API -->
     <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.min.js"></script>
-    <script src="assets/js/face-recognition.js?v=2.2"></script>
+    <script src="assets/js/face-recognition.js?v=2.3"></script>
     
     <style>
         .video-container {

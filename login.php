@@ -95,18 +95,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && $_SESSION['login_attempts'] < $max_a
                 // Regenerate session ID for security
                 regenerateSession();
                 
-                $_SESSION['user_id'] = $user['id'];
-                $_SESSION['username'] = $user['username'];
-                $_SESSION['nama_lengkap'] = $user['nama'];
-                $_SESSION['role'] = $user['role'];
-                $_SESSION['jenis_kelamin'] = $user['jenis_kelamin'] ?? 'L';
-                $_SESSION['foto_profil'] = $user['foto_profil'] ?? null;
-                $_SESSION['login_time'] = time();
-                
-                // Semua akun yang tertaut karyawan (staff/admin/supervisor)
-                // membawa ID karyawan untuk biodata dan pembatasan akses.
-                if ($user['id_karyawan']) {
-                    $_SESSION['id_karyawan'] = $user['id_karyawan'];
+                isiSesiLogin($user);
+
+                // "Tetap masuk di perangkat ini": token 30 hari (remember_functions.php).
+                // Tanpa centang, token lama perangkat ini tetap dibuang supaya
+                // akun sebelumnya tidak "hidup lagi" setelah sesi ini berakhir.
+                if (!empty($_POST['ingat_saya'])) {
+                    rememberBuatToken($conn, $user['id']);
+                } else {
+                    rememberCabutTokenIni($conn);
                 }
                 
                 // Log successful login (optional)
@@ -345,6 +342,15 @@ $csrf_token = generateCSRFToken();
                         </button>
                     </div>
                 </div>
+
+                <?php // Default dicentang di aplikasi Android/iOS; di browser, pwa.js mencentangnya bila dibuka sebagai aplikasi terpasang. ?>
+                <label class="flex items-start gap-3 cursor-pointer select-none">
+                    <input type="checkbox" name="ingat_saya" id="ingat_saya" value="1" data-pwa-ingat-saya class="mt-0.5 h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500" <?php echo isAplikasiNative() ? 'checked' : ''; ?>>
+                    <span class="text-sm text-slate-600 dark:text-slate-300">
+                        Tetap masuk di perangkat ini (<?php echo REMEMBER_HARI; ?> hari)
+                        <span class="block text-xs text-slate-400 dark:text-slate-500">Jangan dicentang di HP/komputer yang dipakai bersama.</span>
+                    </span>
+                </label>
 
                <button type="submit" 
                     class="w-full py-4 px-4 mt-2 bg-gradient-to-r from-blue-600 to-slate-900 disabled:from-slate-400 disabled:to-slate-500 disabled:cursor-not-allowed text-white font-bold rounded-2xl shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/50 transform hover:-translate-y-1 transition-all duration-300 ease-out flex items-center justify-center gap-2"

@@ -19,7 +19,11 @@
 
     var isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
     var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    var swSupported = 'serviceWorker' in navigator && window.isSecureContext;
+    // Cangkang aplikasi Android/iOS (mobile/, Capacitor) menambahkan penanda ini
+    // ke User-Agent. WebView native tidak mendukung Web Push, dan offline/caching
+    // ditangani aplikasinya sendiri, jadi service worker tidak didaftarkan di sana.
+    var isNativeApp = navigator.userAgent.indexOf('AbsenKitaApp/') !== -1;
+    var swSupported = !isNativeApp && 'serviceWorker' in navigator && window.isSecureContext;
     var pushSupported = swSupported && 'PushManager' in window && 'Notification' in window;
 
     var deferredInstall = null;
@@ -82,8 +86,9 @@
 
     // ---- API publik ------------------------------------------------------
 
-    // 'unsupported' | 'ios-install' | 'unconfigured' | 'denied' | 'off' | 'on'
+    // 'native-app' | 'unsupported' | 'ios-install' | 'unconfigured' | 'denied' | 'off' | 'on'
     function getState() {
+        if (isNativeApp) return Promise.resolve('native-app');
         if (!pushSupported) {
             return Promise.resolve(isIOS && !isStandalone ? 'ios-install' : 'unsupported');
         }
@@ -153,7 +158,7 @@
     window.AbsenPWA = {
         getState: getState, enablePush: enablePush, disablePush: disablePush, sendTest: sendTest,
         promptInstall: promptInstall, canInstall: canInstall,
-        isStandalone: isStandalone, isIOS: isIOS
+        isStandalone: isStandalone, isIOS: isIOS, isNativeApp: isNativeApp
     };
 
     function notify() { document.dispatchEvent(new CustomEvent('pwa:change')); }
@@ -210,6 +215,7 @@
     // ---- Kartu pengaturan ----------------------------------------------------
 
     var STATE_TEXT = {
+        'native-app': ['Notifikasi di aplikasi Android/iOS belum tersedia.', 'Untuk sementara, notifikasi push hanya untuk versi browser/aplikasi web (PWA). Login, kamera, dan lokasi di aplikasi ini berjalan normal.'],
         unsupported: ['Browser ini belum mendukung notifikasi push.', 'Gunakan Chrome, Edge, Firefox, atau Safari versi terbaru lewat HTTPS.'],
         'ios-install': ['Pasang aplikasi dulu di iPhone/iPad.', 'Buka menu Bagikan di Safari → "Tambah ke Layar Utama", lalu buka aplikasinya dari layar utama dan aktifkan notifikasi.'],
         unconfigured: ['Notifikasi belum dikonfigurasi di server.', 'Hubungi admin sistem (kunci VAPID belum diisi).'],
@@ -272,7 +278,15 @@
         renderCard();
     }
 
+    // Halaman login: centang "Tetap masuk" otomatis saat dibuka sebagai aplikasi
+    // terpasang (PWA standalone / aplikasi native) - itu perangkat pribadi.
+    function presetIngatSaya() {
+        var box = document.querySelector('[data-pwa-ingat-saya]');
+        if (box && (isStandalone || isNativeApp)) box.checked = true;
+    }
+
     register().then(syncOncePerSession);
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindCard);
-    else bindCard();
+    function onReady() { bindCard(); presetIngatSaya(); }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', onReady);
+    else onReady();
 })();

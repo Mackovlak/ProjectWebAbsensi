@@ -43,7 +43,12 @@ if (session_status() === PHP_SESSION_NONE) {
             'path' => '/',
             'secure' => true,
             'httponly' => true,
-            'samesite' => 'Strict'
+            // Lax, bukan Strict: di HP aplikasi sering dibuka dari tautan
+            // WhatsApp/SMS atau notifikasi. Dengan Strict cookie sesi tidak
+            // terkirim pada navigasi itu sehingga pengguna tampak ter-logout.
+            // POST lintas situs tetap tidak membawa cookie (Lax), dan semua
+            // form juga sudah dilindungi token CSRF.
+            'samesite' => 'Lax'
         ]);
     } else {
         // Localhost atau HTTP (development)
@@ -100,6 +105,12 @@ try {
     die("Database connection error: " . $e->getMessage());
 }
 
+// Login tetap tersimpan per perangkat: bila sesi PHP sudah habis tetapi
+// perangkat punya cookie "Tetap masuk", isi ulang sesinya (lihat
+// remember_functions.php). Harus sebelum pengecekan is_active di bawah.
+require_once __DIR__ . '/remember_functions.php';
+rememberPulihkanSesi($conn);
+
 // Akun yang dinonaktifkan harus kehilangan akses pada request berikutnya,
 // bukan baru setelah sesi/cookie berakhir.
 if (!empty($_SESSION['user_id'])) {
@@ -114,6 +125,8 @@ if (!empty($_SESSION['user_id'])) {
         $stmt_session_user->close();
 
         if (!$session_user || !(bool)$session_user['is_active']) {
+            rememberCabutSemuaToken($conn, $session_user_id);
+            rememberHapusCookie();
             $_SESSION = [];
             if (ini_get('session.use_cookies')) {
                 $cookie = session_get_cookie_params();

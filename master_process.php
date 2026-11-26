@@ -1167,6 +1167,18 @@ if (isset($_POST['edit_user'])) {
                 $_SESSION['user_id']);
 
             $conn->commit();
+
+            // Password direset atau akun dinonaktifkan: perangkat yang
+            // "Tetap masuk" harus login ulang. Di luar transaksi + try karena
+            // blok ini memakai MYSQLI_REPORT_STRICT dan tabelnya baru ada
+            // setelah migrasi 019.
+            if ($password !== '' || $new_is_active !== 1) {
+                try {
+                    rememberCabutSemuaToken($conn, $id_user, (int)$id_user === (int)$_SESSION['user_id']);
+                } catch (Throwable $e) {
+                    // migrasi 019 belum dijalankan - tidak ada token untuk dicabut
+                }
+            }
             $_SESSION['success_message'] = "User '{$username}' berhasil diperbarui.";
         } catch (mysqli_sql_exception $e) {
             $conn->rollback();

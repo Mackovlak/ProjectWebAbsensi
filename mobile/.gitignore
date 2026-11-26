@@ -1,0 +1,7 @@
+node_modules/
+# Dibuat ulang oleh scripts/tulis-config.mjs pada setiap cap sync (berisi URL server).
+www/config.js
+# Kunci penandatanganan rilis - JANGAN di-commit, simpan cadangannya di tempat aman.
+*.jks
+*.keystore
+keystore.properties
